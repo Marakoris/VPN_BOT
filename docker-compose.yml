@@ -1,0 +1,56 @@
+version: '3'
+
+services:
+
+  db_postgres:
+    image: postgres:latest
+    container_name: postgres_db_container
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_db_vol:/var/lib/postgresql/data
+      - ./backups:/app/backups  # Монтируем директорию для бэкапов
+
+  pgadmin:
+    user: "0:0"
+    container_name: pgadmin_container
+    image: dpage/pgadmin4:8.6
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    volumes:
+      - ./pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+
+  vpn_hub_bot:
+    restart: unless-stopped
+    build: ./
+    env_file:
+      - .env
+    environment:
+      - ADMIN_TG_ID
+      - CRYPTO_BOT_API
+      - CRYPTOMUS_KEY
+      - CRYPTOMUS_UUID
+      - LAVA_ID_PROJECT
+      - LAVA_TOKEN_SECRET
+      - NAME
+      - TG_TOKEN
+      - WALLET_PAY_TOKEN
+      - YOOKASSA_SECRET_KEY
+      - YOOKASSA_SHOP_ID
+      - YOOMONEY_TOKEN
+      - YOOMONEY_WALLET
+    volumes:
+      - ./logs:/app/logs
+      - ./bot/locale:/app/bot/locale
+      - ./bot/img:/app/bot/img
+      - ./bot/database/migrations/versions:/app/bot/database/migrations/versions
+      - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
+      - ./backups:/app/backups  # Монтируем директорию для бэкапов

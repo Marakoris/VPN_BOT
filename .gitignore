@@ -1,0 +1,23 @@
+.venv
+
+logs
+
+pgadmin-data
+
+postgres_db_vol
+
+.env
+
+.sql
+
+# Кэшированные файлы Python
+__pycache__/
+*.pyc
+
+.idea
+
+test.py
+
+backups
+
+backups/backup_2025-01-30_14-00-00.sql
