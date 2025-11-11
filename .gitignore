@@ -7,6 +7,7 @@ pgadmin-data
 postgres_db_vol
 
 .env
+.env-real
 
 .sql
 
