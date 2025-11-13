@@ -147,9 +147,48 @@ async def missing_user_menu(lang) -> InlineKeyboardMarkup:
         callback_data=MissingMessage(option='no')
     )
     kb.button(
+        text='📡 По типу VPN',
+        callback_data=MissingMessage(option='by_vpn_type')
+    )
+    kb.button(
+        text='🌍 По серверу',
+        callback_data=MissingMessage(option='by_server')
+    )
+    kb.button(
         text=_('admin_user_mailing_update_btn', lang),
         callback_data=MissingMessage(option='update')
     )
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+async def vpn_type_selection_menu(lang) -> InlineKeyboardMarkup:
+    """Меню выбора типа VPN для рассылки"""
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text='Outline 🪐',
+        callback_data=MissingMessage(option='vpn_type', vpn_type=0)
+    )
+    kb.button(
+        text='Vless 🐊',
+        callback_data=MissingMessage(option='vpn_type', vpn_type=1)
+    )
+    kb.button(
+        text='Shadowsocks 🦈',
+        callback_data=MissingMessage(option='vpn_type', vpn_type=2)
+    )
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+async def server_selection_menu(servers, lang) -> InlineKeyboardMarkup:
+    """Меню выбора сервера для рассылки"""
+    kb = InlineKeyboardBuilder()
+    for server in servers:
+        kb.button(
+            text=f'{server.name}',
+            callback_data=MissingMessage(option='server', server_id=server.id)
+        )
     kb.adjust(1)
     return kb.as_markup()
 
