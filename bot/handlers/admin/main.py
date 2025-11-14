@@ -14,7 +14,10 @@ from bot.database.methods.get import (
     get_all_server,
     get_server,
     get_person_id,
-    get_all_user, get_all_subscription, get_no_subscription
+    get_all_user,
+    get_all_subscription,
+    get_no_subscription,
+    get_users_by_server_and_vpn_type
 )
 from bot.database.methods.update import (
     server_work_update,
@@ -30,7 +33,12 @@ from bot.handlers.admin.user_management import (
 )
 from bot.handlers.admin.state_servers import state_admin_router
 from bot.handlers.admin.state_servers import AddServer, RemoveServer
-from bot.keyboards.inline.admin_inline import server_control, missing_user_menu
+from bot.keyboards.inline.admin_inline import (
+    server_control,
+    missing_user_menu,
+    vpn_type_selection_menu,
+    server_selection_menu
+)
 from bot.keyboards.reply.admin_reply import (
     admin_menu,
     server_menu,
@@ -333,6 +341,8 @@ async def update_message_bot(
         callback_data: MissingMessage,
         state: FSMContext) -> None:
     lang = await get_lang(call.from_user.id, state)
+
+    # Обработка обновления меню
     if callback_data.option == 'update':
         try:
             users = await get_all_user()
@@ -342,7 +352,37 @@ async def update_message_bot(
             log.error(e, 'not update menu all users')
         await call.answer()
         return
-    await state.update_data(option=callback_data.option)
+
+    # Показать меню выбора типа VPN
+    if callback_data.option == 'by_vpn_type':
+        await call.message.answer(
+            '📡 Выберите тип VPN для рассылки:',
+            reply_markup=await vpn_type_selection_menu(lang)
+        )
+        await call.answer()
+        return
+
+    # Показать меню выбора сервера
+    if callback_data.option == 'by_server':
+        servers = await get_all_server()
+        if not servers:
+            await call.message.answer('❌ Нет доступных серверов')
+            await call.answer()
+            return
+        await call.message.answer(
+            '🌍 Выберите сервер для рассылки:',
+            reply_markup=await server_selection_menu(servers, lang)
+        )
+        await call.answer()
+        return
+
+    # Сохраняем параметры фильтрации
+    await state.update_data(
+        option=callback_data.option,
+        server_id=callback_data.server_id,
+        vpn_type=callback_data.vpn_type
+    )
+
     await call.message.answer(
         _('input_message_or_image', lang),
         reply_markup=await back_admin_menu(lang)
@@ -356,13 +396,33 @@ async def mailing_text(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
     try:
         data = await state.get_data()
-        if data['option'] == 'all':
+        option = data.get('option')
+        server_id = data.get('server_id')
+        vpn_type = data.get('vpn_type')
+
+        # Определяем список пользователей в зависимости от опции
+        if option == 'all':
             users = await get_all_user()
-        elif data['option'] == 'sub':
+        elif option == 'sub':
             users = await get_all_subscription()
-        else:
+        elif option == 'no':
             users = await get_no_subscription()
+        elif option == 'vpn_type':
+            # Рассылка по типу VPN
+            users = await get_users_by_server_and_vpn_type(vpn_type=vpn_type)
+            vpn_names = {0: 'Outline', 1: 'Vless', 2: 'Shadowsocks'}
+            log.info(f'Рассылка для пользователей с VPN типом: {vpn_names.get(vpn_type)}')
+        elif option == 'server':
+            # Рассылка по серверу
+            users = await get_users_by_server_and_vpn_type(server_id=server_id)
+            server = await get_server_id(server_id)
+            log.info(f'Рассылка для пользователей сервера: {server.name if server else server_id}')
+        else:
+            users = await get_all_user()
+
         count_not_suc = 0
+
+        # Отправка сообщений
         if message.photo:
             photo = message.photo[-1]
             caption = message.caption if message.caption else ''
@@ -387,12 +447,24 @@ async def mailing_text(message: Message, state: FSMContext):
                     log.info(e, 'user block bot')
                     count_not_suc += 1
                     continue
+
+        # Результат рассылки
+        result_text = _('result_mailing_text', lang).format(
+            all_count=len(users),
+            suc_count=len(users) - count_not_suc,
+            count_not_suc=count_not_suc
+        )
+
+        # Добавляем информацию о фильтрах
+        if option == 'vpn_type':
+            vpn_names = {0: 'Outline 🪐', 1: 'Vless 🐊', 2: 'Shadowsocks 🦈'}
+            result_text += f'\n\n📡 Фильтр: {vpn_names.get(vpn_type, "Неизвестный")}'
+        elif option == 'server':
+            server = await get_server_id(server_id)
+            result_text += f'\n\n🌍 Фильтр: Сервер {server.name if server else server_id}'
+
         await message.answer(
-            _('result_mailing_text', lang).format(
-                all_count=len(users),
-                suc_count=len(users) - count_not_suc,
-                count_not_suc=count_not_suc
-            ),
+            result_text,
             reply_markup=await admin_menu(lang)
         )
     except Exception as e:

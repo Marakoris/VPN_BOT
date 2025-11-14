@@ -251,6 +251,33 @@ async def get_count_groups():
         count = result.scalar_one()
         return count
 
+
+async def get_users_by_server_and_vpn_type(server_id: int = None, vpn_type: int = None):
+    """
+    Получить пользователей по серверу и/или типу VPN
+    :param server_id: ID сервера (опционально)
+    :param vpn_type: Тип VPN: 0=Outline, 1=Vless, 2=Shadowsocks (опционально)
+    :return: Список пользователей
+    """
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        statement = select(Persons).join(
+            Servers, Persons.server == Servers.id
+        )
+
+        # Добавляем фильтры если указаны
+        conditions = []
+        if server_id is not None:
+            conditions.append(Persons.server == server_id)
+        if vpn_type is not None:
+            conditions.append(Servers.type_vpn == vpn_type)
+
+        if conditions:
+            statement = statement.filter(and_(*conditions))
+
+        result = await db.execute(statement)
+        persons = result.scalars().all()
+        return persons
+
 async def get_super_offer():
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(SuperOffer)
