@@ -14,7 +14,7 @@ from bot.misc.Payment.Cryptomus import Cryptomus
 from bot.misc.Payment.KassaSmart import KassaSmart
 from bot.misc.Payment.Lava import Lava
 from bot.misc.Payment.Stars import Stars, stars_router
-from bot.misc.Payment.YooMoney import YooMoney
+#from bot.misc.Payment.YooMoney import YooMoney
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from bot.misc.callbackData import (
@@ -42,7 +42,7 @@ CONVERT_PANY_RUBLS = 100
 
 types_of_payments = {
     'KassaSmart': KassaSmart,
-    'YooMoney': YooMoney,
+#    'YooMoney': YooMoney,
     'Lava': Lava,
     'Cryptomus': Cryptomus,
     'CryptoBot': CryptoBot,

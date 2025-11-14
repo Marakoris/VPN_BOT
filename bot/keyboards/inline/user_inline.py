@@ -29,11 +29,6 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
             text=_('payments_yookassa_btn', lang),
             callback_data=ChoosingPayment(payment='KassaSmart', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
-    if config.yoomoney_token != "" and config.yoomoney_wallet_token != "":
-        kb.button(
-            text=_('payments_yoomoney_btn', lang),
-            callback_data=ChoosingPayment(payment='YooMoney', price=price, days_count=days_count,
-                                          price_on_db=price_on_db))
     if config.cryptomus_key != "" and config.cryptomus_uuid != "":
         kb.button(
             text=_('payments_cryptomus_btn', lang),
@@ -57,7 +52,6 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
     if (
             config.yookassa_shop_id == ""
             and config.tg_wallet_token == ""
-            and config.yoomoney_token == ""
             and config.lava_token_secret == ""
             and config.cryptomus_key == ""
             and config.crypto_bot_api == ""
@@ -67,7 +61,6 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
         kb.button(text=_('payments_not_btn_2', lang), callback_data='none')
     kb.adjust(1)
     return kb.as_markup()
-
 
 async def deposit_amount(CONGIG) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
@@ -154,7 +147,7 @@ async def choosing_lang() -> InlineKeyboardMarkup:
 async def pay_and_check(link_invoice: str, lang) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text=_('user_pay_sub_btn', lang), url=link_invoice)
-    kb.button(text=_('user_offer_agreement_btn', lang), url=CONFIG.offer_url)
+    #kb.button(text=_('user_offer_agreement_btn', lang), url=CONFIG.offer_url)
     kb.adjust(1)
     return kb.as_markup()
 

@@ -104,9 +104,7 @@ class PaymentSystem:
             )
         if person.referral_user_tgid is not None:
             referral_user = person.referral_user_tgid
-            referral_balance = (
-                int(total_amount * (CONFIG.referral_percent * 0.01))
-            )
+            referral_balance = max(1, round(total_amount * (CONFIG.referral_percent * 0.01)))
             await add_referral_balance_person(
                 referral_balance,
                 referral_user

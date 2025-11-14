@@ -149,7 +149,7 @@ async def send_help_message(message: Message, state: FSMContext):
 async def choose_server_user(message: Message, state: FSMContext) -> None:
     lang = await get_lang(message.from_user.id, state)
     await message.answer_photo(
-        photo=FSInputFile('bot/img/locations.jpg'),
+photo=FSInputFile('bot/img/choose_protocol.jpg'),
         caption=_('choosing_connect_type', lang),
         reply_markup=await choose_type_vpn()
     )
@@ -175,7 +175,7 @@ async def call_choose_server(call: CallbackQuery, state: FSMContext) -> None:
     lang = await get_lang(call.from_user.id, state)
     await call.message.delete()
     await call.message.answer_photo(
-        photo=FSInputFile('bot/img/locations.jpg'),
+photo=FSInputFile('bot/img/choose_protocol.jpg'),
         caption=_('choosing_connect_type', lang),
         reply_markup=await choose_type_vpn()
     )
