@@ -68,8 +68,8 @@ class DeleteStaticUser(CallbackData, prefix='delete_static_user'):
 
 class MissingMessage(CallbackData, prefix='missing_user'):
     option: str
-    server_id: int = None  # ID сервера для фильтрации
-    vpn_type: int = None  # Тип VPN для фильтрации (0=Outline, 1=Vless, 2=Shadowsocks)
+    server_id: int = 0
+    vpn_type: int = -1
 
 
 class PromocodeDelete(CallbackData, prefix='delete_promo'):
