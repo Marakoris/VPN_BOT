@@ -17,6 +17,7 @@ class Stars(PaymentSystem):
     def __init__(self, config, message, user_id, fullname, price, months_count, data=None):
         super().__init__(message, user_id, fullname, price, months_count)
         self.TOKEN = config.token_stars
+        self.months_count = months_count
 
     async def to_pay(self):
         lang_user = await get_lang(self.user_id)
@@ -32,7 +33,7 @@ class Stars(PaymentSystem):
             description=description,
             prices=prices,
             provider_token=self.TOKEN,
-            payload=f'{self.price}',
+            payload=f'{self.price}|{self.months_count}',
             currency="XTR"
         )
         log.info(
@@ -52,10 +53,19 @@ async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
 
 @stars_router.message(F.successful_payment)
 async def on_successful_payment(message: Message):
-    price = int(message.successful_payment.invoice_payload)
+    # Извлекаем price и months_count из payload
+    payload_data = message.successful_payment.invoice_payload.split('|')
+    price = int(payload_data[0])
+    months_count = int(payload_data[1])
+
+    # Получаем имя пользователя
+    full_name = message.from_user.full_name
+
     payment_system = PaymentSystem(
         message,
         message.from_user.id,
-        price=price
+        full_name,
+        price=price,
+        days_count=months_count
     )
     await payment_system.successful_payment(price, 'Telegram Stars')

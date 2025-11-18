@@ -138,7 +138,10 @@ async def give_bonus_invitee(m, reference, lang):
 @user_router.message(F.text.in_(btn_text('help_btn')))
 async def send_help_message(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
-    builder = InlineKeyboardBuilder([[InlineKeyboardButton(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")]])
+    builder = InlineKeyboardBuilder()
+    builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
+    builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
+    builder.adjust(1)
     await message.answer(
         text=_('support_message'),
         reply_markup=builder.as_markup()
