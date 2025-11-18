@@ -31,6 +31,8 @@ services:
   vpn_hub_bot:
     restart: unless-stopped
     build: ./
+    depends_on:
+      - db_postgres
     env_file:
       - .env
     environment:
@@ -48,9 +50,7 @@ services:
       - YOOMONEY_TOKEN
       - YOOMONEY_WALLET
     volumes:
+      - ./bot:/app/bot  # Монтируем весь код бота для быстрой разработки
       - ./logs:/app/logs
-      - ./bot/locale:/app/bot/locale
-      - ./bot/img:/app/bot/img
-      - ./bot/database/migrations/versions:/app/bot/database/migrations/versions
       - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
       - ./backups:/app/backups  # Монтируем директорию для бэкапов

@@ -342,17 +342,6 @@ async def update_message_bot(
         state: FSMContext) -> None:
     lang = await get_lang(call.from_user.id, state)
 
-    # Обработка обновления меню
-    if callback_data.option == 'update':
-        try:
-            users = await get_all_user()
-            await update_client(call.message, users, lang)
-        except Exception as e:
-            await call.message.answer(_('error_update', lang))
-            log.error(e, 'not update menu all users')
-        await call.answer()
-        return
-
     # Показать меню выбора типа VPN
     if callback_data.option == 'by_vpn_type':
         await call.message.answer(
@@ -391,14 +380,14 @@ async def update_message_bot(
     await state.set_state(StateMailing.input_text)
 
 
-@state_admin_router.message(StateMailing.input_text)
+@admin_router.message(StateMailing.input_text)
 async def mailing_text(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
     try:
         data = await state.get_data()
         option = data.get('option')
-        server_id = data.get('server_id')
-        vpn_type = data.get('vpn_type')
+        server_id = data.get('server_id', 0)
+        vpn_type = data.get('vpn_type', -1)
 
         # Определяем список пользователей в зависимости от опции
         if option == 'all':
@@ -415,6 +404,7 @@ async def mailing_text(message: Message, state: FSMContext):
         elif option == 'server':
             # Рассылка по серверу
             users = await get_users_by_server_and_vpn_type(server_id=server_id)
+            from bot.database.methods.get import get_server as get_server_id
             server = await get_server_id(server_id)
             log.info(f'Рассылка для пользователей сервера: {server.name if server else server_id}')
         else:
@@ -460,6 +450,7 @@ async def mailing_text(message: Message, state: FSMContext):
             vpn_names = {0: 'Outline 🪐', 1: 'Vless 🐊', 2: 'Shadowsocks 🦈'}
             result_text += f'\n\n📡 Фильтр: {vpn_names.get(vpn_type, "Неизвестный")}'
         elif option == 'server':
+            from bot.database.methods.get import get_server as get_server_id
             server = await get_server_id(server_id)
             result_text += f'\n\n🌍 Фильтр: Сервер {server.name if server else server_id}'
 
@@ -471,18 +462,3 @@ async def mailing_text(message: Message, state: FSMContext):
         log.error(e, 'error mailing')
         await message.answer(_('error_mailing_text', lang))
     await state.clear()
-
-
-async def update_client(message, users, lang):
-    for user in users:
-        try:
-            await message.bot.send_message(
-                user.tgid, _('main_message', user.lang),
-                reply_markup=await user_menu(user, user.lang)
-            )
-        except Exception as e:
-            log.info(e, 'user block bot')
-            continue
-    await message.answer(
-        _('bot_update_success', lang)
-    )

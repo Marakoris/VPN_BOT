@@ -173,22 +173,22 @@ class Config:
         if pg_password == '':
             raise ValueError('Write your password to PGADMIN_DEFAULT_PASSWORD')
         self.ym_counter = os.getenv("YM_COUNTER", "")
-        # YM is optional now
+        # YM Counter is optional for test environment
         self.ym_oauth_token = os.getenv('YM_AUTH_TOKEN', '')
-        # YM is optional now
+        # YM OAuth token is optional for test environment
         self.offer_url = os.getenv('OFFER_URL', '')
-        # Offer URL is optional
+        # Offer URL is optional for test environment
 
         self.BACKUP_INTERVAL = int(os.getenv('BACKUP_INTERVAL', 3))
         self.UPLOAD_INTERVAL = int(os.getenv('UPLOAD_INTERVAL', 90))
         self.SFTP_HOST = os.getenv('SFTP_HOST', '')
-        # SFTP is optional
+        # SFTP is optional for test environment
         self.SFTP_USER = os.getenv('SFTP_USER', '')
-        # SFTP is optional
+        # SFTP User is optional for test environment
         self.SFTP_PASS = os.getenv('SFTP_PASS', '')
-        # SFTP is optional
+        # SFTP Pass is optional for test environment
         self.SFTP_DIR = os.getenv('SFTP_DIR', '/')
-        # SFTP is optional
+        # SFTP Dir is optional for test environment
         self.BACKUP_DIR = '/app/backups'
         self.DB_CONTAINER_NAME = 'postgres_db_container'  # Имя контейнера с PostgreSQL
 
