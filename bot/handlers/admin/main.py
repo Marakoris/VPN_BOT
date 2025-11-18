@@ -342,17 +342,6 @@ async def update_message_bot(
         state: FSMContext) -> None:
     lang = await get_lang(call.from_user.id, state)
 
-    # Обработка обновления меню
-    if callback_data.option == 'update':
-        try:
-            users = await get_all_user()
-            await update_client(call.message, users, lang)
-        except Exception as e:
-            await call.message.answer(_('error_update', lang))
-            log.error(e, 'not update menu all users')
-        await call.answer()
-        return
-
     # Показать меню выбора типа VPN
     if callback_data.option == 'by_vpn_type':
         await call.message.answer(
@@ -473,18 +462,3 @@ async def mailing_text(message: Message, state: FSMContext):
         log.error(e, 'error mailing')
         await message.answer(_('error_mailing_text', lang))
     await state.clear()
-
-
-async def update_client(message, users, lang):
-    for user in users:
-        try:
-            await message.bot.send_message(
-                user.tgid, _('main_message', user.lang),
-                reply_markup=await user_menu(user, user.lang)
-            )
-        except Exception as e:
-            log.info(e, 'user block bot')
-            continue
-    await message.answer(
-        _('bot_update_success', lang)
-    )

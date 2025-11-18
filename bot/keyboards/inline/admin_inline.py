@@ -154,10 +154,6 @@ async def missing_user_menu(lang) -> InlineKeyboardMarkup:
         text='🌍 По серверу',
         callback_data=MissingMessage(option='by_server')
     )
-    kb.button(
-        text=_('admin_user_mailing_update_btn', lang),
-        callback_data=MissingMessage(option='update')
-    )
     kb.adjust(1)
     return kb.as_markup()
 
