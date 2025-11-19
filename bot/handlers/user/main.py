@@ -272,10 +272,15 @@ async def connect_vpn(
         try:
             server = await get_server_id(choosing_server_id)
             if client.server is not None:
-                await delete_key_old_server(client.server, call.from_user.id)
+                try:
+                    await delete_key_old_server(client.server, call.from_user.id)
+                except Exception as e:
+                    # Логируем ошибку, но НЕ прерываем процесс подключения к новому серверу
+                    log.warning(f"Failed to delete key from old server (user {call.from_user.id}): {e}")
+                    # Продолжаем подключение к новому серверу
         except Exception as e:
-            await call.message.answer(_('ended_sub_message', lang))
-            log.info(e, 'none server')
+            await call.message.answer(_('server_not_connected', lang))
+            log.error(f"Failed to get new server info: {e}")
             return
         try:
             server_manager = ServerManager(server)
@@ -294,10 +299,12 @@ async def connect_vpn(
                 len(server_parameters)
             )
         except Exception as e:
-            await person_delete_server(call.from_user.id)
+            # НЕ удаляем привязку к серверу, если новый сервер недоступен
+            # Пользователь остается на текущем сервере
+            # await person_delete_server(call.from_user.id)  # Закомментировано
             await server_not_found(call.message, e, lang)
             await call.answer()
-            log.error('error get config')
+            log.error(f'Failed to connect to new server (server_id={choosing_server_id}): {e}')
             return
     try:
         await call.message.delete()

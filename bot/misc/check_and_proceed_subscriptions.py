@@ -87,7 +87,8 @@ async def process_subscriptions(bot: Bot, config):
                             try:
                                 await delete_key(person)
                             except Exception as e:
-                                log.error(e)
+                                log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
+                                # Продолжаем, так как подписка действительно истекла
                         await person_banned_true(person.tgid)
                         await bot.send_photo(
                             chat_id=person.tgid,
@@ -156,7 +157,8 @@ async def process_subscriptions(bot: Bot, config):
                                 try:
                                     await delete_key(person)
                                 except Exception as e:
-                                    log.error(e)
+                                    log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
+                                    # Продолжаем, так как подписка действительно истекла
                             await person_banned_true(person.tgid)
                             await bot.send_photo(
                                 chat_id=person.tgid,
@@ -171,7 +173,8 @@ async def process_subscriptions(bot: Bot, config):
                         try:
                             await delete_key(person)
                         except Exception as e:
-                            log.error(e)
+                            log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
+                            # Продолжаем, так как подписка действительно истекла
                     await person_banned_true(person.tgid)
                     await bot.send_photo(
                         chat_id=person.tgid,
