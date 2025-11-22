@@ -1,26 +1,5 @@
 {
   "autoApproveToolUse": [
-    "Bash(docker restart:*)",
-    "Bash(docker logs:*)",
-    "Bash(docker cp:*)",
-    "Bash(docker exec:*)",
-    "Bash(docker ps:*)",
-    "Bash(docker inspect:*)",
-    "Bash(grep:*)",
-    "Bash(cat:*)",
-    "Bash(ls:*)",
-    "Bash(find:*)",
-    "Bash(diff:*)",
-    "Bash(git status:*)",
-    "Bash(git log:*)",
-    "Bash(git diff:*)",
-    "Bash(git add:*)",
-    "Bash(git commit:*)",
-    "Bash(sleep:*)",
-    "Edit(*)",
-    "Write(*)",
-    "Read(*)",
-    "Glob(*)",
-    "Grep(*)"
+    "Bash(*)"
   ]
 }

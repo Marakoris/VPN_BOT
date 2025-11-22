@@ -47,6 +47,44 @@ class Outline(BaseVpn):
         if client is not None:
             await self.client_outline.delete_key(key_id=client.key_id)
 
+    async def disable_client(self, telegram_id):
+        """Disable client by setting data limit to 1 byte"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                return False
+
+            # Set data limit to 1 byte to effectively disable the key
+            await self.client_outline.add_data_limit(client.key_id, 1)
+            print(f"[Outline] Disabled client {telegram_id} (key_id={client.key_id})")
+            return True
+        except Exception as e:
+            print(f"[Outline] disable_client error: {e}")
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable client by restoring data limit"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                return False
+
+            # Restore data limit based on config
+            if CONFIG.limit_GB != 0:
+                await self.client_outline.add_data_limit(
+                    client.key_id,
+                    CONFIG.limit_GB * 10 ** 9
+                )
+            else:
+                # If unlimited, delete the data limit
+                await self.client_outline.delete_data_limit(client.key_id)
+
+            print(f"[Outline] Enabled client {telegram_id} (key_id={client.key_id})")
+            return True
+        except Exception as e:
+            print(f"[Outline] enable_client error: {e}")
+            return False
+
     async def get_key_user(self, name, name_key):
         client = await self.get_client(name)
         if client is None:

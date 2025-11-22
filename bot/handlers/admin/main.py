@@ -33,6 +33,7 @@ from bot.handlers.admin.user_management import (
 )
 from bot.handlers.admin.state_servers import state_admin_router
 from bot.handlers.admin.state_servers import AddServer, RemoveServer
+from bot.handlers.admin.regenerate_keys import regenerate_router
 from bot.keyboards.inline.admin_inline import (
     server_control,
     missing_user_menu,
@@ -61,7 +62,8 @@ admin_router.include_routers(
     user_management_router,
     state_admin_router,
     referral_router,
-    group_management
+    group_management,
+    regenerate_router
 )
 
 
@@ -332,6 +334,39 @@ async def out_message_bot(message: Message, state: FSMContext) -> None:
     await message.answer(
         _('who_should_i_send', lang),
         reply_markup=await missing_user_menu(lang)
+    )
+
+
+@admin_router.message(F.text == '🔄 Регенерация ключей')
+async def regenerate_keys_menu(message: Message, state: FSMContext) -> None:
+    """Обработчик кнопки регенерации ключей"""
+    from bot.misc.callbackData import RegenerateKeys
+
+    lang = await get_lang(message.from_user.id, state)
+
+    # Создаем inline кнопку для запуска
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    kb = InlineKeyboardBuilder()
+    kb.row(
+        InlineKeyboardButton(
+            text='🚀 Начать регенерацию',
+            callback_data=RegenerateKeys(action='start').pack()
+        )
+    )
+
+    await message.answer(
+        "🔄 Регенерация ключей VPN\n\n"
+        "Этот инструмент позволяет массово обновить VPN ключи пользователей "
+        "после изменения портов или других настроек серверов.\n\n"
+        "📋 Процесс:\n"
+        "1. Выбор серверов\n"
+        "2. Выбор протоколов (Outline/Vless/Shadowsocks)\n"
+        "3. Подтверждение\n"
+        "4. Автоматическая регенерация и отправка новых ключей\n\n"
+        "⚠️ Убедитесь, что изменения на серверах уже применены!",
+        reply_markup=kb.as_markup()
     )
 
 

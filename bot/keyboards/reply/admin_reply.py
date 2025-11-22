@@ -21,6 +21,7 @@ async def admin_menu(lang) -> ReplyKeyboardMarkup:
         keyBtn(text=_('admin_groups_btn', lang))
     )
     kb.row(keyBtn(text=_('admin_super_offer_btn', lang)))
+    kb.row(keyBtn(text='🔄 Регенерация ключей'))
     kb.row(keyBtn(text=_('back_general_menu_btn', lang)))
     return kb.as_markup(resize_keyboard=True)
 

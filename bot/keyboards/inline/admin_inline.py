@@ -13,7 +13,8 @@ from bot.misc.callbackData import (
     ChoosingVPN,
     PromocodeDelete,
     AplicationReferral,
-    ApplicationSuccess, MessageAdminUser, EditBalanceUser, GroupAction
+    ApplicationSuccess, MessageAdminUser, EditBalanceUser, GroupAction,
+    RegenerateKeys, RegenerateServerToggle, RegenerateProtocolToggle
 )
 from bot.misc.language import Localization
 
@@ -263,4 +264,130 @@ async def group_control(lang) -> InlineKeyboardMarkup:
         callback_data=GroupAction(action='delete')
     )
     kb.adjust(1)
+    return kb.as_markup()
+
+
+async def regenerate_server_selection_menu(servers, selected_servers, lang) -> InlineKeyboardMarkup:
+    """Меню множественного выбора серверов для регенерации ключей"""
+    from bot.misc.VPN.ServerManager import ServerManager
+    from bot.database.methods.get import get_users_by_server_and_vpn_type
+
+    kb = InlineKeyboardBuilder()
+    for server in servers:
+        # Только Outline, Vless и Shadowsocks (type 0, 1 и 2)
+        if server.type_vpn not in [0, 1, 2]:
+            continue
+
+        # Подсчитываем активных пользователей на сервере
+        users = await get_users_by_server_and_vpn_type(server_id=server.id)
+        # Фильтруем только активных (subscription > current_time и не banned)
+        import time
+        active_users = [u for u in users if u.subscription and u.subscription > int(time.time()) and not u.banned]
+
+        checkbox = '☑️' if server.id in selected_servers else '☐'
+        vpn_name = ServerManager.VPN_TYPES.get(server.type_vpn).NAME_VPN
+        kb.button(
+            text=f'{checkbox} {server.name} ({vpn_name}) - {len(active_users)} активных',
+            callback_data=RegenerateServerToggle(server_id=server.id)
+        )
+
+    kb.adjust(1)
+
+    # Кнопки навигации
+    if selected_servers:
+        kb.row(
+            InlineKeyboardButton(
+                text='Продолжить ➡️',
+                callback_data=RegenerateKeys(action='select_protocols').pack()
+            )
+        )
+    kb.row(
+        InlineKeyboardButton(
+            text='❌ Отмена',
+            callback_data=RegenerateKeys(action='cancel').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def regenerate_protocol_selection_menu(selected_protocols, user_count_by_protocol, lang) -> InlineKeyboardMarkup:
+    """Меню множественного выбора протоколов для регенерации ключей"""
+    import logging
+    log = logging.getLogger(__name__)
+
+    log.info(f"=== Building protocol menu ===")
+    log.info(f"selected_protocols: {selected_protocols}")
+    log.info(f"user_count_by_protocol: {user_count_by_protocol}")
+
+    kb = InlineKeyboardBuilder()
+
+    # Маппинг: строка -> (тип_id, название)
+    protocols = {
+        'outline': (0, 'Outline 🪐'),
+        'vless': (1, 'Vless 🐊'),
+        'shadowsocks': (2, 'Shadowsocks 🦈')
+    }
+
+    for protocol_key, (protocol_id, protocol_name) in protocols.items():
+        checkbox = '☑️' if protocol_key in selected_protocols else '☐'
+        user_count = user_count_by_protocol.get(protocol_id, 0)
+        button_text = f'{checkbox} {protocol_name} ({user_count} пользователей)'
+
+        log.info(f"Creating button for {protocol_key}: text='{button_text}', callback_data=RegenerateProtocolToggle(protocol='{protocol_key}')")
+
+        kb.button(
+            text=button_text,
+            callback_data=RegenerateProtocolToggle(protocol=protocol_key)
+        )
+
+    kb.adjust(1)
+
+    # Кнопки навигации
+    kb.row(
+        InlineKeyboardButton(
+            text='⬅️ Назад',
+            callback_data=RegenerateKeys(action='select_servers').pack()
+        )
+    )
+    if selected_protocols:
+        kb.row(
+            InlineKeyboardButton(
+                text='Продолжить ➡️',
+                callback_data=RegenerateKeys(action='confirm').pack()
+            )
+        )
+    kb.row(
+        InlineKeyboardButton(
+            text='❌ Отмена',
+            callback_data=RegenerateKeys(action='cancel').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def regenerate_confirm_menu(lang) -> InlineKeyboardMarkup:
+    """Меню подтверждения регенерации ключей"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text='✅ ПОДТВЕРДИТЬ',
+            callback_data=RegenerateKeys(action='execute').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text='⬅️ Назад',
+            callback_data=RegenerateKeys(action='select_protocols').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text='❌ ОТМЕНА',
+            callback_data=RegenerateKeys(action='cancel').pack()
+        )
+    )
+
     return kb.as_markup()

@@ -46,3 +46,17 @@ class ServerManager:
             return await self.client.get_key_user(str(name), str(name_key))
         except Exception as e:
             print(e, 'ServerManager.py Line 45')
+
+    async def disable_client(self, name):
+        try:
+            return await self.client.disable_client(str(name))
+        except Exception as e:
+            print(e, 'ServerManager.py disable_client')
+            return False
+
+    async def enable_client(self, name):
+        try:
+            return await self.client.enable_client(str(name))
+        except Exception as e:
+            print(e, 'ServerManager.py enable_client')
+            return False

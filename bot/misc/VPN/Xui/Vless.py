@@ -47,6 +47,50 @@ class Vless(XuiBase):
         except pyxui_async.errors.NotFound:
             return False
 
+    async def disable_client(self, telegram_id):
+        """Disable client without deleting - sets enable=false"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client == 'User not found':
+                return False
+
+            # Update client with enable=false
+            response = await self.xui.update_client(
+                inbound_id=self.inbound_id,
+                uuid=client['id'],
+                email=telegram_id,
+                enable=False,
+                limit_ip=client.get('limitIp', 0),
+                total_gb=client.get('totalGB', 0),
+                expiry_time=client.get('expiryTime', 0)
+            )
+            return response['success']
+        except Exception as e:
+            print(f"[VLESS] disable_client error: {e}")
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable client - sets enable=true"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client == 'User not found':
+                return False
+
+            # Update client with enable=true
+            response = await self.xui.update_client(
+                inbound_id=self.inbound_id,
+                uuid=client['id'],
+                email=telegram_id,
+                enable=True,
+                limit_ip=client.get('limitIp', CONFIG.limit_ip),
+                total_gb=client.get('totalGB', CONFIG.limit_GB * 1073741824),
+                expiry_time=client.get('expiryTime', 0)
+            )
+            return response['success']
+        except Exception as e:
+            print(f"[VLESS] enable_client error: {e}")
+            return False
+
     async def get_key_user(self, name, name_key):
         info = await self.get_inbound_server()
         client = await self.get_client(name)
