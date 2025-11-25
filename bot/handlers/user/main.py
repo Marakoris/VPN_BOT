@@ -273,10 +273,10 @@ async def connect_vpn(
             server = await get_server_id(choosing_server_id)
             if client.server is not None:
                 try:
-                    await delete_key_old_server(client.server, call.from_user.id)
+                    await disable_key_old_server(client.server, call.from_user.id)
                 except Exception as e:
                     # Логируем ошибку, но НЕ прерываем процесс подключения к новому серверу
-                    log.warning(f"Failed to delete key from old server (user {call.from_user.id}): {e}")
+                    log.warning(f"Failed to disable key on old server (user {call.from_user.id}): {e}")
                     # Продолжаем подключение к новому серверу
         except Exception as e:
             await call.message.answer(_('server_not_connected', lang))
@@ -285,8 +285,22 @@ async def connect_vpn(
         try:
             server_manager = ServerManager(server)
             await server_manager.login()
-            if await server_manager.add_client(call.from_user.id) is None:
+
+            # Try to add client (creates new or returns False if exists)
+            add_result = await server_manager.add_client(call.from_user.id)
+
+            # If add_client returned False, client might already exist but be disabled
+            # Try to enable it
+            if add_result is False:
+                log.info(f"Client already exists for user {call.from_user.id}, attempting to enable...")
+                try:
+                    await server_manager.enable_client(call.from_user.id)
+                    log.info(f"Successfully enabled client for user {call.from_user.id}")
+                except Exception as enable_error:
+                    log.warning(f"Failed to enable client: {enable_error}")
+            elif add_result is None:
                 raise Exception('user/main.py add client error')
+
             config = await server_manager.get_key(
                 call.from_user.id,
                 name_key=CONFIG.name
@@ -350,6 +364,17 @@ async def delete_key_old_server(server_id, user_id):
     server_manager = ServerManager(server)
     await server_manager.login()
     await server_manager.delete_client(user_id)
+
+
+async def disable_key_old_server(server_id, user_id):
+    """
+    Disable VPN key on old server when user switches to another server.
+    Key is preserved and can be re-enabled if user returns.
+    """
+    server = await get_server_id(server_id)
+    server_manager = ServerManager(server)
+    await server_manager.login()
+    await server_manager.disable_client(user_id)
 
 
 async def server_not_found(m, e, lang):

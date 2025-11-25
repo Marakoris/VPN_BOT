@@ -83,7 +83,7 @@ class Shadowsocks(XuiBase):
             return False
 
     async def disable_client(self, telegram_id):
-        """Disable client without deleting - sets enable=false"""
+        """Disable client by setting traffic limit to 1 byte (similar to Outline)"""
         try:
             email = f"{telegram_id}_ss"
             print(f"[SS] disable_client: email={email}")
@@ -93,24 +93,24 @@ class Shadowsocks(XuiBase):
                 print(f"[SS] Client not found for disable")
                 return False
 
-            # Update client with enable=false using update_client_ss
-            response = await self.update_client_ss(
+            # Delete and recreate client with 1 byte limit to effectively disable
+            await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
+
+            response = await self.add_client_ss(
                 inbound_id=self.inbound_id,
                 email=email,
                 password=client['password'],
-                enable=False,
                 limit_ip=client.get('limitIp', 0),
-                total_gb=client.get('totalGB', 0),
-                expiry_time=client.get('expiryTime', 0)
+                total_gb=1  # 1 byte - effectively disabled
             )
-            print(f"[SS] disable_client response: {response}")
+            print(f"[SS] disable_client (recreated with 1 byte): {response}")
             return response.get('success', False)
         except Exception as e:
             print(f"[SS] disable_client error: {e}")
             return False
 
     async def enable_client(self, telegram_id):
-        """Enable client - sets enable=true"""
+        """Enable client by restoring traffic limit"""
         try:
             email = f"{telegram_id}_ss"
             print(f"[SS] enable_client: email={email}")
@@ -120,17 +120,17 @@ class Shadowsocks(XuiBase):
                 print(f"[SS] Client not found for enable")
                 return False
 
-            # Update client with enable=true
-            response = await self.update_client_ss(
+            # Delete and recreate client with normal limit
+            await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
+
+            response = await self.add_client_ss(
                 inbound_id=self.inbound_id,
                 email=email,
                 password=client['password'],
-                enable=True,
-                limit_ip=client.get('limitIp', CONFIG.limit_ip),
-                total_gb=client.get('totalGB', CONFIG.limit_GB * 1073741824),
-                expiry_time=client.get('expiryTime', 0)
+                limit_ip=CONFIG.limit_ip,
+                total_gb=CONFIG.limit_GB * 1073741824
             )
-            print(f"[SS] enable_client response: {response}")
+            print(f"[SS] enable_client (recreated with full limit): {response}")
             return response.get('success', False)
         except Exception as e:
             print(f"[SS] enable_client error: {e}")
