@@ -82,60 +82,6 @@ class Shadowsocks(XuiBase):
         except pyxui_async.errors.NotFound:
             return False
 
-    async def disable_client(self, telegram_id):
-        """Disable client without deleting - sets enable=false"""
-        try:
-            email = f"{telegram_id}_ss"
-            print(f"[SS] disable_client: email={email}")
-
-            client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
-            if not client or not isinstance(client, dict):
-                print(f"[SS] Client not found for disable")
-                return False
-
-            # Update client with enable=false using update_client_ss
-            response = await self.update_client_ss(
-                inbound_id=self.inbound_id,
-                email=email,
-                password=client['password'],
-                enable=False,
-                limit_ip=client.get('limitIp', 0),
-                total_gb=client.get('totalGB', 0),
-                expiry_time=client.get('expiryTime', 0)
-            )
-            print(f"[SS] disable_client response: {response}")
-            return response.get('success', False)
-        except Exception as e:
-            print(f"[SS] disable_client error: {e}")
-            return False
-
-    async def enable_client(self, telegram_id):
-        """Enable client - sets enable=true"""
-        try:
-            email = f"{telegram_id}_ss"
-            print(f"[SS] enable_client: email={email}")
-
-            client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
-            if not client or not isinstance(client, dict):
-                print(f"[SS] Client not found for enable")
-                return False
-
-            # Update client with enable=true
-            response = await self.update_client_ss(
-                inbound_id=self.inbound_id,
-                email=email,
-                password=client['password'],
-                enable=True,
-                limit_ip=client.get('limitIp', CONFIG.limit_ip),
-                total_gb=client.get('totalGB', CONFIG.limit_GB * 1073741824),
-                expiry_time=client.get('expiryTime', 0)
-            )
-            print(f"[SS] enable_client response: {response}")
-            return response.get('success', False)
-        except Exception as e:
-            print(f"[SS] enable_client error: {e}")
-            return False
-
     async def get_key_user(self, name, name_key):
         print(f"[SS] get_key_user called for name={name}, name_key={name_key}")
         info = await self.get_inbound_server()

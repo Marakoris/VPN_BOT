@@ -85,9 +85,9 @@ async def process_subscriptions(bot: Bot, config):
                         # Тариф изменился
                         if person.server is not None:
                             try:
-                                await disable_key(person)
+                                await delete_key(person)
                             except Exception as e:
-                                log.warning(f"Failed to disable key for user {person.tgid}, server may be unavailable: {e}")
+                                log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                                 # Продолжаем, так как подписка действительно истекла
                         await person_banned_true(person.tgid)
                         await bot.send_photo(
@@ -116,15 +116,6 @@ async def process_subscriptions(bot: Bot, config):
                             # Продление подписки
                             await add_time_person(person.tgid, person.subscription_months * CONFIG.COUNT_SECOND_MOTH)
                             await person_one_day_true(person.tgid)
-
-                            # Enable VPN key if it was disabled
-                            if person.server is not None:
-                                try:
-                                    await enable_key(person)
-                                except Exception as e:
-                                    log.warning(f"Failed to enable key for user {person.tgid}: {e}")
-                                    # Продолжаем, ключ можно будет включить вручную
-
                             await bot.send_message(
                                 chat_id=person.tgid,
                                 text=_('payment_success', lang_user).format(
@@ -164,9 +155,9 @@ async def process_subscriptions(bot: Bot, config):
                             # Автоплатеж неуспешен
                             if person.server is not None:
                                 try:
-                                    await disable_key(person)
+                                    await delete_key(person)
                                 except Exception as e:
-                                    log.warning(f"Failed to disable key for user {person.tgid}, server may be unavailable: {e}")
+                                    log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                                     # Продолжаем, так как подписка действительно истекла
                             await person_banned_true(person.tgid)
                             await bot.send_photo(
@@ -180,9 +171,9 @@ async def process_subscriptions(bot: Bot, config):
                     # Автоплатеж невозможен, предлагаем обновить подписку вручную
                     if person.server is not None:
                         try:
-                            await disable_key(person)
+                            await delete_key(person)
                         except Exception as e:
-                            log.warning(f"Failed to disable key for user {person.tgid}, server may be unavailable: {e}")
+                            log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                             # Продолжаем, так как подписка действительно истекла
                     await person_banned_true(person.tgid)
                     await bot.send_photo(
@@ -230,9 +221,6 @@ async def get_current_tariff(months_count):
 
 
 async def delete_key(person):
-    """
-    DEPRECATED: Use disable_key instead to preserve user keys
-    """
     server = await get_server_id(person.server)
     if server is None:
         return
@@ -249,52 +237,3 @@ async def delete_key(person):
     space = len(all_client)
     if not await server_space_update(server.name, space):
         raise "Failed to update data about free space on the server"
-
-
-async def disable_key(person):
-    """
-    Disable VPN key when subscription expires.
-    Key is preserved and can be re-enabled on subscription renewal.
-    """
-    server = await get_server_id(person.server)
-    if server is None:
-        log.warning(f"Server not found for user {person.tgid}")
-        return False
-
-    server_manager = ServerManager(server)
-    try:
-        await server_manager.login()
-        success = await server_manager.disable_client(person.tgid)
-        if success:
-            log.info(f"Disabled VPN key for user {person.tgid} on server {server.name}")
-            return True
-        else:
-            log.warning(f"Failed to disable key for user {person.tgid} on server {server.name}")
-            return False
-    except Exception as e:
-        log.error(f"Failed to disable key for user {person.tgid}: {e}")
-        return False
-
-
-async def enable_key(person):
-    """
-    Enable VPN key when subscription is renewed.
-    """
-    server = await get_server_id(person.server)
-    if server is None:
-        log.warning(f"Server not found for user {person.tgid}")
-        return False
-
-    server_manager = ServerManager(server)
-    try:
-        await server_manager.login()
-        success = await server_manager.enable_client(person.tgid)
-        if success:
-            log.info(f"Enabled VPN key for user {person.tgid} on server {server.name}")
-            return True
-        else:
-            log.warning(f"Failed to enable key for user {person.tgid} on server {server.name}")
-            return False
-    except Exception as e:
-        log.error(f"Failed to enable key for user {person.tgid}: {e}")
-        return False
