@@ -31,12 +31,20 @@ class Outline(BaseVpn):
 
     async def add_client(self, name):
         try:
+            # Check if client already exists
+            existing_client = await self.get_client(name)
+            if existing_client is not None:
+                print(f"[Outline] Client {name} already exists (key_id={existing_client.key_id})")
+                return False  # Return False to trigger enable_client in main.py
+
+            # Create new key
             key = await self.client_outline.create_key(key_name=name)
             if CONFIG.limit_GB != 0:
                 await self.client_outline.add_data_limit(
                     key.key_id,
                     CONFIG.limit_GB * 10 ** 9
                 )
+            print(f"[Outline] Created new client {name} (key_id={key.key_id})")
             return key
         except Exception as e:
             print(e, 'Outline.py Line 32')

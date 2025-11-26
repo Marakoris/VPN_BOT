@@ -47,6 +47,64 @@ class Vless(XuiBase):
         except pyxui_async.errors.NotFound:
             return False
 
+    async def disable_client(self, telegram_id):
+        """Disable client without deleting - sets enable=false"""
+        try:
+            print(f"[VLESS] disable_client called for telegram_id={telegram_id}")
+            client = await self.get_client(telegram_id)
+            if client == 'User not found':
+                print(f"[VLESS] Client not found for disable")
+                return False
+
+            print(f"[VLESS] Disabling client: email={client.get('email')}, uuid={client['id']}")
+            # Update client with enable=false
+            response = await self.xui.update_client(
+                inbound_id=self.inbound_id,
+                uuid=client['id'],
+                email=telegram_id,
+                enable=False,
+                limit_ip=client.get('limitIp', 0),
+                total_gb=client.get('totalGB', 0),
+                flow=client.get('flow', ''),
+                expire_time=client.get('expiryTime', 0),
+                telegram_id=client.get('tgId', ''),
+                subscription_id=client.get('subId', '')
+            )
+            print(f"[VLESS] disable_client response: {response}")
+            return response['success']
+        except Exception as e:
+            print(f"[VLESS] disable_client error: {e}")
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable client - sets enable=true"""
+        try:
+            print(f"[VLESS] enable_client called for telegram_id={telegram_id}")
+            client = await self.get_client(telegram_id)
+            if client == 'User not found':
+                print(f"[VLESS] Client not found for enable")
+                return False
+
+            print(f"[VLESS] Enabling client: email={client.get('email')}, uuid={client['id']}")
+            # Update client with enable=true
+            response = await self.xui.update_client(
+                inbound_id=self.inbound_id,
+                uuid=client['id'],
+                email=telegram_id,
+                enable=True,
+                limit_ip=client.get('limitIp', CONFIG.limit_ip),
+                total_gb=client.get('totalGB', CONFIG.limit_GB * 1073741824),
+                flow=client.get('flow', ''),
+                expire_time=client.get('expiryTime', 0),
+                telegram_id=client.get('tgId', ''),
+                subscription_id=client.get('subId', '')
+            )
+            print(f"[VLESS] enable_client response: {response}")
+            return response['success']
+        except Exception as e:
+            print(f"[VLESS] enable_client error: {e}")
+            return False
+
     async def get_key_user(self, name, name_key):
         info = await self.get_inbound_server()
         client = await self.get_client(name)

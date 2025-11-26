@@ -82,6 +82,60 @@ class Shadowsocks(XuiBase):
         except pyxui_async.errors.NotFound:
             return False
 
+    async def disable_client(self, telegram_id):
+        """Disable client by setting traffic limit to 1 byte (similar to Outline)"""
+        try:
+            email = f"{telegram_id}_ss"
+            print(f"[SS] disable_client: email={email}")
+
+            client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
+            if not client or not isinstance(client, dict):
+                print(f"[SS] Client not found for disable")
+                return False
+
+            # Delete and recreate client with 1 byte limit to effectively disable
+            await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
+
+            response = await self.add_client_ss(
+                inbound_id=self.inbound_id,
+                email=email,
+                password=client['password'],
+                limit_ip=client.get('limitIp', 0),
+                total_gb=1  # 1 byte - effectively disabled
+            )
+            print(f"[SS] disable_client (recreated with 1 byte): {response}")
+            return response.get('success', False)
+        except Exception as e:
+            print(f"[SS] disable_client error: {e}")
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable client by restoring traffic limit"""
+        try:
+            email = f"{telegram_id}_ss"
+            print(f"[SS] enable_client: email={email}")
+
+            client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
+            if not client or not isinstance(client, dict):
+                print(f"[SS] Client not found for enable")
+                return False
+
+            # Delete and recreate client with normal limit
+            await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
+
+            response = await self.add_client_ss(
+                inbound_id=self.inbound_id,
+                email=email,
+                password=client['password'],
+                limit_ip=CONFIG.limit_ip,
+                total_gb=CONFIG.limit_GB * 1073741824
+            )
+            print(f"[SS] enable_client (recreated with full limit): {response}")
+            return response.get('success', False)
+        except Exception as e:
+            print(f"[SS] enable_client error: {e}")
+            return False
+
     async def get_key_user(self, name, name_key):
         print(f"[SS] get_key_user called for name={name}, name_key={name_key}")
         info = await self.get_inbound_server()
