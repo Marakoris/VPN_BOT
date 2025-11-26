@@ -110,7 +110,7 @@ class Shadowsocks(XuiBase):
             return False
 
     async def enable_client(self, telegram_id):
-        """Enable client by restoring traffic limit"""
+        """Enable client with unlimited traffic (total_gb=0)"""
         try:
             email = f"{telegram_id}_ss"
             print(f"[SS] enable_client: email={email}")
@@ -120,7 +120,7 @@ class Shadowsocks(XuiBase):
                 print(f"[SS] Client not found for enable")
                 return False
 
-            # Delete and recreate client with normal limit
+            # Delete and recreate client with unlimited traffic (total_gb=0)
             await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
 
             response = await self.add_client_ss(
@@ -128,9 +128,9 @@ class Shadowsocks(XuiBase):
                 email=email,
                 password=client['password'],
                 limit_ip=CONFIG.limit_ip,
-                total_gb=CONFIG.limit_GB * 1073741824
+                total_gb=0  # 0 = unlimited traffic for subscription users
             )
-            print(f"[SS] enable_client (recreated with full limit): {response}")
+            print(f"[SS] enable_client (recreated with unlimited traffic): {response}")
             return response.get('success', False)
         except Exception as e:
             print(f"[SS] enable_client error: {e}")

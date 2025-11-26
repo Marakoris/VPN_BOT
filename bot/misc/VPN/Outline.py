@@ -72,24 +72,17 @@ class Outline(BaseVpn):
             return False
 
     async def enable_client(self, telegram_id):
-        """Enable client by restoring data limit"""
+        """Enable client by removing data limit (unlimited traffic)"""
         try:
             client = await self.get_client(telegram_id)
             if client is None:
                 print(f"[Outline] Client {telegram_id} not found for enable")
                 return False
 
-            # Restore normal data limit
-            if CONFIG.limit_GB != 0:
-                await self.client_outline.add_data_limit(
-                    client.key_id,
-                    CONFIG.limit_GB * 10 ** 9
-                )
-            else:
-                # If no limit, delete the limit
-                await self.client_outline.delete_data_limit(client.key_id)
+            # Remove data limit completely for subscription users
+            await self.client_outline.delete_data_limit(client.key_id)
 
-            print(f"[Outline] Enabled client {telegram_id} (key_id={client.key_id})")
+            print(f"[Outline] Enabled client {telegram_id} (key_id={client.key_id}) - unlimited traffic")
             return True
         except Exception as e:
             print(f"[Outline] enable_client error: {e}")

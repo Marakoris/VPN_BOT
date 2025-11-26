@@ -77,7 +77,7 @@ class Vless(XuiBase):
             return False
 
     async def enable_client(self, telegram_id):
-        """Enable client - sets enable=true"""
+        """Enable client with unlimited traffic (enable=true, total_gb=0)"""
         try:
             print(f"[VLESS] enable_client called for telegram_id={telegram_id}")
             client = await self.get_client(telegram_id)
@@ -86,14 +86,14 @@ class Vless(XuiBase):
                 return False
 
             print(f"[VLESS] Enabling client: email={client.get('email')}, uuid={client['id']}")
-            # Update client with enable=true
+            # Update client with enable=true and unlimited traffic (total_gb=0)
             response = await self.xui.update_client(
                 inbound_id=self.inbound_id,
                 uuid=client['id'],
                 email=telegram_id,
                 enable=True,
                 limit_ip=client.get('limitIp', CONFIG.limit_ip),
-                total_gb=client.get('totalGB', CONFIG.limit_GB * 1073741824),
+                total_gb=0,  # 0 = unlimited traffic for subscription users
                 flow=client.get('flow', ''),
                 expire_time=client.get('expiryTime', 0),
                 telegram_id=client.get('tgId', ''),
