@@ -48,6 +48,10 @@ class Persons(Base):
     referral_balance = Column(Integer, default=0)
     lang = Column(String, default=CONFIG.languages)
     lang_tg = Column(String, nullable=True)
+    # Subscription system fields
+    subscription_token = Column(String(255), nullable=True, unique=True, index=True)  # HMAC токен для subscription URL
+    subscription_created_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда создан токен
+    subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),
@@ -68,6 +72,7 @@ class Persons(Base):
         'WithdrawalRequests',
         back_populates='person'
     )
+    subscription_logs = relationship('SubscriptionLogs', back_populates='user')
 
 
 class Servers(Base):
@@ -184,6 +189,19 @@ class AffiliateStatistics(Base):
     payment_amount = Column(Integer, nullable=False)
     reward_percent = Column(Integer, nullable=False)
     reward_amount = Column(Integer, nullable=False)
+
+
+class SubscriptionLogs(Base):
+    __tablename__ = "subscription_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete='CASCADE'), nullable=False, index=True)
+    ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6
+    user_agent = Column(String(255), nullable=True)
+    servers_count = Column(Integer, nullable=True)  # Сколько серверов было в ответе
+    accessed_at = Column(TIMESTAMP(timezone=True), nullable=False, default=func.now(), index=True)
+
+    user = relationship("Persons", back_populates="subscription_logs")
 
 
 async def create_all_table():
