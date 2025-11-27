@@ -54,3 +54,21 @@ services:
       - ./logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
       - ./backups:/app/backups  # Монтируем директорию для бэкапов
+
+  subscription_checker:
+    restart: unless-stopped
+    build: ./
+    container_name: subscription_checker_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - SUBSCRIPTION_CHECK_INTERVAL=300  # Check every 5 minutes (300 seconds)
+    volumes:
+      - ./bot:/app/bot
+      - ./subscription_api:/app/subscription_api
+      - ./subscription_expiry_checker.py:/app/subscription_expiry_checker.py
+      - ./run_subscription_checker.sh:/app/run_subscription_checker.sh
+      - ./logs:/app/logs
+    command: /bin/bash /app/run_subscription_checker.sh
