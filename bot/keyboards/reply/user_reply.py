@@ -29,6 +29,9 @@ async def user_menu(person, lang) -> ReplyKeyboardMarkup:
         keyBtn(text=_('vpn_connect_btn', lang))
     )
     kb.row(
+        keyBtn(text="📲 Subscription URL")
+    )
+    kb.row(
         keyBtn(text=_('affiliate_btn', lang)),
         keyBtn(text=_('bonus_btn', lang))
     )

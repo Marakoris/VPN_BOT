@@ -34,6 +34,7 @@ from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from .payment_user import callback_user
 from .referral_user import referral_router, message_admin
+from .subscription_user import subscription_router
 from ...misc.notification_script import subscription_button
 from ...misc.yandex_metrika import YandexMetrikaAPI
 
@@ -43,7 +44,7 @@ _ = Localization.text
 btn_text = Localization.get_reply_button
 
 user_router = Router()
-user_router.include_routers(callback_user, referral_router)
+user_router.include_routers(callback_user, referral_router, subscription_router)
 
 
 @user_router.message(Command("start"))

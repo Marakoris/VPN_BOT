@@ -48,6 +48,7 @@ class Config:
     UPLOAD_INTERVAL: int
     SFTP_HOST: str
     SFTP_USER: str
+    subscription_api_url: str
     SFTP_PASS: str
     SFTP_DIR: str
     BACKUP_DIR: str
@@ -191,6 +192,9 @@ class Config:
         # SFTP Dir is optional for test environment
         self.BACKUP_DIR = '/app/backups'
         self.DB_CONTAINER_NAME = 'postgres_db_container'  # Имя контейнера с PostgreSQL
+
+        # Subscription API URL
+        self.subscription_api_url = os.getenv('SUBSCRIPTION_API_URL', 'http://localhost:8003')
 
 
 CONFIG = Config()
