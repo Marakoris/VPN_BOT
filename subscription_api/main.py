@@ -1,0 +1,320 @@
+"""
+Subscription API - main application
+
+This FastAPI application provides subscription endpoints for VPN clients.
+"""
+import sys
+import os
+import logging
+from typing import Optional
+from datetime import datetime
+
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import PlainTextResponse, JSONResponse
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from bot.misc.subscription import verify_subscription_token
+from bot.database.methods.get import get_person
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from bot.database.main import engine
+from bot.database.models.main import Persons, Servers, SubscriptionLogs
+from bot.misc.VPN.ServerManager import ServerManager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+log = logging.getLogger(__name__)
+
+# Create FastAPI app
+app = FastAPI(
+    title="VPN Subscription API",
+    description="Subscription-based VPN access API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+
+# ==================== STARTUP/SHUTDOWN ====================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup"""
+    log.info("🚀 Starting Subscription API...")
+    log.info("📡 Database connection ready")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    log.info("🛑 Shutting down Subscription API...")
+
+
+# ==================== HEALTH CHECK ENDPOINTS ====================
+
+@app.get("/", tags=["Health"])
+async def root():
+    """
+    Root endpoint - basic health check
+
+    Returns simple status message
+    """
+    return {
+        "status": "ok",
+        "service": "VPN Subscription API",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Detailed health check
+
+    Checks:
+    - API status
+    - Database connection
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "checks": {}
+    }
+
+    # Check database connection
+    try:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            result = await db.execute(select(Persons).limit(1))
+            user = result.scalar_one_or_none()
+            health_status["checks"]["database"] = "ok"
+    except Exception as e:
+        log.error(f"Health check - database error: {e}")
+        health_status["checks"]["database"] = f"error: {str(e)}"
+        health_status["status"] = "unhealthy"
+
+    # Return appropriate status code
+    status_code = 200 if health_status["status"] == "healthy" else 503
+    return JSONResponse(content=health_status, status_code=status_code)
+
+
+@app.get("/ping", tags=["Health"])
+async def ping():
+    """Simple ping endpoint"""
+    return {"ping": "pong"}
+
+
+# ==================== SUBSCRIPTION ENDPOINT ====================
+
+async def log_subscription_access(
+    user_id: int,
+    ip_address: str,
+    user_agent: str,
+    servers_count: int
+):
+    """Log subscription access to database"""
+    try:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            log_entry = SubscriptionLogs(
+                user_id=user_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                servers_count=servers_count
+            )
+            db.add(log_entry)
+            await db.commit()
+    except Exception as e:
+        log.error(f"Failed to log subscription access: {e}")
+
+
+@app.get("/sub/{token}", response_class=PlainTextResponse, tags=["Subscription"])
+async def get_subscription(token: str, request: Request):
+    """
+    Get subscription configuration
+
+    Returns a list of VPN server configurations for the user.
+    This endpoint will return actual VLESS/Shadowsocks configs in Stage 3.
+
+    For now, it returns a simple text list of available servers.
+
+    Args:
+        token: Subscription token (HMAC-signed)
+        request: FastAPI request object (for IP and user-agent)
+
+    Returns:
+        PlainTextResponse with server configurations or empty string
+    """
+    try:
+        # 1. Verify token
+        user_id = verify_subscription_token(token)
+        if not user_id:
+            log.warning(f"[Subscription API] Invalid token from {request.client.host}")
+            return ""
+
+        # 2. Get user from database (using internal user_id)
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            statement = select(Persons).filter(Persons.id == user_id)
+            result = await db.execute(statement)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                log.warning(f"[Subscription API] User {user_id} not found")
+                return ""
+
+            # 3. Check subscription status
+            if not user.subscription_active:
+                log.info(f"[Subscription API] Inactive subscription for user {user.tgid}")
+                return ""
+
+            # 4. Get all active servers (VLESS + Shadowsocks)
+            statement = select(Servers).filter(
+                Servers.work == True,
+                Servers.type_vpn.in_([1, 2])  # VLESS and Shadowsocks
+            ).order_by(Servers.id)
+
+            result = await db.execute(statement)
+            all_servers = result.scalars().all()
+
+            if not all_servers:
+                log.warning(f"[Subscription API] No servers found")
+                return ""
+
+            # 5. Check which servers have keys for this user
+            user_servers = []
+            for server in all_servers:
+                try:
+                    server_manager = ServerManager(server)
+                    await server_manager.login()
+                    existing_client = await server_manager.get_user(user.tgid)
+
+                    if existing_client:
+                        user_servers.append(server)
+                except Exception as e:
+                    log.debug(f"[Subscription API] Error checking server {server.id}: {e}")
+                    continue
+
+            if not user_servers:
+                log.warning(f"[Subscription API] No keys found for user {user.tgid}")
+                return ""
+
+            # 6. Generate configuration list (simple format for Stage 2)
+            # In Stage 3, we'll generate actual VLESS/SS configs here
+            config_lines = [
+                "# VPN Subscription Configuration",
+                f"# User: {user.tgid}",
+                f"# Active servers: {len(user_servers)}",
+                f"# Updated: {datetime.utcnow().isoformat()}",
+                "",
+            ]
+
+            for server in user_servers:
+                type_name = {1: "VLESS", 2: "Shadowsocks"}.get(server.type_vpn, "Unknown")
+                config_lines.append(f"# Server: {server.name} ({type_name})")
+                config_lines.append(f"#   IP: {server.ip}")
+
+                # TODO Stage 3: Generate actual VLESS/SS config URLs here
+                # For now, just placeholder comments
+                if server.type_vpn == 1:  # VLESS
+                    config_lines.append(f"#   vless://[uuid]@{server.ip}:443?...")
+                elif server.type_vpn == 2:  # Shadowsocks
+                    config_lines.append(f"#   ss://[method]:[password]@{server.ip}:8388#...")
+
+                config_lines.append("")
+
+            # 7. Log access
+            await log_subscription_access(
+                user_id=user.id,
+                ip_address=request.client.host,
+                user_agent=request.headers.get("user-agent", "unknown"),
+                servers_count=len(user_servers)
+            )
+
+            log.info(
+                f"[Subscription API] ✅ Served subscription for user {user.tgid}: "
+                f"{len(user_servers)} servers from {request.client.host}"
+            )
+
+            return "\n".join(config_lines)
+
+    except Exception as e:
+        log.error(f"[Subscription API] Error in subscription endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return ""
+
+
+# ==================== ADMIN ENDPOINTS (Optional) ====================
+
+@app.get("/stats", tags=["Admin"])
+async def get_stats():
+    """
+    Get subscription API statistics
+
+    Returns statistics about subscription usage
+    """
+    try:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            # Count active subscriptions
+            result = await db.execute(
+                select(Persons).filter(Persons.subscription_active == True)
+            )
+            active_count = len(result.scalars().all())
+
+            # Count total subscription logs
+            result = await db.execute(
+                select(SubscriptionLogs)
+            )
+            total_accesses = len(result.scalars().all())
+
+            return {
+                "active_subscriptions": active_count,
+                "total_accesses": total_accesses,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        log.error(f"Stats endpoint error: {e}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+# ==================== ERROR HANDLERS ====================
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    """Handle 404 errors"""
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Not found", "path": str(request.url.path)}
+    )
+
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    """Handle 500 errors"""
+    log.error(f"Internal server error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
+    )
+
+
+# ==================== MAIN ====================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    log.info("Starting Subscription API server...")
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=True,
+        log_level="info"
+    )

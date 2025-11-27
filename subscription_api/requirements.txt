@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+aiohttp==3.9.5
+
+# Database dependencies (from main requirements.txt)
+SQLAlchemy==2.0.23
+asyncpg==0.28.0
+alembic==1.13.2
