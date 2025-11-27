@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.database.main import engine
 from bot.database.models.main import Persons, Servers, SubscriptionLogs
 from bot.misc.VPN.ServerManager import ServerManager
+from subscription_api.config_generators import generate_config
 
 # Configure logging
 logging.basicConfig(
@@ -202,29 +203,22 @@ async def get_subscription(token: str, request: Request):
                 log.warning(f"[Subscription API] No keys found for user {user.tgid}")
                 return ""
 
-            # 6. Generate configuration list (simple format for Stage 2)
-            # In Stage 3, we'll generate actual VLESS/SS configs here
-            config_lines = [
-                "# VPN Subscription Configuration",
-                f"# User: {user.tgid}",
-                f"# Active servers: {len(user_servers)}",
-                f"# Updated: {datetime.utcnow().isoformat()}",
-                "",
-            ]
+            # 6. Generate actual VPN configurations
+            config_lines = []
 
             for server in user_servers:
-                type_name = {1: "VLESS", 2: "Shadowsocks"}.get(server.type_vpn, "Unknown")
-                config_lines.append(f"# Server: {server.name} ({type_name})")
-                config_lines.append(f"#   IP: {server.ip}")
+                try:
+                    # Generate config URL for this server
+                    config_url = await generate_config(server, user.tgid)
 
-                # TODO Stage 3: Generate actual VLESS/SS config URLs here
-                # For now, just placeholder comments
-                if server.type_vpn == 1:  # VLESS
-                    config_lines.append(f"#   vless://[uuid]@{server.ip}:443?...")
-                elif server.type_vpn == 2:  # Shadowsocks
-                    config_lines.append(f"#   ss://[method]:[password]@{server.ip}:8388#...")
+                    if config_url:
+                        config_lines.append(config_url)
+                    else:
+                        log.warning(f"[Subscription API] Failed to generate config for server {server.id}")
 
-                config_lines.append("")
+                except Exception as e:
+                    log.error(f"[Subscription API] Error generating config for server {server.id}: {e}")
+                    continue
 
             # 7. Log access
             await log_subscription_access(
