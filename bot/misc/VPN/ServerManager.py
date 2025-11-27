@@ -46,3 +46,19 @@ class ServerManager:
             return await self.client.get_key_user(str(name), str(name_key))
         except Exception as e:
             print(e, 'ServerManager.py Line 45')
+
+    async def disable_client(self, telegram_id):
+        """Disable VPN key for user (subscription expired)"""
+        try:
+            return await self.client.disable_client(telegram_id)
+        except Exception as e:
+            print(e, 'ServerManager.py disable_client')
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable VPN key for user (subscription active)"""
+        try:
+            return await self.client.enable_client(telegram_id)
+        except Exception as e:
+            print(e, 'ServerManager.py enable_client')
+            return False

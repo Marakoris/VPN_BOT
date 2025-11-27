@@ -49,6 +49,7 @@ class Persons(Base):
     lang = Column(String, default=CONFIG.languages)
     lang_tg = Column(String, nullable=True)
     # Subscription system fields
+    subscription_active = Column(Boolean, default=False)  # Активна ли subscription подписка
     subscription_token = Column(String(255), nullable=True, unique=True, index=True)  # HMAC токен для subscription URL
     subscription_created_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда создан токен
     subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен

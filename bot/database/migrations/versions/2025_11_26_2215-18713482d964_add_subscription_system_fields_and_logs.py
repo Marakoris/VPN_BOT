@@ -20,6 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Add subscription fields to users table
+    op.add_column('users', sa.Column('subscription_active', sa.Boolean(), nullable=True, server_default='false'))
     op.add_column('users', sa.Column('subscription_token', sa.String(length=255), nullable=True))
     op.add_column('users', sa.Column('subscription_created_at', sa.TIMESTAMP(timezone=True), nullable=True))
     op.add_column('users', sa.Column('subscription_updated_at', sa.TIMESTAMP(timezone=True), nullable=True))
@@ -56,3 +57,4 @@ def downgrade() -> None:
     op.drop_column('users', 'subscription_updated_at')
     op.drop_column('users', 'subscription_created_at')
     op.drop_column('users', 'subscription_token')
+    op.drop_column('users', 'subscription_active')
