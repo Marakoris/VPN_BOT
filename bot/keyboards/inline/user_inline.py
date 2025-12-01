@@ -8,7 +8,8 @@ from bot.misc.callbackData import (
     ChoosingPrise,
     ChoosingPayment,
     ChooseServer,
-    MessageAdminUser, ChoosingLang, ChooseTypeVpn, ChoosedSuperOffer
+    MessageAdminUser, ChoosingLang, ChooseTypeVpn, ChoosedSuperOffer,
+    DownloadClient, DownloadHiddify
 )
 from bot.misc.language import Localization
 from bot.misc.util import CONFIG
@@ -154,20 +155,24 @@ async def pay_and_check(link_invoice: str, lang) -> InlineKeyboardMarkup:
 
 async def instruction_manual(type_vpn, lang) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+
+    # Добавить кнопки скачивания для Outline
     if type_vpn == 0:
-        iphone = _('instruction_iphone_outline', lang)
-        android = _('instruction_android_outline', lang)
-        windows = _('instruction_windows_outline', lang)
+        kb.button(text='📥 iPhone', callback_data=DownloadClient(platform='iphone'))
+        kb.button(text='📥 Android', callback_data=DownloadClient(platform='android'))
+        kb.button(text='📥 Windows', callback_data=DownloadClient(platform='windows'))
+        kb.button(text='📥 Mac OS', callback_data=DownloadClient(platform='macos'))
+        kb.button(text='📥 Linux', callback_data=DownloadClient(platform='linux'))
+    # Добавить кнопки скачивания для VLESS и Shadowsocks (Hiddify)
     elif type_vpn == 1 or type_vpn == 2:
-        iphone = _('instruction_iphone_vless', lang)
-        android = _('instruction_android_vless', lang)
-        windows = _('instruction_windows_vless', lang)
+        kb.button(text='📥 iPhone', callback_data=DownloadHiddify(platform='iphone'))
+        kb.button(text='📥 Android', callback_data=DownloadHiddify(platform='android'))
+        kb.button(text='📥 Windows', callback_data=DownloadHiddify(platform='windows'))
+        kb.button(text='📥 Mac OS', callback_data=DownloadHiddify(platform='macos'))
+        kb.button(text='📥 Linux', callback_data=DownloadHiddify(platform='linux'))
     else:
         raise Exception(f'The wrong type VPN - {type_vpn}')
-    kb.button(text=_('instruction_use_iphone_btn', lang), url=iphone)
-    kb.button(text=_('instruction_use_android_btn', lang), url=android)
-    kb.button(text=_('instruction_use_pc_btn', lang), url=windows)
-    kb.button(text=_('instruction_check_vpn_btn', lang), url='https://2ip.ru/')
+
     kb.adjust(1)
     return kb.as_markup()
 

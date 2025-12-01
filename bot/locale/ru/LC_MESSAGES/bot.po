@@ -48,10 +48,10 @@ msgid "choosing_connect_location"
 msgstr "Выберете страну для подключения🌍\nЧем ближе к вам 🏠 тем быстрее VPN ⚡️"
 
 msgid "how_to_connect_info_outline"
-msgstr "Ссылки на приложение:\n📱 <a href='https://apps.apple.com/us/app/outline-app/id1356177741'>iPhone</a> 👈\n📱 <a href='https://play.google.com/store/apps/details?id=org.outline.android.client&hl=ru&pli=1'>Android</a> 👈\n🖥 <a href='https://getoutline.org/ru/get-started/#step-3'>Windows / Mac OS</a> 👈"
+msgstr "Скачайте приложение для вашей платформы:"
 
 msgid "how_to_connect_info_vless"
-msgstr "Ссылки на приложение:\n📱 <a href='https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690'>iPhone</a> 👈\n📱 <a href='https://play.google.com/store/apps/details?id=com.v2ray.ang&hl=ru&gl=US&pli=1'>Android</a> 👈\n🖥 <a href='https://github.com/MatsuriDayo/nekoray/releases?ysclid=lp48ps41y3155535658'>Windows / Mac OS</a> 👈"
+msgstr "Скачайте приложение для вашей платформы:"
 
 msgid "success_pay_message"
 msgstr "Оплата прошла успешно!\nПодписка продлена, спасибо что выбираете нас."
