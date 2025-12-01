@@ -30,7 +30,7 @@ msgid "trial_message"
 msgstr "To let you evaluate our VPN, we provide you with free access for 45 minutes!\nHow to use VPN and other answers are in the 'Connect VPN' section"
 
 msgid "about_message"
-msgstr "<b>{name_bot} - fast and reliable VPN without restrictions and ads</b>\n\n⚡️ Unlimited traffic and unlimited number of devices\n\n💳 Payment with Russian cards\n\n🤝 Round-the-clock friendly support will help if you have any questions\n\n🚀️ Fast and reliable servers optimized for gaming or video streaming\n\n🦾 We use shadowsocks technology so we are not afraid of blockages\n\n❌ Does not have access to your data\n\n🛡 Encrypts all your traffic\n\n🇪🇺 European servers"
+msgstr "NoBorder VPN — Secure VPN Without Borders\n\n🔥 Special Offer: 14 days VPN for 1 ruble\n(then only 150₽ per month)\n\n🔐 Choose Your Protocol\n• Outline — simple and fast (for beginners)\n• VLESS Reality — maximum protection\n• Shadowsocks — bypass any blocks\n\n📱 Works Everywhere\niPhone • Android • Windows • Mac • Linux\n\n⚡️ No Limits\n• Unlimited traffic\n• Unlimited number of devices\n• Fast European servers\n• Payment with Russian cards\n\n🤝 Referral Program\n• Earn up to 50% from every invited friend!\n\nSupport: @VPN_YouSupport_bot (10:00-21:00 MSK)\nGuide: https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6\n\n👉 Connect VPN for 1₽ right now! /subscription"
 
 msgid "turned_off_autopay"
 msgstr "<b>You have switched off auto-payment of the tariff.</b>\n The current subscription will be valid until the end of the paid period."
@@ -120,7 +120,7 @@ msgid "referral_system_success"
 msgstr "Withdrawal request created, expect funds to be credited 👍"
 
 msgid "start_message"
-msgstr "🌍 NoBorder VPN — Internet Without Borders!\n\nWith NoBorder VPN, you get:\n\n🚀 Speed and Freedom\n— Fast European servers: Germany, Netherlands, Russia\n— Unlimited traffic and high stability\n\n🔐 Reliable Protocols\n— VLESS, Outline, Shadowsocks — choose what suits you for flexibility and security\n\n💻📱 Apps for All Devices\n— PC (Windows/macOS)\n— Smartphones (iOS/Android)\n— Supports up to 10 devices simultaneously\n\n☕️ Only 150₽ per month — less than a cup of coffee!\n\n🤝 Referral Program\n— Earn up to 50% from every invited friend!\n\n📘 Documentation & Guides (link: https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6)\n📩 Support — @VPN_YouSupport_bot\n\n👉 NoBorder VPN — Freedom in Every Byte!"
+msgstr "NoBorder VPN — Secure VPN Without Borders\n\n🔥 Special Offer: 14 days VPN for 1 ruble\n(then only 150₽ per month)\n\n🔐 Choose Your Protocol\n• Outline — simple and fast (for beginners)\n• VLESS Reality — maximum protection\n• Shadowsocks — bypass any blocks\n\n📱 Works Everywhere\niPhone • Android • Windows • Mac • Linux\n\n⚡️ No Limits\n• Unlimited traffic\n• Unlimited number of devices\n• Fast European servers\n• Payment with Russian cards\n\n🤝 Referral Program\n• Earn up to 50% from every invited friend!\n\nSupport: @VPN_YouSupport_bot (10:00-21:00 MSK)\nGuide: https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6\n\n👉 Connect VPN for 1₽ right now! /subscription"
 
 msgid "main_message"
 msgstr "🔸VPN Information🔸"
