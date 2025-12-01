@@ -455,9 +455,9 @@ async def download_client_handler(callback: CallbackQuery, callback_data: Downlo
     # Ссылки на официальные источники для файлов > 50MB (лимит Telegram)
     download_urls = {
         'iphone': 'https://apps.apple.com/us/app/outline-app/id1356177741',
-        'windows': 'https://s3.amazonaws.com/outline-releases/client/windows/stable/Outline-Client.exe',
-        'macos': 'https://s3.amazonaws.com/outline-releases/client/macos/stable/Outline-Client.dmg',
-        'linux': 'https://s3.amazonaws.com/outline-releases/client/linux/stable/Outline-Client.AppImage'
+        'windows': 'https://github.com/Jigsaw-Code/outline-apps/releases/download/v1.10.1/Outline-Client.exe',
+        'macos': 'https://apps.apple.com/us/app/outline-app/id1356178125',  # Mac App Store
+        'linux': 'https://github.com/Jigsaw-Code/outline-apps/releases/download/v1.10.1/Outline-Client.AppImage'
     }
 
     if platform not in platform_names:
