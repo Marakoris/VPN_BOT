@@ -108,3 +108,23 @@ class GroupAction(CallbackData, prefix='group_action'):
 
 class ChooseTypeVpn(CallbackData, prefix='choose_type_vpn'):
     type_vpn: int
+
+
+class RegenerateKeys(CallbackData, prefix='regen_keys'):
+    action: str  # 'start', 'select_servers', 'select_protocols', 'confirm', 'execute'
+
+
+class RegenerateServerToggle(CallbackData, prefix='regen_srv_toggle'):
+    server_id: int
+
+
+class RegenerateProtocolToggle(CallbackData, prefix='regen_proto_toggle'):
+    protocol: str  # 'outline', 'vless', 'shadowsocks'
+
+
+class DownloadClient(CallbackData, prefix='download_client'):
+    platform: str  # 'iphone', 'android', 'windows', 'macos', 'linux'
+
+
+class DownloadHiddify(CallbackData, prefix='download_hiddify'):
+    platform: str  # 'iphone', 'android', 'windows', 'macos', 'linux'
