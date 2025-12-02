@@ -23,8 +23,9 @@ from bot.misc.util import CONFIG
 log = logging.getLogger(__name__)
 
 # Secret key for HMAC token generation
-# TODO: Move to environment variables in production
-SECRET_KEY = "vpn-bot-subscription-secret-key-change-in-production"
+# Load from environment variable
+import os
+SECRET_KEY = os.getenv("SUBSCRIPTION_SECRET_KEY", "vpn-bot-subscription-secret-key-change-in-production")
 
 # Maximum users per server (from config)
 MAX_PEOPLE_SERVER = CONFIG.max_people_server if hasattr(CONFIG, 'max_people_server') else 100

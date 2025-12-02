@@ -23,6 +23,14 @@ from bot.database.main import engine
 from bot.database.models.main import Persons, Servers, SubscriptionLogs
 from bot.misc.VPN.ServerManager import ServerManager
 from subscription_api.config_generators import generate_config
+from subscription_api.security import (
+    check_rate_limit,
+    record_failed_attempt,
+    check_suspicious_activity,
+    get_security_stats,
+    unban_ip,
+    security_manager
+)
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +56,10 @@ async def startup_event():
     """Initialize application on startup"""
     log.info("🚀 Starting Subscription API...")
     log.info("📡 Database connection ready")
+    log.info("🔒 Security manager initialized")
+    log.info(f"   - Rate limit: {security_manager.config.RATE_LIMIT_REQUESTS} req/{security_manager.config.RATE_LIMIT_WINDOW}s")
+    log.info(f"   - Brute-force protection: {security_manager.config.BRUTE_FORCE_THRESHOLD} attempts")
+    log.info(f"   - Ban duration: {security_manager.config.BRUTE_FORCE_BAN_DURATION}s")
 
 
 @app.on_event("shutdown")
@@ -150,12 +162,33 @@ async def get_subscription(token: str, request: Request):
     Returns:
         PlainTextResponse with server configurations or empty string
     """
+    client_ip = request.client.host
+
     try:
+        # SECURITY: Check rate limit
+        allowed, error_msg = check_rate_limit(client_ip)
+        if not allowed:
+            log.warning(f"[Security] Rate limit blocked: {client_ip} - {error_msg}")
+            return PlainTextResponse(
+                content="# Rate limit exceeded\n",
+                status_code=429
+            )
+
+        # SECURITY: Check suspicious activity
+        if check_suspicious_activity(client_ip):
+            log.warning(f"[Security] Suspicious activity detected: {client_ip}")
+            # Don't block, just log for now
+
         # 1. Verify token
         user_id = verify_subscription_token(token)
         if not user_id:
-            log.warning(f"[Subscription API] Invalid token from {request.client.host}")
-            return ""
+            # SECURITY: Record failed attempt for brute-force protection
+            record_failed_attempt(client_ip, reason="invalid_token")
+            log.warning(f"[Subscription API] Invalid token from {client_ip}")
+            return PlainTextResponse(
+                content="# Invalid subscription token\n",
+                status_code=401
+            )
 
         # 2. Get user from database (using internal user_id)
         async with AsyncSession(autoflush=False, bind=engine()) as db:
@@ -272,6 +305,66 @@ async def get_stats():
             }
     except Exception as e:
         log.error(f"Stats endpoint error: {e}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+@app.get("/security/stats", tags=["Security"])
+async def get_security_statistics(ip: Optional[str] = None):
+    """
+    Get security statistics
+
+    Args:
+        ip: Optional - get stats for specific IP
+
+    Returns:
+        Security statistics (rate limits, banned IPs, etc.)
+    """
+    try:
+        stats = get_security_stats(ip)
+        return JSONResponse(content=stats)
+    except Exception as e:
+        log.error(f"Security stats error: {e}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+
+@app.post("/security/unban/{ip}", tags=["Security"])
+async def unban_ip_endpoint(ip: str):
+    """
+    Unban an IP address
+
+    Args:
+        ip: IP address to unban
+
+    Returns:
+        Success or error message
+    """
+    try:
+        result = unban_ip(ip)
+        if result:
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "message": f"IP {ip} has been unbanned",
+                    "ip": ip
+                }
+            )
+        else:
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "message": f"IP {ip} was not banned or not found",
+                    "ip": ip
+                },
+                status_code=404
+            )
+    except Exception as e:
+        log.error(f"Unban IP error: {e}")
         return JSONResponse(
             content={"error": str(e)},
             status_code=500
