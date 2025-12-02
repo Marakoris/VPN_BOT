@@ -363,3 +363,133 @@ async def get_user_subscription_status(user_id: int) -> Dict:
         except Exception as e:
             log.error(f"[Subscription] Failed to get status for user {user_id}: {e}")
             return {"error": str(e)}
+
+
+
+# ==================== NEW SERVER INTEGRATION (Stage 7) ====================
+
+async def create_keys_for_active_subscriptions_on_new_server(server_id: int) -> Dict:
+    """
+    Create VPN keys for all users with active subscriptions on a new server
+    
+    This function is called when a new server is added to automatically
+    provision keys for existing subscription users.
+    
+    Stage 7: New Servers Integration
+    
+    Args:
+        server_id: ID of the newly added server
+        
+    Returns:
+        Dictionary with statistics:
+        {
+            "total_users": int,
+            "success_count": int,
+            "error_count": int,
+            "errors": List[str]
+        }
+    """
+    log.info(f"[Stage 7] Creating keys for active subscriptions on server {server_id}")
+    
+    stats = {
+        "total_users": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "errors": []
+    }
+    
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        try:
+            # 1. Get the new server
+            statement = select(Servers).filter(Servers.id == server_id)
+            result = await db.execute(statement)
+            server = result.scalar_one_or_none()
+            
+            if not server:
+                log.error(f"[Stage 7] Server {server_id} not found")
+                stats["errors"].append(f"Server {server_id} not found")
+                return stats
+            
+            # Only process VLESS and Shadowsocks servers
+            if server.type_vpn not in [1, 2]:
+                log.info(f"[Stage 7] Server {server_id} is not VLESS/Shadowsocks (type={server.type_vpn}), skipping")
+                return stats
+            
+            log.info(f"[Stage 7] Server: {server.name} (type={server.type_vpn})")
+            
+            # 2. Get all users with active subscriptions
+            statement = select(Persons).filter(Persons.subscription_active == True)
+            result = await db.execute(statement)
+            active_users = result.scalars().all()
+            
+            stats["total_users"] = len(active_users)
+            
+            if not active_users:
+                log.info(f"[Stage 7] No active subscriptions found")
+                return stats
+            
+            log.info(f"[Stage 7] Found {len(active_users)} users with active subscriptions")
+            
+            # 3. Initialize server manager
+            try:
+                server_manager = ServerManager(server)
+                await server_manager.login()
+            except Exception as e:
+                error_msg = f"Failed to connect to server {server_id}: {e}"
+                log.error(f"[Stage 7] {error_msg}")
+                stats["errors"].append(error_msg)
+                stats["error_count"] = stats["total_users"]
+                return stats
+            
+            # 4. Create keys for each user
+            for user in active_users:
+                try:
+                    # Check if user already has a key on this server
+                    existing_client = await server_manager.get_user(user.tgid)
+                    
+                    if existing_client:
+                        log.debug(f"[Stage 7] User {user.tgid} already has key on server {server_id}, skipping")
+                        stats["success_count"] += 1
+                        continue
+                    
+                    # Create new key
+                    result = await server_manager.add_client(user.tgid)
+                    
+                    if result is not False:
+                        stats["success_count"] += 1
+                        log.debug(f"[Stage 7] ✅ Created key for user {user.tgid} on server {server_id}")
+                    else:
+                        stats["error_count"] += 1
+                        error_msg = f"Failed to create key for user {user.tgid}"
+                        log.warning(f"[Stage 7] {error_msg}")
+                        stats["errors"].append(error_msg)
+                        
+                except Exception as e:
+                    stats["error_count"] += 1
+                    error_msg = f"Error creating key for user {user.tgid}: {e}"
+                    log.error(f"[Stage 7] {error_msg}")
+                    stats["errors"].append(error_msg)
+                    continue
+            
+            # 5. Update server space count
+            try:
+                all_clients = await server_manager.get_all_user()
+                new_space = len(all_clients) if all_clients else 0
+                server.space = new_space
+                await db.commit()
+                log.info(f"[Stage 7] Updated server {server_id} space to {new_space}")
+            except Exception as e:
+                log.warning(f"[Stage 7] Failed to update server space: {e}")
+            
+            log.info(
+                f"[Stage 7] ✅ Completed for server {server_id}: "
+                f"{stats['success_count']}/{stats['total_users']} success, "
+                f"{stats['error_count']} errors"
+            )
+            
+            return stats
+            
+        except Exception as e:
+            log.error(f"[Stage 7] Unexpected error: {e}")
+            stats["errors"].append(f"Unexpected error: {e}")
+            return stats

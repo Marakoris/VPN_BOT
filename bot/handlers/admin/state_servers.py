@@ -255,10 +255,53 @@ async def create_new_server(message, state, user_data):
         await state.clear()
         log.error(e, 'state_server.py not read server database')
         return
-    await message.answer(
-        _('server_add_success', lang),
-        reply_markup=await server_menu(lang)
-    )
+
+    # Stage 7: Create keys for active subscriptions on new server
+    from bot.misc.subscription import create_keys_for_active_subscriptions_on_new_server
+
+    if server.type_vpn in [1, 2]:  # VLESS or Shadowsocks
+        log.info(f"[Stage 7] New server {server.id} ({server.name}) added, creating keys for active subscriptions...")
+
+        # Send initial notification
+        await message.answer(
+            f"✅ Сервер {server.name} успешно добавлен!\n\n"
+            f"🔄 Создаю ключи для активных подписок...",
+            reply_markup=await server_menu(lang)
+        )
+
+        try:
+            stats = await create_keys_for_active_subscriptions_on_new_server(server.id)
+
+            # Send detailed report
+            report = (
+                f"📊 Результаты создания ключей:\n\n"
+                f"👥 Активных подписок: {stats['total_users']}\n"
+                f"✅ Создано успешно: {stats['success_count']}\n"
+                f"❌ Ошибок: {stats['error_count']}"
+            )
+
+            if stats['errors'] and len(stats['errors']) <= 5:
+                report += "\n\n⚠️ Ошибки:\n"
+                for error in stats['errors'][:5]:
+                    report += f"• {error}\n"
+            elif stats['errors']:
+                report += f"\n\n⚠️ Всего ошибок: {len(stats['errors'])} (первые 5 показаны в логах)"
+
+            await message.answer(report)
+            log.info(f"[Stage 7] Created {stats['success_count']}/{stats['total_users']} keys for server {server.id}")
+
+        except Exception as e:
+            log.error(f"[Stage 7] Failed to create keys for new server {server.id}: {e}")
+            await message.answer(
+                f"⚠️ Сервер добавлен, но не удалось создать ключи автоматически.\n"
+                f"Ошибка: {e}"
+            )
+    else:
+        # Regular success message for non-subscription servers
+        await message.answer(
+            _('server_add_success', lang),
+            reply_markup=await server_menu(lang)
+        )
 
 
 @state_admin_router.message(RemoveServer.input_name)
