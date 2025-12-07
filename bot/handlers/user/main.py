@@ -29,7 +29,7 @@ from bot.keyboards.reply.user_reply import (
     user_menu
 )
 from bot.misc.VPN.ServerManager import ServerManager
-from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn
+from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn, DownloadClient, DownloadHiddify
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from .payment_user import callback_user
@@ -445,3 +445,134 @@ async def turn_off_autopay_handler(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(
             text=_('no_user_in_db', await get_lang(callback.from_user.id, state))
         )
+
+
+@user_router.callback_query(DownloadClient.filter())
+async def download_client_handler(callback: CallbackQuery, callback_data: DownloadClient, state: FSMContext):
+    """Handler для скачивания Outline клиентов с сервера"""
+    await callback.answer()
+
+    platform = callback_data.platform
+    lang = await get_lang(callback.from_user.id, state)
+
+    # Определяем путь к файлу (внутри Docker контейнера)
+    file_paths = {
+        'android': '/app/vpn_clients/Outline/Outline-Client.apk',
+        'windows': '/app/vpn_clients/Outline/Outline-Client.exe',
+        'macos': '/app/vpn_clients/Outline/Outline-Client.AppImage',
+        'linux': '/app/vpn_clients/Outline/Outline-Client.AppImage'
+    }
+
+    file_names = {
+        'android': 'Outline-Client.apk',
+        'windows': 'Outline-Client.exe',
+        'macos': 'Outline-Client.AppImage',
+        'linux': 'Outline-Client.AppImage'
+    }
+
+    platform_names = {
+        'iphone': 'iPhone',
+        'android': 'Android',
+        'windows': 'Windows',
+        'macos': 'Mac OS',
+        'linux': 'Linux'
+    }
+
+    # Ссылки на официальные источники для файлов > 50MB (лимит Telegram)
+    download_urls = {
+        'iphone': 'https://apps.apple.com/us/app/outline-app/id1356177741',
+        'windows': 'https://github.com/Jigsaw-Code/outline-apps/releases/download/v1.10.1/Outline-Client.exe',
+        'macos': 'https://apps.apple.com/us/app/outline-app/id1356178125',  # Mac App Store
+        'linux': 'https://github.com/Jigsaw-Code/outline-apps/releases/download/v1.10.1/Outline-Client.AppImage'
+    }
+
+    if platform not in platform_names:
+        await callback.message.answer("❌ Неизвестная платформа")
+        return
+
+    platform_name = platform_names[platform]
+
+    try:
+        # Для Android отправляем файл (< 50MB), для остальных - ссылку
+        if platform == 'android':
+            # Отправляем сообщение о начале загрузки
+            status_msg = await callback.message.answer(f"⏳ Подготовка клиента {platform_name}...")
+
+            # Отправляем файл
+            document = FSInputFile(file_paths[platform], filename=file_names[platform])
+            await callback.message.answer_document(
+                document=document,
+                caption=f"✅ Outline Client для {platform_name}\n\n"
+                        f"📱 Установите приложение и добавьте ваш VPN ключ для начала работы."
+            )
+
+            # Удаляем сообщение о загрузке
+            await status_msg.delete()
+            log.info(f"User {callback.from_user.id} downloaded Outline client for {platform}")
+        else:
+            # Для iPhone/Windows/Mac/Linux отправляем ссылку на официальный источник
+            kb = InlineKeyboardBuilder()
+            kb.button(text=f'📥 Скачать {platform_name}', url=download_urls[platform])
+
+            await callback.message.answer(
+                text=f"✅ Outline Client для {platform_name}\n\n"
+                     f"📱 Нажмите кнопку ниже, чтобы скачать приложение.\n"
+                     f"После установки добавьте ваш VPN ключ для начала работы.",
+                reply_markup=kb.as_markup()
+            )
+            log.info(f"User {callback.from_user.id} requested Outline client for {platform}")
+
+    except Exception as e:
+        log.error(f"Failed to send Outline client for {platform}: {e}")
+        await callback.message.answer(f"❌ Не удалось отправить файл. Попробуйте позже.")
+
+
+@user_router.callback_query(DownloadHiddify.filter())
+async def download_hiddify_handler(callback: CallbackQuery, callback_data: DownloadHiddify, state: FSMContext):
+    """Handler для скачивания Hiddify клиентов (VLESS/Shadowsocks)"""
+    await callback.answer()
+
+    platform = callback_data.platform
+    lang = await get_lang(callback.from_user.id, state)
+
+    # Определяем URLs для Hiddify
+    download_urls = {
+        'iphone': 'https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532',
+        'android': 'https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-Android-universal.apk',
+        'windows': 'https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-Windows-Setup-x64.exe',
+        'macos': 'https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-MacOS.dmg',
+        'linux': 'https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-Linux-x64.AppImage'
+    }
+
+    platform_names = {
+        'iphone': 'iPhone',
+        'android': 'Android',
+        'windows': 'Windows',
+        'macos': 'Mac OS',
+        'linux': 'Linux'
+    }
+
+    if platform not in download_urls:
+        await callback.message.answer("❌ Неизвестная платформа")
+        return
+
+    download_url = download_urls[platform]
+    platform_name = platform_names[platform]
+
+    try:
+        # Отправляем сообщение со ссылкой на скачивание
+        kb = InlineKeyboardBuilder()
+        kb.button(text=f'📥 Скачать {platform_name}', url=download_url)
+
+        await callback.message.answer(
+            text=f"✅ Hiddify Client для {platform_name}\n\n"
+                 f"📱 Нажмите кнопку ниже, чтобы скачать приложение.\n"
+                 f"После установки добавьте ваш VPN ключ для начала работы.",
+            reply_markup=kb.as_markup()
+        )
+
+        log.info(f"User {callback.from_user.id} requested Hiddify client for {platform}")
+
+    except Exception as e:
+        log.error(f"Failed to send Hiddify link for {platform}: {e}")
+        await callback.message.answer(f"❌ Не удалось отправить ссылку. Попробуйте позже.")

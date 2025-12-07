@@ -120,3 +120,11 @@ class RegenerateServerToggle(CallbackData, prefix='regen_srv_toggle'):
 
 class RegenerateProtocolToggle(CallbackData, prefix='regen_proto_toggle'):
     protocol: str  # 'outline', 'vless', 'shadowsocks'
+
+
+class DownloadClient(CallbackData, prefix='download_client'):
+    platform: str  # 'iphone', 'android', 'windows', 'macos', 'linux'
+
+
+class DownloadHiddify(CallbackData, prefix='download_hiddify'):
+    platform: str  # 'iphone', 'android', 'windows', 'macos', 'linux'

@@ -54,6 +54,7 @@ services:
       - ./logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
       - ./backups:/app/backups  # Монтируем директорию для бэкапов
+      - /root/VPN Clients:/app/vpn_clients  # Монтируем клиенты VPN
 
   subscription_checker:
     restart: unless-stopped
