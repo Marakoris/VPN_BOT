@@ -3,6 +3,9 @@
 # Usage Reminder v2 - With Real Transcript Data
 # Показывает реальные данные об использовании из transcript
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 USAGE_DIR="/root/claude-docs/.usage"
 SESSION_FILE="$USAGE_DIR/current-session.txt"
 REMINDER_INTERVAL=10
@@ -25,7 +28,7 @@ echo "$REQUEST_COUNT" > "$SESSION_FILE"
 REAL_DATA_AVAILABLE=false
 if command -v jq >/dev/null 2>&1; then
     # Parse transcript for real cost data
-    TRANSCRIPT_DATA=$($CLAUDE_PROJECT_DIR/.claude/hooks/parse-transcript-cost.sh 2>/dev/null)
+    TRANSCRIPT_DATA=$("$SCRIPT_DIR/parse-transcript-cost.sh" 2>/dev/null)
 
     if [ $? -eq 0 ] && [ -n "$TRANSCRIPT_DATA" ]; then
         # Extract values
