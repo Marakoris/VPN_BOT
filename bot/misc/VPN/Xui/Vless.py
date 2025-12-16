@@ -29,22 +29,60 @@ class Vless(XuiBase):
                 email=str(name),
                 uuid=str(uuid.uuid4()),
                 limit_ip=CONFIG.limit_ip,
-                total_gb=CONFIG.limit_GB * 1073741824
+                total_gb=CONFIG.limit_GB * 1073741824,
+                flow="xtls-rprx-vision"  # Добавлено для защиты от DPI
             )
+            # Логируем ответ для отладки
+            print(f"[VLESS add_client] Response: {response}")
             if response['success']:
                 return True
             return False
-        except pyxui_async.errors.NotFound:
+        except Exception as e:
+            # Логируем все ошибки
+            print(f"[VLESS add_client] Exception: {e}")
             return False
 
     async def delete_client(self, telegram_id):
         try:
+            print(f"[VLESS delete_client] Deleting email={telegram_id}, inbound_id={self.inbound_id}")
             response = await self.xui.delete_client(
                 inbound_id=self.inbound_id,
                 email=telegram_id,
             )
+            print(f"[VLESS delete_client] Response: {response}")
             return response['success']
-        except pyxui_async.errors.NotFound:
+        except Exception as e:
+            print(f"[VLESS delete_client] Exception: {e}")
+            return False
+
+    async def update_client_flow(self, telegram_id, flow="xtls-rprx-vision"):
+        """Update existing client to add flow parameter"""
+        try:
+            # Получаем существующего клиента
+            client = await self.get_client(str(telegram_id))
+            if client == 'User not found':
+                print(f"[VLESS update_flow] Client {telegram_id} not found")
+                return False
+
+            # Обновляем с flow
+            response = await self.xui.update_client(
+                inbound_id=self.inbound_id,
+                email=client['email'],
+                uuid=client['id'],
+                enable=client['enable'],
+                flow=flow,  # ← Добавляем flow!
+                limit_ip=client.get('limitIp', CONFIG.limit_ip),
+                total_gb=client.get('totalGB', 0),
+                expire_time=client.get('expiryTime', 0),
+                telegram_id="",
+                subscription_id=""
+            )
+
+            print(f"[VLESS update_flow] Response: {response}")
+            return response['success']
+
+        except Exception as e:
+            print(f"[VLESS update_flow] Exception: {e}")
             return False
 
     async def disable_client(self, telegram_id):
@@ -114,14 +152,30 @@ class Vless(XuiBase):
         stream_settings = json.loads(info['streamSettings'])
         fp = stream_settings["realitySettings"]["settings"]["fingerprint"]
         pbk = stream_settings["realitySettings"]["settings"]["publicKey"]
-        key = (f'vless://{client["id"]}@'
-               f'{self.adress}:{info["port"]}?'
-               f'type={stream_settings["network"]}&'
-               f'security={stream_settings["security"]}&'
-               f'fp={fp}&'
-               f'pbk={pbk}&'
-               f'sni={stream_settings["realitySettings"]["serverNames"][0]}&'
-               f'sid={stream_settings["realitySettings"]["shortIds"][0]}&'
-               f'spx=%2F'
-               f'#{name_key}')
+
+        # Получаем flow из клиента (если есть)
+        flow = client.get('flow', '')
+
+        # Строим URL
+        key_parts = [
+            f'vless://{client["id"]}@',
+            f'{self.adress}:{info["port"]}?',
+            f'type={stream_settings["network"]}&',
+            f'security={stream_settings["security"]}&',
+        ]
+
+        # Добавляем flow только если он установлен
+        if flow:
+            key_parts.append(f'flow={flow}&')
+
+        key_parts.extend([
+            f'fp={fp}&',
+            f'pbk={pbk}&',
+            f'sni={stream_settings["realitySettings"]["serverNames"][0]}&',
+            f'sid={stream_settings["realitySettings"]["shortIds"][0]}&',
+            f'spx=%2F',
+            f'#{name_key}'
+        ])
+
+        key = ''.join(key_parts)
         return key

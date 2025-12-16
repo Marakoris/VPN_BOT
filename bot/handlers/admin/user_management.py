@@ -26,6 +26,7 @@ from bot.database.methods.update import (
     person_banned_true,
     update_balance_person
 )
+from bot.misc.subscription import activate_subscription, expire_subscription
 from bot.keyboards.reply.admin_reply import (
     admin_user_menu,
     back_user_menu,
@@ -338,6 +339,19 @@ async def add_time_user_state(message: Message, state: FSMContext) -> None:
         user_data = await state.get_data()
         client = user_data['client']
         await add_time_person(client.tgid, count_day * (ONE_HOUSE * 24))
+
+        # Activate subscription automatically when adding time
+        # include_outline=True to activate ALL protocols (VLESS, Shadowsocks, Outline)
+        log.info(f"[Admin] Activating subscription for user {client.tgid} after adding {count_day} days")
+        try:
+            subscription_token = await activate_subscription(client.tgid, include_outline=True)
+            if subscription_token:
+                log.info(f"[Admin] ✅ Subscription activated for user {client.tgid} (all protocols)")
+            else:
+                log.warning(f"[Admin] ⚠️ Failed to activate subscription for user {client.tgid}")
+        except Exception as e:
+            log.error(f"[Admin] Error activating subscription for user {client.tgid}: {e}")
+
         await state.clear()
         await message.answer(
             _('input_count_day_sub_success', lang).format(
@@ -370,9 +384,26 @@ async def delete_time_user_callback(call: CallbackQuery, state: FSMContext):
     try:
         user_data = await state.get_data()
         client = user_data['client']
+
+        # Expire subscription automatically when deleting time
+        # This will disable all keys on all servers (VLESS, Shadowsocks, Outline)
+        log.info(f"[Admin] Expiring subscription for user {client.tgid}")
+        try:
+            success = await expire_subscription(client.tgid)
+            if success:
+                log.info(f"[Admin] ✅ Subscription expired and keys disabled for user {client.tgid}")
+            else:
+                log.warning(f"[Admin] ⚠️ Subscription expired but some keys may not be disabled for user {client.tgid}")
+        except Exception as e:
+            log.error(f"[Admin] Error expiring subscription for user {client.tgid}: {e}")
+
+        # Still call person_banned_true for backwards compatibility with old system
         await person_banned_true(client.tgid)
+
+        # Legacy: delete key from old single-server system (if applicable)
         if client.server is not None:
             await delete_key(client)
+
         await call.message.answer(
             _('user_delete_time_m', lang).format(username=client.username),
             reply_markup=await admin_user_menu(lang)

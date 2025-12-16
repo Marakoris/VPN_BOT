@@ -9,7 +9,7 @@ from bot.misc.callbackData import (
     ChoosingPayment,
     ChooseServer,
     MessageAdminUser, ChoosingLang, ChooseTypeVpn, ChoosedSuperOffer,
-    DownloadClient, DownloadHiddify
+    DownloadClient, DownloadHiddify, MainMenuAction
 )
 from bot.misc.language import Localization
 from bot.misc.util import CONFIG
@@ -236,5 +236,83 @@ async def message_admin_user(tgid_user, lang) -> InlineKeyboardMarkup:
         text=_('admin_user_send_reply_btn', lang),
         callback_data=MessageAdminUser(id_user=tgid_user)
     )
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
+    """
+    Inline-версия главного меню (кнопки в окне сообщения)
+    """
+    import time
+    from datetime import datetime
+
+    kb = InlineKeyboardBuilder()
+    time_sub = datetime.utcfromtimestamp(
+        int(person.subscription) + CONFIG.UTC_time * 3600).strftime(
+        '%d.%m.%Y %H:%M')
+    time_now = int(time.time())
+
+    # 1. Subscription info
+    if int(person.subscription) >= time_now:
+        kb.button(
+            text=_('subscription_time_btn', lang).format(time=time_sub),
+            callback_data='subscription_info'
+        )
+    else:
+        kb.button(
+            text=_('subscription_not_time_btn', lang).format(time=time_sub),
+            callback_data='subscription_info'
+        )
+
+    # 2. Main connection buttons
+    kb.button(
+        text="📲 Subscription URL",
+        callback_data=MainMenuAction(action='subscription_url')
+    )
+    kb.button(
+        text="🔑 Outline VPN",
+        callback_data=MainMenuAction(action='outline')
+    )
+
+    # 3. Subscription management
+    kb.button(
+        text=_('subscription_btn', lang),
+        callback_data=MainMenuAction(action='subscription')
+    )
+
+    # 4. Referral and bonus
+    kb.button(
+        text=_('affiliate_btn', lang),
+        callback_data=MainMenuAction(action='referral')
+    )
+    kb.button(
+        text=_('bonus_btn', lang),
+        callback_data=MainMenuAction(action='bonus')
+    )
+
+    # 5. Info and settings
+    kb.button(
+        text=_('about_vpn_btn', lang),
+        callback_data=MainMenuAction(action='about')
+    )
+    kb.button(
+        text=_('language_btn', lang),
+        callback_data=MainMenuAction(action='language')
+    )
+
+    # 6. Help
+    kb.button(
+        text=_('help_btn', lang),
+        callback_data=MainMenuAction(action='help')
+    )
+
+    # 7. Admin panel
+    if person.tgid in CONFIG.admins_ids:
+        kb.button(
+            text=_('admin_panel_btn', lang),
+            callback_data=MainMenuAction(action='admin')
+        )
+
     kb.adjust(1)
     return kb.as_markup()

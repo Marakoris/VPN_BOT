@@ -50,7 +50,7 @@ class ServerManager:
     async def disable_client(self, telegram_id):
         """Disable VPN key for user (subscription expired)"""
         try:
-            return await self.client.disable_client(telegram_id)
+            return await self.client.disable_client(str(telegram_id))
         except Exception as e:
             print(e, 'ServerManager.py disable_client')
             return False
@@ -58,7 +58,7 @@ class ServerManager:
     async def enable_client(self, telegram_id):
         """Enable VPN key for user (subscription active)"""
         try:
-            return await self.client.enable_client(telegram_id)
+            return await self.client.enable_client(str(telegram_id))
         except Exception as e:
             print(e, 'ServerManager.py enable_client')
             return False

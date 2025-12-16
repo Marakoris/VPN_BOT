@@ -128,3 +128,11 @@ class DownloadClient(CallbackData, prefix='download_client'):
 
 class DownloadHiddify(CallbackData, prefix='download_hiddify'):
     platform: str  # 'iphone', 'android', 'windows', 'macos', 'linux'
+
+
+class ChooseOutlineServer(CallbackData, prefix='choose_outline'):
+    id_server: int
+
+
+class MainMenuAction(CallbackData, prefix='main_menu'):
+    action: str  # 'subscription_url', 'outline', 'subscription', 'referral', 'bonus', 'about', 'language', 'help', 'admin'

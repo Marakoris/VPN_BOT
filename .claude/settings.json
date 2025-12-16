@@ -1,5 +1,40 @@
 {
   "autoApproveToolUse": [
     "Bash(*)"
-  ]
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/restore-context.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-end.sh"
+          }
+        ]
+      }
+    ],
+    "ToolUse": [
+      {
+        "filter": {
+          "tools": ["Edit", "Write", "NotebookEdit", "Read", "Grep", "Glob", "Bash"]
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/tooluse-combined.sh"
+          }
+        ]
+      }
+    ]
+  }
 }

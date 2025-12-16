@@ -69,12 +69,15 @@ async def generate_vless_config(
 
         # Build configuration URL
         uuid = client.get('id') or client.get('uuid')
-        host = server.ip
+
+        # Extract clean IP (remove port if present in server.ip)
+        host = server.ip.split(':')[0] if ':' in server.ip else server.ip
         port = inbound_info['port']
         network = stream_settings.get("network", "tcp")
         security = stream_settings.get("security", "reality")
         sni = server_names[0] if server_names else ""
         sid = short_ids[0] if short_ids else ""
+        flow = client.get('flow', '')  # Получаем flow из клиента
 
         # Generate remark (server display name)
         if not server_name:
@@ -82,18 +85,28 @@ async def generate_vless_config(
 
         remark = quote(server_name)
 
-        # Build VLESS URL
-        vless_url = (
-            f"vless://{uuid}@{host}:{port}?"
-            f"type={network}&"
-            f"security={security}&"
-            f"fp={fingerprint}&"
-            f"pbk={public_key}&"
-            f"sni={sni}&"
-            f"sid={sid}&"
-            f"spx=%2F"
+        # Build VLESS URL с flow (если есть)
+        vless_url_parts = [
+            f"vless://{uuid}@{host}:{port}?",
+            f"type={network}&",
+            f"security={security}&",
+        ]
+
+        # Добавляем flow только если он установлен
+        if flow:
+            vless_url_parts.append(f"flow={flow}&")
+            log.debug(f"[VLESS Generator] Adding flow: {flow}")
+
+        vless_url_parts.extend([
+            f"fp={fingerprint}&",
+            f"pbk={public_key}&",
+            f"sni={sni}&",
+            f"sid={sid}&",
+            f"spx=%2F",
             f"#{remark}"
-        )
+        ])
+
+        vless_url = ''.join(vless_url_parts)
 
         log.info(f"[VLESS Generator] ✅ Generated config for {server_name}")
         return vless_url
@@ -159,7 +172,8 @@ async def generate_shadowsocks_config(
             return None
 
         # Build configuration
-        host = server.ip
+        # Extract clean IP (remove port if present in server.ip)
+        host = server.ip.split(':')[0] if ':' in server.ip else server.ip
         port = inbound_info['port']
         network = stream_settings.get("network", "tcp")
 

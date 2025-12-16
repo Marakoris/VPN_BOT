@@ -171,7 +171,8 @@ async def get_subscription(token: str, request: Request):
             log.warning(f"[Security] Rate limit blocked: {client_ip} - {error_msg}")
             return PlainTextResponse(
                 content="# Rate limit exceeded\n",
-                status_code=429
+                status_code=429,
+                headers={"profile-title": "NoBorder VPN"}
             )
 
         # SECURITY: Check suspicious activity
@@ -187,7 +188,8 @@ async def get_subscription(token: str, request: Request):
             log.warning(f"[Subscription API] Invalid token from {client_ip}")
             return PlainTextResponse(
                 content="# Invalid subscription token\n",
-                status_code=401
+                status_code=401,
+                headers={"profile-title": "NoBorder VPN"}
             )
 
         # 2. Get user from database (using internal user_id)
@@ -266,7 +268,17 @@ async def get_subscription(token: str, request: Request):
                 f"{len(user_servers)} servers from {request.client.host}"
             )
 
-            return "\n".join(config_lines)
+            # Prepare response with custom headers for subscription title
+            content = "\n".join(config_lines)
+
+            # Add headers for readable subscription name in VPN clients
+            headers = {
+                "content-disposition": 'attachment; filename="NoBorder VPN.txt"',
+                "profile-title": "NoBorder VPN",
+                "subscription-userinfo": f"upload=0; download=0; expire={int(user.subscription)}"
+            }
+
+            return PlainTextResponse(content=content, headers=headers)
 
     except Exception as e:
         log.error(f"[Subscription API] Error in subscription endpoint: {e}")

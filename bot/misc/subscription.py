@@ -117,23 +117,24 @@ def verify_subscription_token(token: str) -> Optional[int]:
 
 # ==================== SUBSCRIPTION ACTIVATION ====================
 
-async def activate_subscription(user_id: int) -> Optional[str]:
+async def activate_subscription(user_id: int, include_outline: bool = False) -> Optional[str]:
     """
     Activate subscription: create/enable keys on ALL servers
 
     This function:
-    1. Gets all active servers (VLESS + Shadowsocks)
+    1. Gets all active servers (VLESS + Shadowsocks, optionally Outline)
     2. Creates new keys or enables existing ones on each server
     3. Sets subscription_active = true
     4. Generates/returns subscription token
 
     Args:
         user_id: User's telegram ID (tgid)
+        include_outline: If True, also activate Outline keys (default: False)
 
     Returns:
         subscription_token or None if error
     """
-    log.info(f"[Subscription] Activating for user {user_id}")
+    log.info(f"[Subscription] Activating for user {user_id} (include_outline={include_outline})")
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         try:
@@ -146,10 +147,17 @@ async def activate_subscription(user_id: int) -> Optional[str]:
                 log.error(f"[Subscription] User {user_id} not found")
                 return None
 
-            # 2. Get ALL active servers (VLESS + Shadowsocks)
+            # 2. Get ALL active servers (VLESS + Shadowsocks, optionally Outline)
+            # NOTE: Outline (type_vpn=0) is normally handled separately via "🔑 Outline VPN" button
+            # But admin panel can force include_outline=True to activate all protocols
+            if include_outline:
+                vpn_types = [0, 1, 2]  # Outline, VLESS and Shadowsocks
+            else:
+                vpn_types = [1, 2]  # VLESS and Shadowsocks only
+
             statement = select(Servers).filter(
                 Servers.work == True,
-                Servers.type_vpn.in_([1, 2]),  # VLESS and Shadowsocks
+                Servers.type_vpn.in_(vpn_types),
                 Servers.space < MAX_PEOPLE_SERVER
             ).order_by(Servers.id)
 
@@ -262,9 +270,12 @@ async def expire_subscription(user_id: int) -> bool:
                 return False
 
             # 2. Get all active servers (we'll check which ones have keys via API)
+            # NOTE: Include Outline (type_vpn=0) here for DISABLE security
+            # Outline is NOT created during activate_subscription (on-demand only)
+            # BUT must be disabled during expire for security
             statement = select(Servers).filter(
                 Servers.work == True,
-                Servers.type_vpn.in_([1, 2])  # VLESS and Shadowsocks
+                Servers.type_vpn.in_([0, 1, 2])  # Outline, VLESS and Shadowsocks
             ).order_by(Servers.id)
 
             result = await db.execute(statement)
@@ -411,6 +422,7 @@ async def create_keys_for_active_subscriptions_on_new_server(server_id: int) -> 
                 return stats
             
             # Only process VLESS and Shadowsocks servers
+            # NOTE: Outline handled separately via "🔑 Outline VPN" button
             if server.type_vpn not in [1, 2]:
                 log.info(f"[Stage 7] Server {server_id} is not VLESS/Shadowsocks (type={server.type_vpn}), skipping")
                 return stats

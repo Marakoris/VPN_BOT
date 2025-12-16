@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.payload import decode_payload
 
@@ -23,18 +23,19 @@ from bot.keyboards.inline.user_inline import (
     renew,
     instruction_manual,
     choose_server,
-    choosing_lang, choose_type_vpn
+    choosing_lang, choose_type_vpn, user_menu_inline
 )
 from bot.keyboards.reply.user_reply import (
     user_menu
 )
 from bot.misc.VPN.ServerManager import ServerManager
-from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn, DownloadClient, DownloadHiddify
+from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn, DownloadClient, DownloadHiddify, MainMenuAction
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from .payment_user import callback_user
 from .referral_user import referral_router, message_admin
 from .subscription_user import subscription_router
+from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
 from ...misc.yandex_metrika import YandexMetrikaAPI
 
@@ -44,7 +45,7 @@ _ = Localization.text
 btn_text = Localization.get_reply_button
 
 user_router = Router()
-user_router.include_routers(callback_user, referral_router, subscription_router)
+user_router.include_routers(callback_user, referral_router, subscription_router, outline_router)
 
 
 @user_router.message(Command("start"))
@@ -104,11 +105,21 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         if client_id is not None:
             await add_client_id_person(m.from_user.id, client_id)
     person = await get_person(m.from_user.id)
-    await m.answer_photo(
-        photo=FSInputFile('bot/img/main_menu.jpg'),
-        caption=_('start_message', lang),
-        reply_markup=await user_menu(person, lang)
+    # Убираем нижнее меню
+    remove_msg = await m.answer(
+        text="⚙️",
+        reply_markup=ReplyKeyboardRemove()
     )
+    # Отправляем inline меню
+    await m.answer(
+        text=_('start_message', lang),
+        reply_markup=await user_menu_inline(person, lang)
+    )
+    # Удаляем техническое сообщение
+    try:
+        await remove_msg.delete()
+    except:
+        pass
 
     person = await get_person(m.from_user.id)
     # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
@@ -149,69 +160,74 @@ async def send_help_message(message: Message, state: FSMContext):
     )
 
 
-@user_router.message(F.text.in_(btn_text('vpn_connect_btn')))
-async def choose_server_user(message: Message, state: FSMContext) -> None:
-    lang = await get_lang(message.from_user.id, state)
-    await message.answer_photo(
-photo=FSInputFile('bot/img/choose_protocol.jpg'),
-        caption=_('choosing_connect_type', lang),
-        reply_markup=await choose_type_vpn()
-    )
+# ==================== OLD MENU (DEPRECATED 2025-12-08) ====================
+# The following handlers are deprecated and replaced by:
+# - "📲 Subscription URL" (subscription_user.py) for VLESS + Shadowsocks
+# - "🔑 Outline VPN" (outline_user.py) for Outline servers
+#
+# These handlers are commented out to prevent conflicts with new subscription system.
+# They can be removed completely after successful migration.
+# ===========================================================================
 
-    person = await get_person(message.from_user.id)
-    # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
-    # Если у пользователя есть client_id, то оправляем офлайн конверсию
-    if person is not None and person.client_id is not None:
-        client_id = person.client_id
-        ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
-        # Отправка офлайн-конверсии
-        upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonConnectVPN')
-        # log.info(f"Uload_id {upload_id}")
-        # Проверка статуса загрузки (если загрузка прошла успешно)
-        if upload_id:
-            log.info(ym_api.check_conversion_status(upload_id))
-    # else:
-    #     log.info("У вас нет client_id")
-
-
-@user_router.callback_query(F.data == 'back_type_vpn')
-async def call_choose_server(call: CallbackQuery, state: FSMContext) -> None:
-    lang = await get_lang(call.from_user.id, state)
-    await call.message.delete()
-    await call.message.answer_photo(
-photo=FSInputFile('bot/img/choose_protocol.jpg'),
-        caption=_('choosing_connect_type', lang),
-        reply_markup=await choose_type_vpn()
-    )
+# @user_router.message(F.text.in_(btn_text('vpn_connect_btn')))
+# async def choose_server_user(message: Message, state: FSMContext) -> None:
+#     """OLD: Choose VPN protocol (Outline/VLESS/Shadowsocks) - DEPRECATED"""
+#     lang = await get_lang(message.from_user.id, state)
+#     await message.answer_photo(
+#         photo=FSInputFile('bot/img/choose_protocol.jpg'),
+#         caption=_('choosing_connect_type', lang),
+#         reply_markup=await choose_type_vpn()
+#     )
+#
+#     person = await get_person(message.from_user.id)
+#     if person is not None and person.client_id is not None:
+#         client_id = person.client_id
+#         ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
+#         upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonConnectVPN')
+#         if upload_id:
+#             log.info(ym_api.check_conversion_status(upload_id))
 
 
-@user_router.callback_query(ChooseTypeVpn.filter())
-async def choose_server_free(
-        call: CallbackQuery,
-        callback_data: ChooseTypeVpn,
-        state: FSMContext
-) -> None:
-    lang = await get_lang(call.from_user.id, state)
-    user = await get_person(call.from_user.id)
-    try:
-        all_active_server = await get_free_servers(
-            user.group, callback_data.type_vpn
-        )
-    except FileNotFoundError as e:
-        log.info('Error get free servers -- OK')
-        await call.message.answer(_('not_server', lang))
-        await call.answer()
-        return
-    await call.message.delete()
-    await call.message.answer_photo(
-        photo=FSInputFile('bot/img/locations.jpg'),
-        caption=_('choosing_connect_location', lang),
-        reply_markup=await choose_server(
-            all_active_server,
-            user.server,
-            lang
-        )
-    )
+# @user_router.callback_query(F.data == 'back_type_vpn')
+# async def call_choose_server(call: CallbackQuery, state: FSMContext) -> None:
+#     """OLD: Back to VPN type selection - DEPRECATED"""
+#     lang = await get_lang(call.from_user.id, state)
+#     await call.message.delete()
+#     await call.message.answer_photo(
+#         photo=FSInputFile('bot/img/choose_protocol.jpg'),
+#         caption=_('choosing_connect_type', lang),
+#         reply_markup=await choose_type_vpn()
+#     )
+
+
+# @user_router.callback_query(ChooseTypeVpn.filter())
+# async def choose_server_free(
+#         call: CallbackQuery,
+#         callback_data: ChooseTypeVpn,
+#         state: FSMContext
+# ) -> None:
+#     """OLD: Choose server by VPN type - DEPRECATED"""
+#     lang = await get_lang(call.from_user.id, state)
+#     user = await get_person(call.from_user.id)
+#     try:
+#         all_active_server = await get_free_servers(
+#             user.group, callback_data.type_vpn
+#         )
+#     except FileNotFoundError as e:
+#         log.info('Error get free servers -- OK')
+#         await call.message.answer(_('not_server', lang))
+#         await call.answer()
+#         return
+#     await call.message.delete()
+#     await call.message.answer_photo(
+#         photo=FSInputFile('bot/img/locations.jpg'),
+#         caption=_('choosing_connect_location', lang),
+#         reply_markup=await choose_server(
+#             all_active_server,
+#             user.server,
+#             lang
+#         )
+#     )
 
 
 @user_router.message(F.text.in_(btn_text('language_btn')))
@@ -239,6 +255,18 @@ async def deposit_balance(
     )
     await call.answer()
 
+
+# ===========================================================================
+# NOTE: This handler is kept for backward compatibility and edge cases.
+# New users should use:
+# - "📲 Subscription URL" for VLESS + Shadowsocks
+# - "🔑 Outline VPN" for Outline (uses ChooseOutlineServer callback instead)
+#
+# This handler may still be called from:
+# - Old deep links
+# - Admin regeneration flows
+# - Edge cases during migration
+# ===========================================================================
 
 @user_router.callback_query(ChooseServer.filter())
 async def connect_vpn(
@@ -576,3 +604,145 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
     except Exception as e:
         log.error(f"Failed to send Hiddify link for {platform}: {e}")
         await callback.message.answer(f"❌ Не удалось отправить ссылку. Попробуйте позже.")
+
+
+@user_router.callback_query(MainMenuAction.filter())
+async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMenuAction, state: FSMContext, bot: Bot):
+    """Обработчик для inline-кнопок главного меню"""
+    await callback.answer()
+
+    action = callback_data.action
+    lang = await get_lang(callback.from_user.id, state)
+
+    if action == 'subscription_url':
+        # Перенаправляем на обработчик subscription URL
+        from .subscription_user import get_subscription_url
+        await get_subscription_url(callback.message, state)
+
+    elif action == 'outline':
+        # Перенаправляем на обработчик Outline
+        from .outline_user import outline_menu
+        await outline_menu(callback.message, state)
+
+    elif action == 'subscription':
+        # Показываем меню подписки
+        person = await get_person(callback.from_user.id)
+        # Удаляем текущее сообщение
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        # Отправляем новое с фото и кнопкой "Назад"
+        kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
+        # Добавляем кнопку "Назад"
+        kb_with_back = InlineKeyboardBuilder()
+        for row in kb.inline_keyboard:
+            for button in row:
+                kb_with_back.button(text=button.text, callback_data=button.callback_data)
+        kb_with_back.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        kb_with_back.adjust(1)
+
+        await bot.send_photo(
+            chat_id=callback.from_user.id,
+            photo=FSInputFile('bot/img/pay_subscribe.jpg'),
+            caption=_('choosing_month_sub', lang),
+            reply_markup=kb_with_back.as_markup()
+        )
+
+    elif action == 'referral':
+        # Перенаправляем на реферальное меню
+        from .referral_user import referral_system_handler
+        await referral_system_handler(callback.message, state)
+
+    elif action == 'bonus':
+        # Показываем бонусное меню (promo code)
+        from .referral_user import give_handler
+        await give_handler(callback.message, state)
+
+    elif action == 'about':
+        # Обновляем сообщение вместо отправки нового
+        try:
+            await callback.message.edit_text(
+                text=_('about_message', lang).format(name_bot=CONFIG.name),
+                reply_markup=create_back_to_menu_keyboard(lang)
+            )
+        except:
+            # Если не получилось отредактировать (нет текста), отправляем новое
+            await callback.message.answer(
+                text=_('about_message', lang).format(name_bot=CONFIG.name),
+                reply_markup=create_back_to_menu_keyboard(lang)
+            )
+
+    elif action == 'language':
+        # Обновляем сообщение вместо отправки нового
+        kb = await choosing_lang()
+        # Добавляем кнопку "Назад"
+        kb_with_back = InlineKeyboardBuilder()
+        for row in kb.inline_keyboard:
+            for button in row:
+                kb_with_back.button(text=button.text, callback_data=button.callback_data)
+        kb_with_back.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        kb_with_back.adjust(1)
+
+        try:
+            await callback.message.edit_text(
+                text=_('select_language', lang),
+                reply_markup=kb_with_back.as_markup()
+            )
+        except:
+            await callback.message.answer(
+                text=_('select_language', lang),
+                reply_markup=kb_with_back.as_markup()
+            )
+
+    elif action == 'help':
+        # Обновляем сообщение вместо отправки нового
+        builder = InlineKeyboardBuilder()
+        builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
+        builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
+        builder.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        builder.adjust(1)
+
+        try:
+            await callback.message.edit_text(
+                text=_('support_message'),
+                reply_markup=builder.as_markup()
+            )
+        except:
+            await callback.message.answer(
+                text=_('support_message'),
+                reply_markup=builder.as_markup()
+            )
+
+    elif action == 'admin':
+        # Перенаправляем в админ панель
+        from bot.handlers.admin.main import admin_panel
+        await admin_panel(callback.message, state)
+
+    elif action == 'back_to_menu':
+        # Возврат в главное меню
+        person = await get_person(callback.from_user.id)
+        try:
+            # Пробуем отредактировать текст
+            await callback.message.edit_text(
+                text=_('start_message', lang),
+                reply_markup=await user_menu_inline(person, lang)
+            )
+        except:
+            # Если не получилось (например, сообщение с фото), удаляем и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=_('start_message', lang),
+                reply_markup=await user_menu_inline(person, lang)
+            )
+
+
+def create_back_to_menu_keyboard(lang):
+    """Создает клавиатуру с кнопкой Назад"""
+    kb = InlineKeyboardBuilder()
+    kb.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+    return kb.as_markup()
