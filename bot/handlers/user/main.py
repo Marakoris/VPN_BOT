@@ -111,8 +111,18 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         reply_markup=ReplyKeyboardRemove()
     )
     # Отправляем inline меню
+    from datetime import datetime
+    subscription_end = datetime.utcfromtimestamp(
+        int(person.subscription) + CONFIG.UTC_time * 3600
+    ).strftime('%d.%m.%Y %H:%M')
+
     await m.answer(
-        text=_('start_message', lang),
+        text=_('start_message', lang).format(
+            subscription_end=subscription_end,
+            tgid=person.tgid,
+            balance=person.balance,
+            referral_money=person.referral_balance
+        ),
         reply_markup=await user_menu_inline(person, lang)
     )
     # Удаляем техническое сообщение
@@ -615,44 +625,249 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     lang = await get_lang(callback.from_user.id, state)
 
     if action == 'subscription_url':
-        # Перенаправляем на обработчик subscription URL
-        from .subscription_user import get_subscription_url
-        await get_subscription_url(callback.message, state)
+        # Inline version of subscription URL handler
+        person = await get_person(callback.from_user.id)
+
+        if not person:
+            await callback.message.answer("❌ User not found")
+            return
+
+        # Import subscription functions
+        from bot.misc.subscription import get_user_subscription_status
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import InlineKeyboardButton
+
+        # Check subscription status
+        status = await get_user_subscription_status(person.tgid)
+
+        if 'error' in status:
+            await callback.message.answer("❌ Error getting subscription status")
+            return
+
+        # If no token or not active, offer to activate
+        if not status.get('token') or not status.get('active'):
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(
+                text="✅ Активировать подписку",
+                callback_data="activate_subscription"
+            ))
+            kb.row(InlineKeyboardButton(
+                text=_('back_btn', lang),
+                callback_data=MainMenuAction(action='my_keys')
+            ))
+            await callback.message.answer(
+                "📡 <b>Единая подписка на VPN</b>\n\n"
+                "⚠️ Подписка не активирована\n\n"
+                "🔐 <b>Что вы получите:</b>\n"
+                "• Один URL для всех серверов\n"
+                "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
+                "• Автоматическое обновление списка серверов\n"
+                "• Проще в использовании, чем отдельные ключи\n\n"
+                "💡 Нажмите кнопку ниже для активации:",
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
+            return
+
+        # User has active subscription - show URL
+        from bot.misc.util import CONFIG
+        subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="📥 Hiddify (рекомендуем)",
+            url="https://github.com/hiddify/hiddify-next/releases"
+        ))
+        kb.row(InlineKeyboardButton(
+            text="📱 V2RayNG (Android)",
+            url="https://play.google.com/store/apps/details?id=com.v2ray.ang"
+        ))
+        kb.row(InlineKeyboardButton(
+            text="🍎 Shadowrocket (iOS)",
+            url="https://apps.apple.com/app/shadowrocket/id932747118"
+        ))
+        kb.row(InlineKeyboardButton(
+            text=_('back_btn', lang),
+            callback_data=MainMenuAction(action='my_keys')
+        ))
+
+        message_text = (
+            "✅ <b>Единая подписка на VPN</b>\n\n"
+            "📡 <b>Ваш URL подписки:</b>\n"
+            f"<code>{subscription_url}</code>\n\n"
+            "🔐 <b>Доступные протоколы:</b>\n"
+            "• VLESS Reality - максимальная безопасность\n"
+            "• Shadowsocks 2022 - высокая скорость\n\n"
+            "📱 <b>Как использовать:</b>\n"
+            "1. Скачайте приложение Hiddify (рекомендуем) или другое\n"
+            "2. Нажмите \"Добавить подписку\" / \"Add Subscription\"\n"
+            "3. Вставьте URL выше\n"
+            "4. Обновите список серверов\n"
+            "5. Подключайтесь к любому серверу!\n\n"
+            "🔄 <b>Список серверов обновляется автоматически</b>\n"
+            "💡 При добавлении новых серверов - просто обновите подписку в приложении"
+        )
+
+        await callback.message.answer(message_text, reply_markup=kb.as_markup())
 
     elif action == 'outline':
-        # Перенаправляем на обработчик Outline
-        from .outline_user import outline_menu
-        await outline_menu(callback.message, state)
+        # Inline version of outline menu handler
+        import time
+        from aiogram.types import FSInputFile
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import InlineKeyboardButton
+        from bot.misc.callbackData import ChooseOutlineServer
+        from bot.database.methods.get import get_free_servers
+
+        person = await get_person(callback.from_user.id)
+
+        if not person:
+            await callback.message.answer("❌ User not found")
+            return
+
+        # Check subscription
+        if person.subscription < int(time.time()):
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(
+                text=_('to_extend_btn', lang),
+                callback_data="buy_subscription"
+            ))
+            await callback.message.answer(
+                _('ended_sub_message', lang),
+                reply_markup=kb.as_markup()
+            )
+            return
+
+        # Get Outline servers (type_vpn=0)
+        try:
+            outline_servers = await get_free_servers(person.group, type_vpn=0)
+        except Exception as e:
+            log.error(f"Error getting Outline servers: {e}")
+            await callback.message.answer(
+                "❌ Outline серверы временно недоступны\n\n"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+            )
+            return
+
+        if not outline_servers:
+            await callback.message.answer(
+                "❌ Нет доступных Outline серверов\n\n"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+            )
+            return
+
+        # Show server selection menu
+        kb = InlineKeyboardBuilder()
+        for server in outline_servers:
+            kb.row(InlineKeyboardButton(
+                text=f"{server.name} 🪐",
+                callback_data=ChooseOutlineServer(id_server=server.id).pack()
+            ))
+
+        caption = (
+            "🔑 <b>Outline VPN</b>\n\n"
+            "Выберите сервер для подключения:\n\n"
+            "💡 Для каждого сервера создается отдельный ключ\n"
+            "💡 Переключайтесь между серверами в любое время"
+        )
+
+        await callback.message.answer_photo(
+            photo=FSInputFile('bot/img/choose_protocol.jpg'),
+            caption=caption,
+            reply_markup=kb.as_markup()
+        )
 
     elif action == 'subscription':
         # Показываем меню подписки
+        from bot.misc.util import CONFIG
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
         person = await get_person(callback.from_user.id)
-        # Удаляем текущее сообщение
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        # Отправляем новое с фото и кнопкой "Назад"
+
+        # Формируем клавиатуру с кнопкой "Назад"
         kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
-        # Добавляем кнопку "Назад"
         kb_with_back = InlineKeyboardBuilder()
         for row in kb.inline_keyboard:
             for button in row:
                 kb_with_back.button(text=button.text, callback_data=button.callback_data)
-        kb_with_back.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         kb_with_back.adjust(1)
 
-        await bot.send_photo(
-            chat_id=callback.from_user.id,
-            photo=FSInputFile('bot/img/pay_subscribe.jpg'),
-            caption=_('choosing_month_sub', lang),
-            reply_markup=kb_with_back.as_markup()
-        )
+        # Редактируем текущее сообщение
+        try:
+            await callback.message.edit_text(
+                text=_('choosing_month_sub', lang),
+                reply_markup=kb_with_back.as_markup()
+            )
+        except:
+            # Если не получилось, удаляем и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=_('choosing_month_sub', lang),
+                reply_markup=kb_with_back.as_markup()
+            )
 
     elif action == 'referral':
-        # Перенаправляем на реферальное меню
-        from .referral_user import referral_system_handler
-        await referral_system_handler(callback.message, state)
+        # Inline версия реферального меню
+        from aiogram.types import BufferedInputFile, InputMediaDocument
+        from bot.database.methods.get import get_count_referral_user, get_referral_balance
+        from bot.keyboards.inline.user_inline import share_link
+        from bot.misc.util import CONFIG
+        from bot.handlers.user.referral_user import get_referral_link, export_affiliate_statistics_to_excel, export_withdrawal_statistics_to_excel
+
+        count_referral_user = await get_count_referral_user(callback.from_user.id)
+        balance = await get_referral_balance(callback.from_user.id)
+        link_ref = await get_referral_link(callback.message)
+
+        message_text = (
+            _('referral_menu_text', lang)
+            .format(
+                link_ref=link_ref,
+                referral_percent=CONFIG.referral_percent,
+                minimum_amount=CONFIG.minimum_withdrawal_amount,
+                count_referral_user=count_referral_user,
+                balance=balance,
+                link_referral_conditions="https://heavy-weight-a87.notion.site/NoBorderVPN-18d2ac7dfb078050a322df104dcaa4c2",
+                link_free_promotion="https://heavy-weight-a87.notion.site/18e2ac7dfb0780728d6ddfa0c8f88410",
+                link_paid_promotion="https://heavy-weight-a87.notion.site/NoBorderVPN-18e2ac7dfb078096a214cbe65782b386",
+            )
+        )
+
+        # Отправляем текстовое сообщение вместо фото
+        try:
+            await callback.message.edit_text(
+                text=message_text,
+                reply_markup=await share_link(link_ref, lang, balance)
+            )
+        except:
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=message_text,
+                reply_markup=await share_link(link_ref, lang, balance)
+            )
+
+        # Отправляем Excel файлы
+        affiliate_clients = await export_affiliate_statistics_to_excel(callback.from_user.id)
+        withdrawals = await export_withdrawal_statistics_to_excel(callback.from_user.id)
+
+        doc1 = BufferedInputFile(file=affiliate_clients.getvalue(), filename="affiliate_clients.xlsx")
+        doc2 = BufferedInputFile(file=withdrawals.getvalue(), filename="withdrawals.xlsx")
+
+        await bot.send_media_group(
+            callback.from_user.id,
+            media=[
+                InputMediaDocument(media=doc1, caption="📋 Статистика по привлечённым клиентам"),
+                InputMediaDocument(media=doc2, caption="💵  Статистика по выплатам"),
+            ]
+        )
 
     elif action == 'bonus':
         # Показываем бонусное меню (promo code)
@@ -681,7 +896,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         for row in kb.inline_keyboard:
             for button in row:
                 kb_with_back.button(text=button.text, callback_data=button.callback_data)
-        kb_with_back.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         kb_with_back.adjust(1)
 
         try:
@@ -695,12 +910,142 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 reply_markup=kb_with_back.as_markup()
             )
 
+    elif action == 'free_trial':
+        # Показываем меню выбора типа VPN для пробного доступа
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="📡 Единая подписка (рекомендуем)",
+            callback_data=MainMenuAction(action='subscription_url')
+        )
+        builder.button(
+            text="🪐 Outline VPN",
+            callback_data=MainMenuAction(action='outline')
+        )
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.adjust(1)
+
+        try:
+            await callback.message.edit_text(
+                text="🆓 <b>Пробный доступ на 3 дня</b>\n\n"
+                     "Выберите способ подключения:\n\n"
+                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
+                     "• Один URL для всех серверов\n"
+                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
+                     "• Автоматическое обновление списка серверов\n"
+                     "• Проще в использовании\n\n"
+                     "🪐 <b>Outline VPN</b>\n"
+                     "• Классический вариант\n"
+                     "• Отдельный ключ для каждого сервера\n"
+                     "• Протокол: Shadowsocks (Outline)",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except:
+            await callback.message.answer(
+                text="🆓 <b>Пробный доступ на 3 дня</b>\n\n"
+                     "Выберите способ подключения:\n\n"
+                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
+                     "• Один URL для всех серверов\n"
+                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
+                     "• Автоматическое обновление списка серверов\n"
+                     "• Проще в использовании\n\n"
+                     "🪐 <b>Outline VPN</b>\n"
+                     "• Классический вариант\n"
+                     "• Отдельный ключ для каждого сервера\n"
+                     "• Протокол: Shadowsocks (Outline)",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+
+    elif action == 'my_keys':
+        # Показываем меню выбора типа VPN для получения ключей
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="📡 Единая подписка (рекомендуем)",
+            callback_data=MainMenuAction(action='subscription_url')
+        )
+        builder.button(
+            text="🪐 Outline VPN",
+            callback_data=MainMenuAction(action='outline')
+        )
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.adjust(1)
+
+        try:
+            await callback.message.edit_text(
+                text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
+                     "• Один URL для всех серверов\n"
+                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
+                     "• Автоматическое обновление списка серверов\n"
+                     "• Проще в использовании\n\n"
+                     "🪐 <b>Outline VPN</b>\n"
+                     "• Классический вариант\n"
+                     "• Отдельный ключ для каждого сервера\n"
+                     "• Протокол: Shadowsocks (Outline)",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except:
+            await callback.message.answer(
+                text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
+                     "• Один URL для всех серверов\n"
+                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
+                     "• Автоматическое обновление списка серверов\n"
+                     "• Проще в использовании\n\n"
+                     "🪐 <b>Outline VPN</b>\n"
+                     "• Классический вариант\n"
+                     "• Отдельный ключ для каждого сервера\n"
+                     "• Протокол: Shadowsocks (Outline)",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+
+    elif action == 'bonuses':
+        # Объединенное меню бонусов и рефералов
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        person = await get_person(callback.from_user.id)
+
+        # Создаем меню с обеими опциями
+        builder = InlineKeyboardBuilder()
+        builder.button(text="👥 Реферальная программа", callback_data=MainMenuAction(action='referral'))
+        builder.button(text="🎁 Ввести промокод", callback_data=MainMenuAction(action='bonus'))
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.adjust(1)
+
+        try:
+            await callback.message.edit_text(
+                text=f"💰 <b>Бонусы и друзья</b>\n\n"
+                     f"💵 Ваш баланс бонусов: {person.referral_balance} руб.\n"
+                     f"💳 Основной баланс: {person.balance} руб.\n\n"
+                     f"Выберите действие:",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except:
+            await callback.message.answer(
+                text=f"💰 <b>Бонусы и друзья</b>\n\n"
+                     f"💵 Ваш баланс бонусов: {person.referral_balance} руб.\n"
+                     f"💳 Основной баланс: {person.balance} руб.\n\n"
+                     f"Выберите действие:",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+
     elif action == 'help':
         # Обновляем сообщение вместо отправки нового
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
         builder = InlineKeyboardBuilder()
         builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
         builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
-        builder.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         try:
@@ -715,28 +1060,118 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'admin':
-        # Перенаправляем в админ панель
-        from bot.handlers.admin.main import admin_panel
-        await admin_panel(callback.message, state)
+        # Inline-версия админ панели
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    elif action == 'back_to_menu':
-        # Возврат в главное меню
-        person = await get_person(callback.from_user.id)
+        builder = InlineKeyboardBuilder()
+        builder.button(text="👥 Управление пользователями", callback_data="admin_users")
+        builder.button(text="🎟️ Промокоды", callback_data="admin_promo")
+        builder.button(text="🖥️ Управление серверами", callback_data="admin_servers")
+        builder.button(text="👨‍👩‍👧‍👦 Реферальная система", callback_data="admin_reff")
+        builder.button(text="📢 Рассылка", callback_data="admin_mailing")
+        builder.button(text="👥 Группы", callback_data="admin_groups")
+        builder.button(text="⭐ Супер предложение", callback_data="admin_super_offer")
+        builder.button(text="🔄 Регенерация ключей", callback_data="admin_regenerate")
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.adjust(1)
+
         try:
-            # Пробуем отредактировать текст
             await callback.message.edit_text(
-                text=_('start_message', lang),
-                reply_markup=await user_menu_inline(person, lang)
+                text="⚙️ <b>Панель администратора</b>\n\n"
+                     "Выберите действие:",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
         except:
-            # Если не получилось (например, сообщение с фото), удаляем и отправляем новое
             try:
                 await callback.message.delete()
             except:
                 pass
             await bot.send_message(
                 chat_id=callback.from_user.id,
-                text=_('start_message', lang),
+                text="⚙️ <b>Панель администратора</b>\n\n"
+                     "Выберите действие:",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+
+    # Обработчики для админских кнопок
+    elif callback.data == 'admin_users':
+        from bot.handlers.admin.user_management import command as user_management_handler
+        await user_management_handler(callback.message, state)
+
+    elif callback.data == 'admin_promo':
+        from bot.handlers.admin.referal_admin import promo_handler
+        await promo_handler(callback.message, state)
+
+    elif callback.data == 'admin_servers':
+        from bot.handlers.admin.main import command as servers_handler
+        await servers_handler(callback.message, state)
+
+    elif callback.data == 'admin_reff':
+        from bot.handlers.admin.referal_admin import referral_system_handler
+        await referral_system_handler(callback.message, state)
+
+    elif callback.data == 'admin_mailing':
+        from bot.handlers.admin.main import out_message_bot
+        await out_message_bot(callback.message, state)
+
+    elif callback.data == 'admin_groups':
+        from bot.handlers.admin.group_mangment import group_panel
+        await group_panel(callback.message, state)
+
+    elif callback.data == 'admin_super_offer':
+        from bot.handlers.admin.main import start_super_offer_dialog
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        # Super offer uses aiogram-dialog, need to get dialog manager from middleware
+        # For now, send message that this function requires dialog manager
+        await callback.message.edit_text(
+            text="⭐ Супер предложение\n\nЭта функция использует специальный dialog. Пожалуйста, используйте команду из текстового меню.",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="⬅️ Назад",
+                callback_data=MainMenuAction(action='admin')
+            ).as_markup()
+        )
+        return
+
+    elif callback.data == 'admin_regenerate':
+        from bot.handlers.admin.main import regenerate_keys_menu
+        await regenerate_keys_menu(callback.message, state)
+
+    elif action == 'back_to_menu':
+        # Возврат в главное меню
+        from bot.misc.util import CONFIG
+        from bot.keyboards.inline.user_inline import user_menu_inline
+        from datetime import datetime
+
+        person = await get_person(callback.from_user.id)
+        subscription_end = datetime.utcfromtimestamp(
+            int(person.subscription) + CONFIG.UTC_time * 3600
+        ).strftime('%d.%m.%Y %H:%M')
+
+        message_text = _('start_message', lang).format(
+            subscription_end=subscription_end,
+            tgid=person.tgid,
+            balance=person.balance,
+            referral_money=person.referral_balance
+        )
+
+        try:
+            # Пробуем отредактировать текст
+            await callback.message.edit_text(
+                text=message_text,
+                reply_markup=await user_menu_inline(person, lang)
+            )
+        except:
+            # Если не получилось, удаляем и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=message_text,
                 reply_markup=await user_menu_inline(person, lang)
             )
 

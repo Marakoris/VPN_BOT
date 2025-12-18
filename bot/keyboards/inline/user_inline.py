@@ -19,35 +19,37 @@ _ = Localization.text
 
 async def choosing_payment_option_keyboard(config, lang, price: int, days_count: int,
                                            price_on_db: int) -> InlineKeyboardMarkup:
+    from bot.misc.callbackData import MainMenuAction
+
     kb = InlineKeyboardBuilder()
     if config.tg_wallet_token != "":
         kb.button(
-            text=_('payments_wallet_pay_btn', lang),
+            text='👛 Кошелёк                            ',
             callback_data=ChoosingPayment(payment='WalletPay', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
     if config.yookassa_shop_id != "" and config.yookassa_secret_key != "":
         kb.button(
-            text=_('payments_yookassa_btn', lang),
+            text='🇷🇺 Юкасса                            ',
             callback_data=ChoosingPayment(payment='KassaSmart', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
     if config.cryptomus_key != "" and config.cryptomus_uuid != "":
         kb.button(
-            text=_('payments_cryptomus_btn', lang),
+            text='🎲 Cryptomus                         ',
             callback_data=ChoosingPayment(payment='Cryptomus', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
     if config.crypto_bot_api != '':
         kb.button(
-            text='🦋 CryptoBot',
+            text='🦋 CryptoBot                          ',
             callback_data=ChoosingPayment(payment='CryptoBot', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
     if config.lava_token_secret != "" and config.lava_id_project != "":
         kb.button(
-            text=_('payments_lava_btn', lang),
+            text='🌋 Lava                                 ',
             callback_data=ChoosingPayment(payment='Lava', price=price, days_count=days_count, price_on_db=price_on_db)
         )
     if config.token_stars != 'off':
         kb.button(
-            text='Stars ⭐️',
+            text='⭐️ Stars                                ',
             callback_data=ChoosingPayment(payment='Stars', price=price, days_count=days_count, price_on_db=price_on_db)
         )
     if (
@@ -60,6 +62,13 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
     ):
         kb.button(text=_('payments_not_btn_1', lang), callback_data='none')
         kb.button(text=_('payments_not_btn_2', lang), callback_data='none')
+
+    # Добавляем кнопку "Назад"
+    kb.button(
+        text="⬅️ Назад                                ",
+        callback_data=MainMenuAction(action='subscription')
+    )
+
     kb.adjust(1)
     return kb.as_markup()
 
@@ -248,71 +257,45 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
     from datetime import datetime
 
     kb = InlineKeyboardBuilder()
-    time_sub = datetime.utcfromtimestamp(
-        int(person.subscription) + CONFIG.UTC_time * 3600).strftime(
-        '%d.%m.%Y %H:%M')
     time_now = int(time.time())
 
-    # 1. Subscription info
-    if int(person.subscription) >= time_now:
+    # 0. Admin panel (в начале для админов)
+    if person.tgid in CONFIG.admins_ids:
         kb.button(
-            text=_('subscription_time_btn', lang).format(time=time_sub),
-            callback_data='subscription_info'
-        )
-    else:
-        kb.button(
-            text=_('subscription_not_time_btn', lang).format(time=time_sub),
-            callback_data='subscription_info'
+            text="⚙️ Админ панель                        ",
+            callback_data=MainMenuAction(action='admin')
         )
 
-    # 2. Main connection buttons
-    kb.button(
-        text="📲 Subscription URL",
-        callback_data=MainMenuAction(action='subscription_url')
-    )
-    kb.button(
-        text="🔑 Outline VPN",
-        callback_data=MainMenuAction(action='outline')
-    )
+    # 1. Попробовать бесплатно (только если подписка истекла)
+    if int(person.subscription) < time_now:
+        kb.button(
+            text="🆓 Попробовать бесплатно (3 дня)",
+            callback_data=MainMenuAction(action='free_trial')
+        )
 
-    # 3. Subscription management
+    # 2. Купить подписку
     kb.button(
-        text=_('subscription_btn', lang),
+        text="💳 Купить подписку                     ",
         callback_data=MainMenuAction(action='subscription')
     )
 
-    # 4. Referral and bonus
+    # 3. Мои ключи VPN
     kb.button(
-        text=_('affiliate_btn', lang),
-        callback_data=MainMenuAction(action='referral')
-    )
-    kb.button(
-        text=_('bonus_btn', lang),
-        callback_data=MainMenuAction(action='bonus')
+        text="🔑 Мои ключи VPN                      ",
+        callback_data=MainMenuAction(action='my_keys')
     )
 
-    # 5. Info and settings
+    # 4. Бонусы и друзья (объединили referral + bonus)
     kb.button(
-        text=_('about_vpn_btn', lang),
-        callback_data=MainMenuAction(action='about')
-    )
-    kb.button(
-        text=_('language_btn', lang),
-        callback_data=MainMenuAction(action='language')
+        text="💰 Бонусы и друзья                    ",
+        callback_data=MainMenuAction(action='bonuses')
     )
 
-    # 6. Help
+    # 5. Помощь
     kb.button(
-        text=_('help_btn', lang),
+        text="❓ Помощь и поддержка               ",
         callback_data=MainMenuAction(action='help')
     )
-
-    # 7. Admin panel
-    if person.tgid in CONFIG.admins_ids:
-        kb.button(
-            text=_('admin_panel_btn', lang),
-            callback_data=MainMenuAction(action='admin')
-        )
 
     kb.adjust(1)
     return kb.as_markup()

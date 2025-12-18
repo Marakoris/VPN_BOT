@@ -63,10 +63,28 @@ async def deposit_balance(
     # Выбор способа пополнения
     await call.message.delete()
     lang = await get_lang(call.from_user.id, state)
+
+    # Формируем информацию о тарифе
+    months = callback_data.days_count // 31  # Приблизительное количество месяцев
+    if months == 1:
+        period_text = "1 месяц"
+    elif months in [2, 3, 4]:
+        period_text = f"{months} месяца"
+    else:
+        period_text = f"{months} месяцев"
+
+    message_text = (
+        f"💳 <b>Оплата подписки</b>\n\n"
+        f"📅 <b>Тариф:</b> {period_text}\n"
+        f"💰 <b>Сумма:</b> {callback_data.price} ₽\n\n"
+        f"Выберите способ оплаты:"
+    )
+
     await call.message.answer(
-        _('method_replenishment', lang),
+        message_text,
         reply_markup=await choosing_payment_option_keyboard(CONFIG, lang, price=callback_data.price,
-                                                            days_count=callback_data.days_count, price_on_db=callback_data.price_on_db)
+                                                            days_count=callback_data.days_count, price_on_db=callback_data.price_on_db),
+        parse_mode="HTML"
     )
 
 
