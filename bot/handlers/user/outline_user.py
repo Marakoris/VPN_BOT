@@ -84,7 +84,7 @@ async def outline_menu(message: Message, state: FSMContext) -> None:
     from bot.misc.callbackData import MainMenuAction
     kb.row(InlineKeyboardButton(
         text="⬅️ Назад",
-        callback_data=MainMenuAction(action='back_to_menu')
+        callback_data=MainMenuAction(action='back_to_menu').pack()
     ))
 
     # Check if user has active subscription (keys already created by admin)

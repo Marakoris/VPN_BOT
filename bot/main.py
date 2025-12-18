@@ -35,14 +35,16 @@ async def start_bot():
         storage=MemoryStorage(),
         fsm_strategy=FSMStrategy.USER_IN_CHAT
     )
+
+    # Setup dialogs middleware BEFORE routers
+    setup_dialogs(dp)
+
     # Register all the routers from handlers package
     dp.include_routers(
         user_router,
         admin_router,
         dialog
     )
-
-    setup_dialogs(dp)
 
     dp.update.outer_middleware(LastInteractionMiddleware())
 

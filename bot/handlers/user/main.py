@@ -619,9 +619,10 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
 @user_router.callback_query(MainMenuAction.filter())
 async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMenuAction, state: FSMContext, bot: Bot):
     """Обработчик для inline-кнопок главного меню"""
-    await callback.answer()
-
     action = callback_data.action
+    log.info(f"[MainMenu] Handler triggered! Action: {action}, User: {callback.from_user.id}")
+
+    await callback.answer()
     lang = await get_lang(callback.from_user.id, state)
 
     if action == 'subscription_url':
@@ -652,8 +653,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 callback_data="activate_subscription"
             ))
             kb.row(InlineKeyboardButton(
-                text=_('back_btn', lang),
-                callback_data=MainMenuAction(action='my_keys')
+                text="⬅️ Назад",
+                callback_data=MainMenuAction(action='my_keys').pack()
             ))
 
             # Delete old message and send new one
@@ -695,8 +696,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             url="https://apps.apple.com/app/shadowrocket/id932747118"
         ))
         kb.row(InlineKeyboardButton(
-            text=_('back_btn', lang),
-            callback_data=MainMenuAction(action='my_keys')
+            text="⬅️ Назад",
+            callback_data=MainMenuAction(action='my_keys').pack()
         ))
 
         message_text = (
@@ -785,7 +786,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         # Add back button
         kb.row(InlineKeyboardButton(
             text="⬅️ Назад",
-            callback_data=MainMenuAction(action='my_keys')
+            callback_data=MainMenuAction(action='my_keys').pack()
         ))
 
         caption = (
@@ -1210,5 +1211,5 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 def create_back_to_menu_keyboard(lang):
     """Создает клавиатуру с кнопкой Назад"""
     kb = InlineKeyboardBuilder()
-    kb.button(text=_('back_btn', lang), callback_data=MainMenuAction(action='back_to_menu'))
+    kb.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu').pack())
     return kb.as_markup()
