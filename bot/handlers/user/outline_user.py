@@ -80,6 +80,13 @@ async def outline_menu(message: Message, state: FSMContext) -> None:
             )
         )
 
+    # Add back button
+    from bot.misc.callbackData import MainMenuAction
+    kb.row(InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='back_to_menu')
+    ))
+
     # Check if user has active subscription (keys already created by admin)
     if person.subscription_active:
         caption = (
@@ -96,10 +103,10 @@ async def outline_menu(message: Message, state: FSMContext) -> None:
             "💡 Переключайтесь между серверами в любое время"
         )
 
-    await message.answer_photo(
-        photo=FSInputFile('bot/img/choose_protocol.jpg'),
-        caption=caption,
-        reply_markup=kb.as_markup()
+    await message.answer(
+        text=caption,
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
     )
 
 
@@ -107,7 +114,8 @@ async def outline_menu(message: Message, state: FSMContext) -> None:
 async def connect_outline(
     call: CallbackQuery,
     callback_data: ChooseOutlineServer,
-    state: FSMContext
+    state: FSMContext,
+    bot
 ) -> None:
     """
     Connect to selected Outline server
@@ -180,16 +188,21 @@ async def connect_outline(
 
     connect_message = _('how_to_connect_info_outline', lang)
 
-    await call.message.answer_photo(
-        photo=FSInputFile('bot/img/outline.jpg'),
-        caption=connect_message,
-        reply_markup=await instruction_manual(server.type_vpn, lang)
+    # Send instructions without photo
+    await bot.send_message(
+        chat_id=call.from_user.id,
+        text=connect_message,
+        reply_markup=await instruction_manual(server.type_vpn, lang),
+        parse_mode="HTML"
     )
 
-    await call.message.answer(
-        f"🔑 <b>Ваш Outline ключ:</b>\n\n"
-        f"<code>{config}</code>\n\n"
-        f"💡 Скопируйте ключ и вставьте в приложение Outline"
+    # Send key
+    await bot.send_message(
+        chat_id=call.from_user.id,
+        text=f"🔑 <b>Ваш Outline ключ:</b>\n\n"
+             f"<code>{config}</code>\n\n"
+             f"💡 Скопируйте ключ и вставьте в приложение Outline",
+        parse_mode="HTML"
     )
 
     await call.answer()

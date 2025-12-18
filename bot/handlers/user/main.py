@@ -619,8 +619,6 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
 @user_router.callback_query(MainMenuAction.filter())
 async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMenuAction, state: FSMContext, bot: Bot):
     """Обработчик для inline-кнопок главного меню"""
-    await callback.answer()
-
     action = callback_data.action
     lang = await get_lang(callback.from_user.id, state)
 
@@ -630,6 +628,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         if not person:
             await callback.message.answer("❌ User not found")
+            await callback.answer()
             return
 
         # Import subscription functions
@@ -642,6 +641,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         if 'error' in status:
             await callback.message.answer("❌ Error getting subscription status")
+            await callback.answer()
             return
 
         # If no token or not active, offer to activate
@@ -655,8 +655,16 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 text=_('back_btn', lang),
                 callback_data=MainMenuAction(action='my_keys')
             ))
-            await callback.message.answer(
-                "📡 <b>Единая подписка на VPN</b>\n\n"
+
+            # Delete old message and send new one
+            try:
+                await callback.message.delete()
+            except:
+                pass
+
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text="📡 <b>Единая подписка на VPN</b>\n\n"
                 "⚠️ Подписка не активирована\n\n"
                 "🔐 <b>Что вы получите:</b>\n"
                 "• Один URL для всех серверов\n"
@@ -667,6 +675,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 reply_markup=kb.as_markup(),
                 parse_mode="HTML"
             )
+            await callback.answer()
             return
 
         # User has active subscription - show URL
@@ -708,12 +717,23 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             "💡 При добавлении новых серверов - просто обновите подписку в приложении"
         )
 
-        await callback.message.answer(message_text, reply_markup=kb.as_markup())
+        # Delete old message and send new one
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        await bot.send_message(
+            chat_id=callback.from_user.id,
+            text=message_text,
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
+        await callback.answer()
 
     elif action == 'outline':
         # Inline version of outline menu handler
         import time
-        from aiogram.types import FSInputFile
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         from aiogram.types import InlineKeyboardButton
         from bot.misc.callbackData import ChooseOutlineServer
@@ -723,6 +743,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         if not person:
             await callback.message.answer("❌ User not found")
+            await callback.answer()
             return
 
         # Check subscription
@@ -736,6 +757,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 _('ended_sub_message', lang),
                 reply_markup=kb.as_markup()
             )
+            await callback.answer()
             return
 
         # Get Outline servers (type_vpn=0)
@@ -747,6 +769,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 "❌ Outline серверы временно недоступны\n\n"
                 "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
             )
+            await callback.answer()
             return
 
         if not outline_servers:
@@ -754,6 +777,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 "❌ Нет доступных Outline серверов\n\n"
                 "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
             )
+            await callback.answer()
             return
 
         # Show server selection menu
@@ -764,6 +788,12 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 callback_data=ChooseOutlineServer(id_server=server.id).pack()
             ))
 
+        # Add back button
+        kb.row(InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=MainMenuAction(action='my_keys')
+        ))
+
         caption = (
             "🔑 <b>Outline VPN</b>\n\n"
             "Выберите сервер для подключения:\n\n"
@@ -771,11 +801,19 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             "💡 Переключайтесь между серверами в любое время"
         )
 
-        await callback.message.answer_photo(
-            photo=FSInputFile('bot/img/choose_protocol.jpg'),
-            caption=caption,
-            reply_markup=kb.as_markup()
+        # Delete old message and send new without photo
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        await bot.send_message(
+            chat_id=callback.from_user.id,
+            text=caption,
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
         )
+        await callback.answer()
 
     elif action == 'subscription':
         # Показываем меню подписки
