@@ -9,8 +9,11 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import (
     Message,
     CallbackQuery,
-    BufferedInputFile
+    BufferedInputFile,
+    InlineKeyboardButton,
+    ReplyKeyboardRemove
 )
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.formatting import Text, Code, Bold
 
 from bot.database.methods.delete import delete_static_user_bd
@@ -303,11 +306,11 @@ async def edit_balance_state(message: Message, state: FSMContext) -> None:
         )
         try:
             lang_user = await get_lang(data['id_user'])
+            # Send balance update notification (system message, no keyboard)
             await message.bot.send_message(
                 data['id_user'],
                 _('user_message_input_balance_admin_m', lang_user)
-                .format(balance=person.balance),
-                reply_markup=await balance_menu(person, lang_user)
+                .format(balance=person.balance)
             )
         except Exception as e:
             log.info(e, 'user blocked bot')
@@ -366,14 +369,26 @@ async def add_time_user_state(message: Message, state: FSMContext) -> None:
         return
     try:
         client = await get_person(client.tgid)
+
+        # Create inline keyboard with subscription info button
+        from bot.misc.callbackData import MainMenuAction
+        kb = InlineKeyboardBuilder()
+        kb.row(
+            InlineKeyboardButton(
+                text="🔑 Мои ключи",
+                callback_data=MainMenuAction(action='my_keys').pack()
+            )
+        )
+
+        # Send main message with inline button (keep reply keyboard)
         await message.bot.send_message(
             client.tgid,
-            _('donated_days', client.lang),
-            reply_markup=await user_menu(client, client.lang),
+            _('donated_days', client.lang).format(days=count_day),
+            reply_markup=kb.as_markup(),
             parse_mode=ParseMode.HTML
         )
     except Exception as e:
-        log.info(e, 'user block bot')
+        log.info(f'user block bot: {e}')
         await message.answer(_('error_input_count_day_sub_success', lang))
         return
 
@@ -417,14 +432,26 @@ async def delete_time_user_callback(call: CallbackQuery, state: FSMContext):
         return
     try:
         client = await get_person(client.tgid)
+
+        # Create inline keyboard with "Renew subscription" button
+        from bot.misc.callbackData import MainMenuAction
+        kb = InlineKeyboardBuilder()
+        kb.row(
+            InlineKeyboardButton(
+                text=_('to_extend_btn', client.lang),
+                callback_data=MainMenuAction(action='subscription').pack()
+            )
+        )
+
+        # Send main message with inline button (keep reply keyboard)
         await call.message.bot.send_message(
             client.tgid,
             _('ended_sub_message', client.lang),
-            reply_markup=await user_menu(client, client.lang)
+            reply_markup=kb.as_markup()
         )
     except Exception as e:
         await call.message.answer(_('error_user_delete_time_m', lang))
-        log.info(e, 'user block bot')
+        log.info(f'user block bot: {e}')
 
 
 @user_management_router.message(F.text.in_(btn_text('admin_static_user_btn')))
@@ -633,7 +660,12 @@ async def edit_user_callback_query(message: Message, state: FSMContext):
     )
     data = await state.get_data()
     try:
-        await message.bot.send_message(int(data['tgid']), **text.as_kwargs())
+        # Send admin message with ReplyKeyboardRemove to hide user menu
+        await message.bot.send_message(
+            int(data['tgid']),
+            **text.as_kwargs(),
+            reply_markup=ReplyKeyboardRemove()
+        )
         await message.answer(
             _('message_from_success', lang),
             reply_markup=await admin_user_menu(lang)

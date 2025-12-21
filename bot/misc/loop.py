@@ -3,7 +3,7 @@ import logging
 import time
 
 from aiogram import Bot
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, ReplyKeyboardRemove
 
 from bot.keyboards.reply.user_reply import user_menu
 from bot.database.methods.get import (
@@ -14,6 +14,9 @@ from bot.database.methods.get import (
 from bot.database.methods.update import (
     person_banned_true,
     person_one_day_true,
+    person_two_days_true,
+    person_three_days_true,
+    update_last_expiry_notification,
     server_space_update, add_time_person, reduce_balance_person
 )
 from bot.misc.VPN.ServerManager import ServerManager
@@ -46,28 +49,136 @@ async def loop(bot: Bot):
 
 async def check_date(person, bot: Bot):
     try:
-        if person.subscription <= int(time.time()):
+        current_time = int(time.time())
+
+        if person.subscription <= current_time:
+            # Subscription has expired
             if await check_auto_renewal(
                     person,
                     bot,
                     _('loop_autopay_text', person.lang)
             ):
                 return
-            if person.server is not None:
-                await delete_key(person)
-            await person_banned_true(person.tgid)
-            await bot.send_photo(
-                chat_id=person.tgid,
-                photo=FSInputFile('bot/img/ended_subscribe.jpg'),
-                caption=_('ended_sub_message', person.lang),
-                reply_markup=await user_menu(person, person.lang)
+
+            # Check if we need to send daily reminder
+            last_notification = person.last_expiry_notification or 0
+            time_since_last = current_time - last_notification
+
+            # Send reminder if it's the first time OR if 24 hours have passed
+            if time_since_last >= COUNT_SECOND_DAY:
+                # Delete keys only on first expiration
+                if last_notification == 0 and person.server is not None:
+                    await delete_key(person)
+
+                await person_banned_true(person.tgid)
+
+                # Send notification with "Renew subscription" button
+                from bot.misc.callbackData import MainMenuAction
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                from aiogram.types import InlineKeyboardButton
+
+                kb = InlineKeyboardBuilder()
+                kb.row(
+                    InlineKeyboardButton(
+                        text=_('to_extend_btn', person.lang),
+                        callback_data=MainMenuAction(action='subscription').pack()
+                    )
+                )
+
+                # Determine message based on how long subscription has been expired
+                days_expired = (current_time - person.subscription) // COUNT_SECOND_DAY
+
+                if days_expired == 0:
+                    # Just expired
+                    await bot.send_photo(
+                        chat_id=person.tgid,
+                        photo=FSInputFile('bot/img/ended_subscribe.jpg'),
+                        caption=_('ended_sub_message', person.lang),
+                        reply_markup=kb.as_markup()
+                    )
+                else:
+                    # Daily reminder
+                    await bot.send_message(
+                        chat_id=person.tgid,
+                        text=f"⏰ Напоминание: Ваша подписка истекла {days_expired} дн. назад\n\n" +
+                             _('ended_sub_message', person.lang),
+                        reply_markup=kb.as_markup()
+                    )
+
+                # Update last notification timestamp
+                await update_last_expiry_notification(person.tgid)
+        # Check for 3-day reminder
+        elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY * 3
+              and person.subscription > int(time.time()) + COUNT_SECOND_DAY * 2
+              and not person.notion_threedays):
+            await person_three_days_true(person.tgid)
+
+            # Send 3-day reminder with "Renew subscription" button
+            from bot.misc.callbackData import MainMenuAction
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from aiogram.types import InlineKeyboardButton
+
+            kb = InlineKeyboardBuilder()
+            kb.row(
+                InlineKeyboardButton(
+                    text=_('to_extend_btn', person.lang),
+                    callback_data=MainMenuAction(action='subscription').pack()
+                )
             )
+
+            await bot.send_message(
+                person.tgid,
+                _('alert_to_renew_sub', person.lang) + "\n\n⏰ Осталось 3 дня",
+                reply_markup=kb.as_markup()
+            )
+
+        # Check for 2-day reminder
+        elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY * 2
+              and person.subscription > int(time.time()) + COUNT_SECOND_DAY
+              and not person.notion_twodays):
+            await person_two_days_true(person.tgid)
+
+            # Send 2-day reminder with "Renew subscription" button
+            from bot.misc.callbackData import MainMenuAction
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from aiogram.types import InlineKeyboardButton
+
+            kb = InlineKeyboardBuilder()
+            kb.row(
+                InlineKeyboardButton(
+                    text=_('to_extend_btn', person.lang),
+                    callback_data=MainMenuAction(action='subscription').pack()
+                )
+            )
+
+            await bot.send_message(
+                person.tgid,
+                _('alert_to_renew_sub', person.lang) + "\n\n⏰ Осталось 2 дня",
+                reply_markup=kb.as_markup()
+            )
+
+        # Check for 1-day reminder
         elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY
               and not person.notion_oneday):
             await person_one_day_true(person.tgid)
+
+            # Send 1-day reminder with "Renew subscription" button
+            from bot.misc.callbackData import MainMenuAction
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from aiogram.types import InlineKeyboardButton
+
+            kb = InlineKeyboardBuilder()
+            kb.row(
+                InlineKeyboardButton(
+                    text=_('to_extend_btn', person.lang),
+                    callback_data=MainMenuAction(action='subscription').pack()
+                )
+            )
+
             await bot.send_message(
                 person.tgid,
-                _('alert_to_renew_sub', person.lang)
+                _('alert_to_renew_sub', person.lang) + "\n\n⏰ Остался 1 день",
+                reply_markup=kb.as_markup()
             )
         return
     except Exception as e:
@@ -106,16 +217,27 @@ async def check_auto_renewal(person, bot, text):
                         person.tgid
                     )
                     person_new = await get_person(person.tgid)
+
+                    # Send autopay notification with "My keys" button
+                    from bot.misc.callbackData import MainMenuAction
+                    from aiogram.utils.keyboard import InlineKeyboardBuilder
+                    from aiogram.types import InlineKeyboardButton
+
+                    kb = InlineKeyboardBuilder()
+                    kb.row(
+                        InlineKeyboardButton(
+                            text="🔑 Мои ключи",
+                            callback_data=MainMenuAction(action='my_keys').pack()
+                        )
+                    )
+
                     await bot.send_message(
                         person_new.tgid,
                         _('loop_autopay', person_new.lang).format(
                             text=text,
                             mount_count=mount_count
                         ),
-                        reply_markup=await user_menu(
-                            person_new,
-                            person_new.lang
-                        )
+                        reply_markup=kb.as_markup()
                     )
                     return True
                 else:

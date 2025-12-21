@@ -53,6 +53,8 @@ class Persons(Base):
     subscription_token = Column(String(255), nullable=True, unique=True, index=True)  # HMAC токен для subscription URL
     subscription_created_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда создан токен
     subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен
+    free_trial_used = Column(Boolean, default=False)  # Использовал ли пользователь бесплатный пробный период
+    subscription_expired = Column(Boolean, default=False)  # Истекла ли подписка (мягкое ограничение, не бан)
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),

@@ -104,9 +104,32 @@ async def add_time_person(tgid, count_time):
             if person.banned or int(time.time()) >= person.subscription:
                 person.subscription = int(now_time)
                 person.banned = False
+                person.subscription_expired = False  # Сброс флага истечения
+                # Reset notification flags when renewing subscription
+                person.notion_threedays = False
+                person.notion_twodays = False
+                person.notion_oneday = False
+                person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
             else:
                 person.subscription += count_time
+                person.subscription_expired = False  # Сброс флага истечения
+                # Reset notification flags when renewing subscription
+                person.notion_threedays = False
+                person.notion_twodays = False
+                person.notion_oneday = False
+                person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
             await db.commit()
+
+            # Автоматически активировать единую подписку при продлении
+            try:
+                from bot.misc.subscription import activate_subscription
+                await activate_subscription(tgid)
+            except Exception as e:
+                # Логируем ошибку, но не прерываем процесс продления
+                import logging
+                log = logging.getLogger(__name__)
+                log.error(f"Failed to auto-activate subscription for {tgid}: {e}")
+
             return True
         return False
 
@@ -159,6 +182,66 @@ async def person_one_day_false(tgid):
         person = await _get_person(db, tgid)
         if person is not None:
             person.notion_oneday = False
+            await db.commit()
+            return True
+        return False
+
+async def person_three_days_true(tgid):
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.notion_threedays = True
+            await db.commit()
+            return True
+        return False
+
+async def person_two_days_true(tgid):
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.notion_twodays = True
+            await db.commit()
+            return True
+        return False
+
+async def reset_all_notification_flags(tgid):
+    """Reset all notification flags when subscription is renewed"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.notion_threedays = False
+            person.notion_twodays = False
+            person.notion_oneday = False
+            await db.commit()
+            return True
+        return False
+
+async def update_last_expiry_notification(tgid):
+    """Update timestamp of last expiry notification"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.last_expiry_notification = int(time.time())
+            await db.commit()
+            return True
+        return False
+
+async def person_subscription_expired_true(tgid):
+    """Set subscription_expired to True (soft limit for expired subscriptions)"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.subscription_expired = True
+            await db.commit()
+            return True
+        return False
+
+async def person_subscription_expired_false(tgid):
+    """Set subscription_expired to False (subscription renewed/active)"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.subscription_expired = False
             await db.commit()
             return True
         return False

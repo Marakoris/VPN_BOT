@@ -75,7 +75,7 @@ msgid "alert_to_renew_sub_in_three_days"
 msgstr "📅 До окончания подписки осталось 3 дня\nУспейте продлить, чтобы не потерять доступ к сервису.\nНужна помощь? Обращайтесь 👇\n🤖 Бот поддержки @VPN_YouSupport_bot"
 
 msgid "donated_days"
-msgstr "🎉Поздравляю\nАдминистратор добавил вам бесплатные дни подписки 😁😁"
+msgstr "🎉 Поздравляю!\n\nАдминистратор добавил вам <b>{days} дней</b> подписки бесплатно! 😁\n\n✨ Ваша подписка продлена и активирована."
 
 msgid "instruction_iphone_vless"
 msgstr "https://heavy-weight-a87.notion.site/VPN-Vless-ShadowSocks-IPhone-18d2ac7dfb0780a2b7dfdb97d0eb321b"
@@ -128,10 +128,7 @@ msgstr "ПАРТНЕРСКАЯ ПРОГРАММА\n"
 "💵 Минимальная сумма на вывод: <b>{minimum_amount}</b> ₽\n"
 "\n"
 "👥 Количество ваших рефералов → <b>{count_referral_user}</b>\n"
-"💸 Доступно на вывод → <b>{balance}</b> ₽\n"
-"\n"
-"📚 Документация:\n"
-"📖 <a href=\"{link_referral_conditions}\">Условия реферальной программы</a>"
+"💸 Доступно на вывод → <b>{balance}</b> ₽"
 
 msgid "user_share_btn"
 msgstr "📤 Поделиться"
@@ -149,7 +146,7 @@ msgid "referral_system_success"
 msgstr "Заявка на вывод создана, ожидайте поступления средств 👍"
 
 msgid "start_message"
-msgstr "Добро пожаловать в NoBorder-VPN — Ваш личный проводник в мир свободы и безопасности в интернете! 🚀\n\nВаш профиль:\n⏰ Подписка активна до: {subscription_end}\n👤 ID: {tgid}\n💰 Баланс: {balance}\n🤝 Накоплено бонусов: {referral_money}\n\n🚀 Нет лимитов по устройствам в личных целях\n🚀 Без ограничений траффика и скорости\n🚀 Десятки серверов и стран\n🚀 Живая и лояльная поддержка\n🚀 Пользуйся бесплатно за приглашение друзей\n\n👉 Стоимость VPN - от 150 руб./мес"
+msgstr "👤 ID: {tgid}\n{subscription_info}\n🤝 Бонусы: {referral_money} ₽"
 
 msgid "main_message"
 msgstr "🔸Информация о VPN🔸"
@@ -844,7 +841,7 @@ msgid "payments_not_btn_2"
 msgstr "Попробуйте позже"
 
 msgid "to_extend_month_btn"
-msgstr "{count_month} мес. 📅 - {price} ₽"
+msgstr "{count_month} мес. - {price} ₽"
 
 msgid "to_super_offer_btn"
 msgstr "🎁 {count_days} сут. - {price} ₽ 🎁"
