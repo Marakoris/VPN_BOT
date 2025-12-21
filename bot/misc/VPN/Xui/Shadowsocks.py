@@ -31,7 +31,7 @@ class Shadowsocks(XuiBase):
                 email=email
             )
         except pyxui_async.errors.NotFound:
-            return 'User not found'
+            return None
 
     async def add_client(self, name):
         try:
@@ -144,7 +144,7 @@ class Shadowsocks(XuiBase):
         client = await self.get_client(name)
         print(f"[SS] get_client result: type={type(client)}, value={client}")
 
-        if client is None or client == 'User not found' or not isinstance(client, dict):
+        if client is None or not isinstance(client, dict):
             print(f"[SS] Client not found, creating new client...")
             add_result = await self.add_client(name)
             print(f"[SS] add_client result: {add_result}")

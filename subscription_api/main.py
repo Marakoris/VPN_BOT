@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse
 
 # Add parent directory to path for imports
@@ -205,7 +205,10 @@ async def get_subscription(token: str, request: Request):
             # 3. Check subscription status
             if not user.subscription_active:
                 log.info(f"[Subscription API] Inactive subscription for user {user.tgid}")
-                return ""
+                raise HTTPException(
+                    status_code=403,
+                    detail="Subscription not active"
+                )
 
             # 4. Get all active servers (VLESS + Shadowsocks)
             statement = select(Servers).filter(
@@ -280,6 +283,8 @@ async def get_subscription(token: str, request: Request):
 
             return PlainTextResponse(content=content, headers=headers)
 
+    except HTTPException:
+        raise  # Re-raise HTTPException so FastAPI handles it properly
     except Exception as e:
         log.error(f"[Subscription API] Error in subscription endpoint: {e}")
         import traceback

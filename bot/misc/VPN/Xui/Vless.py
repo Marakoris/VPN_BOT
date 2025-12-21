@@ -22,7 +22,7 @@ class Vless(XuiBase):
                 email=email,
             )
         except pyxui_async.errors.NotFound:
-            return 'User not found'
+            return None
 
     async def add_client(self, name):
         try:
@@ -69,7 +69,7 @@ class Vless(XuiBase):
 
             # Получаем существующего клиента
             client = await self.get_client(str(telegram_id))
-            if client == 'User not found':
+            if not client:
                 print(f"[VLESS update_flow] Client {email} not found")
                 return False
 
@@ -101,7 +101,7 @@ class Vless(XuiBase):
             email = f"{telegram_id}_vless"
             print(f"[VLESS] disable_client called for email={email}")
             client = await self.get_client(telegram_id)
-            if client == 'User not found':
+            if not client:
                 print(f"[VLESS] Client not found for disable")
                 return False
 
@@ -132,7 +132,7 @@ class Vless(XuiBase):
             email = f"{telegram_id}_vless"
             print(f"[VLESS] enable_client called for email={email}")
             client = await self.get_client(telegram_id)
-            if client == 'User not found':
+            if not client:
                 print(f"[VLESS] Client not found for enable")
                 return False
 
@@ -159,7 +159,7 @@ class Vless(XuiBase):
     async def get_key_user(self, name, name_key):
         info = await self.get_inbound_server()
         client = await self.get_client(name)
-        if client == 'User not found':
+        if not client:
             await self.add_client(name)
             client = await self.get_client(name)
         stream_settings = json.loads(info['streamSettings'])
