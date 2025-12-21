@@ -15,25 +15,29 @@ class Vless(XuiBase):
 
     async def get_client(self, name):
         try:
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{name}_vless"
             return await self.xui.get_client(
                 inbound_id=self.inbound_id,
-                email=name,
+                email=email,
             )
         except pyxui_async.errors.NotFound:
             return 'User not found'
 
     async def add_client(self, name):
         try:
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{name}_vless"
             response = await self.xui.add_client(
                 inbound_id=self.inbound_id,
-                email=str(name),
+                email=email,
                 uuid=str(uuid.uuid4()),
                 limit_ip=CONFIG.limit_ip,
                 total_gb=CONFIG.limit_GB * 1073741824,
                 flow="xtls-rprx-vision"  # Добавлено для защиты от DPI
             )
             # Логируем ответ для отладки
-            print(f"[VLESS add_client] Response: {response}")
+            print(f"[VLESS add_client] Created with email={email}, Response: {response}")
             if response['success']:
                 return True
             return False
@@ -44,10 +48,12 @@ class Vless(XuiBase):
 
     async def delete_client(self, telegram_id):
         try:
-            print(f"[VLESS delete_client] Deleting email={telegram_id}, inbound_id={self.inbound_id}")
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{telegram_id}_vless"
+            print(f"[VLESS delete_client] Deleting email={email}, inbound_id={self.inbound_id}")
             response = await self.xui.delete_client(
                 inbound_id=self.inbound_id,
-                email=telegram_id,
+                email=email,
             )
             print(f"[VLESS delete_client] Response: {response}")
             return response['success']
@@ -58,16 +64,19 @@ class Vless(XuiBase):
     async def update_client_flow(self, telegram_id, flow="xtls-rprx-vision"):
         """Update existing client to add flow parameter"""
         try:
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{telegram_id}_vless"
+
             # Получаем существующего клиента
             client = await self.get_client(str(telegram_id))
             if client == 'User not found':
-                print(f"[VLESS update_flow] Client {telegram_id} not found")
+                print(f"[VLESS update_flow] Client {email} not found")
                 return False
 
             # Обновляем с flow
             response = await self.xui.update_client(
                 inbound_id=self.inbound_id,
-                email=client['email'],
+                email=email,  # Use email with suffix
                 uuid=client['id'],
                 enable=client['enable'],
                 flow=flow,  # ← Добавляем flow!
@@ -88,18 +97,20 @@ class Vless(XuiBase):
     async def disable_client(self, telegram_id):
         """Disable client without deleting - sets enable=false"""
         try:
-            print(f"[VLESS] disable_client called for telegram_id={telegram_id}")
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{telegram_id}_vless"
+            print(f"[VLESS] disable_client called for email={email}")
             client = await self.get_client(telegram_id)
             if client == 'User not found':
                 print(f"[VLESS] Client not found for disable")
                 return False
 
-            print(f"[VLESS] Disabling client: email={client.get('email')}, uuid={client['id']}")
+            print(f"[VLESS] Disabling client: email={email}, uuid={client['id']}")
             # Update client with enable=false
             response = await self.xui.update_client(
                 inbound_id=self.inbound_id,
                 uuid=client['id'],
-                email=telegram_id,
+                email=email,  # Use email with suffix
                 enable=False,
                 limit_ip=client.get('limitIp', 0),
                 total_gb=client.get('totalGB', 0),
@@ -117,18 +128,20 @@ class Vless(XuiBase):
     async def enable_client(self, telegram_id):
         """Enable client with unlimited traffic (enable=true, total_gb=0)"""
         try:
-            print(f"[VLESS] enable_client called for telegram_id={telegram_id}")
+            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+            email = f"{telegram_id}_vless"
+            print(f"[VLESS] enable_client called for email={email}")
             client = await self.get_client(telegram_id)
             if client == 'User not found':
                 print(f"[VLESS] Client not found for enable")
                 return False
 
-            print(f"[VLESS] Enabling client: email={client.get('email')}, uuid={client['id']}")
+            print(f"[VLESS] Enabling client: email={email}, uuid={client['id']}")
             # Update client with enable=true and unlimited traffic (total_gb=0)
             response = await self.xui.update_client(
                 inbound_id=self.inbound_id,
                 uuid=client['id'],
-                email=telegram_id,
+                email=email,  # Use email with suffix
                 enable=True,
                 limit_ip=client.get('limitIp', CONFIG.limit_ip),
                 total_gb=0,  # 0 = unlimited traffic for subscription users
