@@ -361,3 +361,14 @@ async def update_super_offer(days: int, price: int):
         async with AsyncSession(autoflush=False, bind=engine()) as db:
             db.add(super_offer)
             await db.commit()
+
+
+async def set_free_trial_used(tgid: int, used: bool = True):
+    """Set free_trial_used flag for user"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.free_trial_used = used
+            await db.commit()
+            return True
+        return False

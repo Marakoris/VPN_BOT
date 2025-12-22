@@ -1113,25 +1113,59 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'free_trial':
-        # Показываем меню выбора типа VPN для пробного доступа
+        # Активируем пробный период (3 дня) и показываем меню выбора VPN
+        from bot.database.methods.update import add_time_person, set_free_trial_used
+        from bot.misc.util import CONFIG
+        from datetime import datetime
         from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+        person = await get_person(callback.from_user.id)
+
+        if person is None:
+            await callback.answer("Ошибка: пользователь не найден", show_alert=True)
+            return
+
+        if person.banned:
+            await callback.answer("⛔ Доступ заблокирован", show_alert=True)
+            return
+
+        if person.free_trial_used:
+            await callback.answer("⚠️ Вы уже использовали пробный период", show_alert=True)
+            return
+
+        # Добавляем 3 дня
+        trial_seconds = 3 * CONFIG.COUNT_SECOND_DAY
+        await add_time_person(person.tgid, trial_seconds)
+
+        # Устанавливаем флаг
+        await set_free_trial_used(person.tgid)
+
+        # Обновляем person
+        person = await get_person(callback.from_user.id)
+        end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
+
+        # Показываем сообщение об активации
+        await callback.message.answer(
+            f"🎉 <b>Пробный период активирован!</b>\n\n"
+            f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
+            f"📅 Действует до: <b>{end_date}</b>",
+            parse_mode="HTML"
+        )
+
+        # Показываем меню выбора VPN (как my_keys)
         builder = InlineKeyboardBuilder()
         builder.button(
             text="📡 Единая подписка (рекомендуем)",
-            callback_data=MainMenuAction(action='free_trial_subscription')
+            callback_data=MainMenuAction(action='subscription_url')
         )
         builder.button(
             text="🪐 Outline VPN",
-            callback_data=MainMenuAction(action='free_trial_outline')
+            callback_data=MainMenuAction(action='outline')
         )
         builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
-        try:
-            await callback.message.edit_text(
-                text="🆓 <b>Пробный доступ на 3 дня</b>\n\n"
-                     "Выберите способ подключения:\n\n"
+        menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
                      "📡 <b>Единая подписка</b> (рекомендуем)\n"
                      "• Один URL для всех серверов\n"
                      "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
@@ -1140,23 +1174,17 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                      "🪐 <b>Outline VPN</b>\n"
                      "• Классический вариант\n"
                      "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)",
+                     "• Протокол: Shadowsocks (Outline)")
+
+        try:
+            await callback.message.edit_text(
+                text=menu_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
         except:
             await callback.message.answer(
-                text="🆓 <b>Пробный доступ на 3 дня</b>\n\n"
-                     "Выберите способ подключения:\n\n"
-                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
-                     "• Один URL для всех серверов\n"
-                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
-                     "• Автоматическое обновление списка серверов\n"
-                     "• Проще в использовании\n\n"
-                     "🪐 <b>Outline VPN</b>\n"
-                     "• Классический вариант\n"
-                     "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)",
+                text=menu_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -1191,76 +1219,37 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         await add_time_person(person.tgid, trial_seconds)
 
         # Устанавливаем флаг что пробный период использован
-        from bot.database.main import session_marker
-        async with session_marker() as session:
-            person.free_trial_used = True
-            session.add(person)
-            await session.commit()
+        from bot.database.methods.update import set_free_trial_used
+        await set_free_trial_used(person.tgid)
 
         # Перенаправляем на subscription_url
         # Обновляем person после добавления времени
         person = await get_person(callback.from_user.id)
 
-        # Показываем сообщение об активации с датой окончания
+        # Показываем сообщение об активации с кнопкой подключения
         from datetime import datetime
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import InlineKeyboardButton
+
         end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="🔑 Подключить VPN",
+            callback_data=MainMenuAction(action='my_keys').pack()
+        ))
+        kb.row(InlineKeyboardButton(
+            text="🏠 Главное меню",
+            callback_data=MainMenuAction(action='back_to_menu').pack()
+        ))
+
         await callback.message.answer(
             "🎉 <b>Пробный период активирован!</b>\n\n"
             "✅ Вы получили <b>3 дня бесплатного VPN</b>\n\n"
-            f"📅 Действует до: <b>{end_date}</b>\n\n"
-            "Сейчас покажу вашу подписку и инструкцию по подключению...",
+            f"📅 Действует до: <b>{end_date}</b>",
+            reply_markup=kb.as_markup(),
             parse_mode="HTML"
         )
-
-        # Вызываем обработчик subscription_url
-        from bot.misc.subscription import get_user_subscription_status
-        status = await get_user_subscription_status(person.tgid)
-
-        if not status.get('token') or not status.get('active'):
-            # Активируем подписку
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(
-                text="✅ Активировать подписку",
-                callback_data="activate_subscription"
-            ))
-            kb.row(InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data=MainMenuAction(action='back_to_menu').pack()
-            ))
-
-            await callback.message.answer(
-                "📡 <b>Единая подписка</b>\n\n"
-                "Нажмите кнопку ниже чтобы активировать подписку:",
-                reply_markup=kb.as_markup(),
-                parse_mode="HTML"
-            )
-        else:
-            # Подписка уже активна, показываем URL
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-
-            subscription_url = f"{CONFIG.SUBSCRIPTION_API_URL}/sub/{status['token']}"
-
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(text="📋 Копировать URL", url=subscription_url))
-            kb.row(InlineKeyboardButton(text="📱 V2RayNG (Android)", url="https://play.google.com/store/apps/details?id=com.v2ray.ang"))
-            kb.row(InlineKeyboardButton(text="🍎 Shadowrocket (iOS)", url="https://apps.apple.com/app/shadowrocket/id932747118"))
-            kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu').pack()))
-
-            await callback.message.answer(
-                f"✅ <b>Ваш Subscription URL:</b>\n\n"
-                f"<code>{subscription_url}</code>\n\n"
-                f"📱 <b>Как использовать:</b>\n"
-                f"1. Установите V2RayNG (Android) или Shadowrocket (iOS)\n"
-                f"2. Добавьте подписку используя URL выше\n"
-                f"3. Обновите подписку для получения всех серверов\n"
-                f"4. Подключитесь к любому серверу!",
-                reply_markup=kb.as_markup(),
-                parse_mode="HTML"
-            )
 
     elif action == 'free_trial_outline':
         # Активируем пробный период и показываем Outline
@@ -1292,22 +1281,39 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         await add_time_person(person.tgid, trial_seconds)
 
         # Устанавливаем флаг что пробный период использован
-        from bot.database.main import session_marker
-        async with session_marker() as session:
-            person.free_trial_used = True
-            session.add(person)
-            await session.commit()
+        from bot.database.methods.update import set_free_trial_used
+        await set_free_trial_used(person.tgid)
 
-        # Показываем сообщение об активации
+        # Обновляем person после добавления времени
+        person = await get_person(callback.from_user.id)
+
+        # Показываем сообщение об активации с кнопкой подключения
+        from datetime import datetime
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import InlineKeyboardButton
+
+        end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="🔑 Подключить VPN",
+            callback_data=MainMenuAction(action='my_keys').pack()
+        ))
+        kb.row(InlineKeyboardButton(
+            text="🏠 Главное меню",
+            callback_data=MainMenuAction(action='back_to_menu').pack()
+        ))
+
         await callback.message.answer(
             "🎉 <b>Пробный период активирован!</b>\n\n"
-            "✅ Вам добавлено 3 дня подписки\n\n"
-            "Сейчас покажу доступные Outline серверы...",
+            "✅ Вы получили <b>3 дня бесплатного VPN</b>\n\n"
+            f"📅 Действует до: <b>{end_date}</b>",
+            reply_markup=kb.as_markup(),
             parse_mode="HTML"
         )
 
-        # Перенаправляем на outline меню (вызываем тот же код что и в action='outline')
-        # Но так как мы только что добавили время, проверка subscription пройдет
+    elif action == 'unused_free_trial_outline_old':
+        # Старый код для Outline - оставлен на случай необходимости
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         from aiogram.types import InlineKeyboardButton
         from bot.database.methods.get import get_free_servers
@@ -1368,9 +1374,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
-        try:
-            await callback.message.edit_text(
-                text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+        menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
                      "📡 <b>Единая подписка</b> (рекомендуем)\n"
                      "• Один URL для всех серверов\n"
                      "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
@@ -1379,22 +1383,18 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                      "🪐 <b>Outline VPN</b>\n"
                      "• Классический вариант\n"
                      "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)",
+                     "• Протокол: Shadowsocks (Outline)")
+
+        try:
+            await callback.message.edit_text(
+                text=menu_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
-        except:
+        except Exception as e:
+            log.info(f"[my_keys] edit_text failed: {e}, sending new message")
             await callback.message.answer(
-                text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
-                     "• Один URL для всех серверов\n"
-                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
-                     "• Автоматическое обновление списка серверов\n"
-                     "• Проще в использовании\n\n"
-                     "🪐 <b>Outline VPN</b>\n"
-                     "• Классический вариант\n"
-                     "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)",
+                text=menu_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -1539,6 +1539,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         import time
 
         person = await get_person(callback.from_user.id)
+
+        if person is None:
+            await callback.answer("Ошибка: пользователь не найден", show_alert=True)
+            return
 
         # Определяем статус подписки
         if person.subscription == 0:
