@@ -189,8 +189,9 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
     await callback.message.edit_text("⏳ <b>Activating subscription...</b>\n\nPlease wait, creating keys on all servers...")
 
     # Activate subscription
+    # include_outline=True to activate ALL protocols (VLESS, Shadowsocks, Outline)
     try:
-        token = await activate_subscription(person.tgid)
+        token = await activate_subscription(person.tgid, include_outline=True)
 
         if not token:
             await callback.message.edit_text("❌ <b>Activation failed</b>\n\nPlease try again later or contact support.")

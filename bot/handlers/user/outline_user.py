@@ -176,32 +176,80 @@ async def connect_outline(
         )
         return
 
-    # Success - send key
+    # Success - send key with download buttons
     try:
         await call.message.delete()
         await status_msg.delete()
     except:
         pass
 
-    # Create instructions keyboard
-    from bot.keyboards.inline.user_inline import instruction_manual
+    # Create keyboard with Outline download links (by platform)
+    kb = InlineKeyboardBuilder()
 
-    connect_message = _('how_to_connect_info_outline', lang)
-
-    # Send instructions without photo
-    await bot.send_message(
-        chat_id=call.from_user.id,
-        text=connect_message,
-        reply_markup=await instruction_manual(server.type_vpn, lang),
-        parse_mode="HTML"
+    # 📱 МОБИЛЬНЫЕ (самые популярные)
+    # Android - одна кнопка на всю ширину
+    kb.row(
+        InlineKeyboardButton(
+            text="📱 Android",
+            url="https://play.google.com/store/apps/details?id=org.outline.android.client"
+        )
     )
 
-    # Send key
+    # iPhone - одна кнопка
+    kb.row(
+        InlineKeyboardButton(
+            text="📱 iPhone",
+            url="https://apps.apple.com/us/app/outline-app/id1356177741"
+        )
+    )
+
+    # 🖥 ДЕСКТОП
+    # Windows и macOS в одном ряду
+    kb.row(
+        InlineKeyboardButton(
+            text="🖥 Windows",
+            url="https://github.com/Jigsaw-Code/outline-apps/releases/latest"
+        ),
+        InlineKeyboardButton(
+            text="🖥 macOS",
+            url="https://apps.apple.com/us/app/outline-app/id1356178125"
+        )
+    )
+
+    # Linux - отдельная кнопка
+    kb.row(
+        InlineKeyboardButton(
+            text="🖥 Linux",
+            url="https://github.com/Jigsaw-Code/outline-apps/releases/latest"
+        )
+    )
+
+    # Кнопка "Назад"
+    from bot.misc.callbackData import MainMenuAction
+    kb.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=MainMenuAction(action='back_to_menu').pack()
+        )
+    )
+
+    # Unified message with key and download buttons
+    message_text = (
+        f"🔑 <b>Ваш Outline ключ</b>\n\n"
+        f"<code>{config}</code>\n\n"
+        f"📱 <b>Как использовать:</b>\n"
+        f"1. Скачайте приложение Outline для вашей платформы\n"
+        f"2. Откройте приложение\n"
+        f"3. Нажмите \"Добавить сервер\" / \"Add Server\"\n"
+        f"4. Вставьте ключ выше\n"
+        f"5. Подключайтесь!\n\n"
+        f"💡 Скопируйте ключ нажав на него"
+    )
+
     await bot.send_message(
         chat_id=call.from_user.id,
-        text=f"🔑 <b>Ваш Outline ключ:</b>\n\n"
-             f"<code>{config}</code>\n\n"
-             f"💡 Скопируйте ключ и вставьте в приложение Outline",
+        text=message_text,
+        reply_markup=kb.as_markup(),
         parse_mode="HTML"
     )
 
@@ -210,11 +258,12 @@ async def connect_outline(
 
 async def create_buy_subscription_keyboard(lang):
     """Create keyboard for buying subscription"""
+    from bot.misc.callbackData import MainMenuAction
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
             text=_('to_extend_btn', lang),
-            callback_data="buy_subscription"
+            callback_data=MainMenuAction(action='subscription').pack()
         )
     )
     return kb.as_markup()

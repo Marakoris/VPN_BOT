@@ -121,9 +121,10 @@ async def add_time_person(tgid, count_time):
             await db.commit()
 
             # Автоматически активировать единую подписку при продлении
+            # include_outline=True to activate ALL protocols (VLESS, Shadowsocks, Outline)
             try:
                 from bot.misc.subscription import activate_subscription
-                await activate_subscription(tgid)
+                await activate_subscription(tgid, include_outline=True)
             except Exception as e:
                 # Логируем ошибку, но не прерываем процесс продления
                 import logging

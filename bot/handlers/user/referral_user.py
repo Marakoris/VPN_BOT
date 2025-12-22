@@ -118,28 +118,25 @@ async def referral_system_handler(m: Message, state: FSMContext) -> None:
         reply_markup=await share_link(link_ref, lang, balance)
     )
 
-    affiliate_clients = await export_affiliate_statistics_to_excel(m.from_user.id)
-    withdrawals = await export_withdrawal_statistics_to_excel(m.from_user.id)
-
-    # Создаем файлы в формате BufferedInputFile
-    doc1 = BufferedInputFile(file=affiliate_clients.getvalue(), filename="affiliate_clients.xlsx")
-    doc2 = BufferedInputFile(file=withdrawals.getvalue(), filename="withdrawals.xlsx")
-
-    await m.bot.send_media_group(
-        m.from_user.id,
-        media=[
-            InputMediaDocument(media=doc1, caption="📋 Статистика по привлечённым клиентам"),
-            InputMediaDocument(media=doc2, caption="💵  Статистика по выплатам"),
-        ]
-    )
-
 
 @referral_router.callback_query(F.data == 'promo_code')
 async def successful_payment(call: CallbackQuery, state: FSMContext):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    from bot.misc.callbackData import MainMenuAction
+
     lang = await get_lang(call.from_user.id, state)
+
+    # Создаем inline клавиатуру с кнопкой "Назад"
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='bonus').pack()
+    ))
+
     await call.message.answer(
         _('input_promo_user', lang),
-        reply_markup=await back_menu(lang)
+        reply_markup=kb.as_markup()
     )
     await call.answer()
     await state.set_state(ActivatePromocode.input_promo)
@@ -221,10 +218,16 @@ async def save_payment_method(message: Message, state: FSMContext):
 
 @referral_router.message(ActivatePromocode.input_promo)
 async def promo_check(message: Message, state: FSMContext):
+    from bot.keyboards.inline.user_inline import user_menu_inline
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    from bot.misc.callbackData import MainMenuAction
+
     lang = await get_lang(message.from_user.id, state)
     text_promo = message.text.strip()
     person = await get_person(message.from_user.id)
     promo_code = await get_promo_code(text_promo)
+
     if promo_code is not None:
         try:
             add_days_number = promo_code.add_days
@@ -235,19 +238,43 @@ async def promo_check(message: Message, state: FSMContext):
             await add_time_person(person.tgid, add_days_number * CONFIG.COUNT_SECOND_DAY)
             await message.answer(
                 _('promo_success_user', lang).format(amount=add_days_number),
-                reply_markup=await user_menu(person, lang)
+                reply_markup=await user_menu_inline(person, lang)
             )
+            await state.clear()
         except InvalidRequestError:
+            # Промокод уже использован - предлагаем попробовать другой
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(
+                text="🔄 Попробовать другой промокод",
+                callback_data='promo_code'
+            ))
+            kb.row(InlineKeyboardButton(
+                text="⬅️ Назад в меню",
+                callback_data=MainMenuAction(action='back_to_menu').pack()
+            ))
+
             await message.answer(
                 _('uses_promo_user', lang),
-                reply_markup=await user_menu(person, lang)
+                reply_markup=kb.as_markup()
             )
+            # НЕ очищаем state, чтобы пользователь мог повторить попытку
     else:
+        # Промокод не найден - предлагаем попробовать снова
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="🔄 Попробовать снова",
+            callback_data='promo_code'
+        ))
+        kb.row(InlineKeyboardButton(
+            text="⬅️ Назад в меню",
+            callback_data=MainMenuAction(action='back_to_menu').pack()
+        ))
+
         await message.answer(
             _('referral_promo_code_none', lang),
-            reply_markup=await user_menu(person, lang)
+            reply_markup=kb.as_markup()
         )
-    await state.clear()
+        # НЕ очищаем state, чтобы пользователь мог повторить попытку
 
 
 @referral_router.callback_query(F.data == 'message_admin')
@@ -298,3 +325,53 @@ async def input_message_admin(message: Message, state: FSMContext):
         )
         log.error(e, 'Error admin message')
     await state.clear()
+
+
+@referral_router.callback_query(F.data == 'download_affiliate_stats')
+async def download_affiliate_statistics(call: CallbackQuery):
+    """Скачать статистику по привлечённым клиентам"""
+    await call.answer("⏳ Генерирую файл...")
+
+    try:
+        # Генерируем Excel файл со статистикой
+        affiliate_clients = await export_affiliate_statistics_to_excel(call.from_user.id)
+        doc = BufferedInputFile(
+            file=affiliate_clients.getvalue(),
+            filename="affiliate_clients.xlsx"
+        )
+
+        # Отправляем файл
+        await call.message.answer_document(
+            document=doc,
+            caption="📊 <b>Статистика по привлечённым клиентам</b>\n\n"
+                    "В файле содержится информация о ваших рефералах",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        log.error(f"Error generating affiliate stats: {e}")
+        await call.message.answer("❌ Ошибка при генерации файла. Попробуйте позже.")
+
+
+@referral_router.callback_query(F.data == 'download_withdrawal_stats')
+async def download_withdrawal_statistics(call: CallbackQuery):
+    """Скачать статистику по выплатам"""
+    await call.answer("⏳ Генерирую файл...")
+
+    try:
+        # Генерируем Excel файл со статистикой
+        withdrawals = await export_withdrawal_statistics_to_excel(call.from_user.id)
+        doc = BufferedInputFile(
+            file=withdrawals.getvalue(),
+            filename="withdrawals.xlsx"
+        )
+
+        # Отправляем файл
+        await call.message.answer_document(
+            document=doc,
+            caption="💰 <b>Статистика по выплатам</b>\n\n"
+                    "В файле содержится история ваших выплат",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        log.error(f"Error generating withdrawal stats: {e}")
+        await call.message.answer("❌ Ошибка при генерации файла. Попробуйте позже.")

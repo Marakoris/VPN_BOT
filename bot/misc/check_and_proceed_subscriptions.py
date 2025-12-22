@@ -4,13 +4,13 @@ import time
 from datetime import date
 
 from aiogram import Bot
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, ReplyKeyboardRemove
 from aiogram.utils.formatting import Text
 
 from bot.database.methods.get import get_all_subscription, get_server_id, get_all_user
 from bot.database.methods.insert import crate_or_update_stats, add_payment
 from bot.database.methods.update import add_time_person, server_space_update, person_banned_true, person_one_day_false, \
-    person_one_day_true, add_retention_person
+    person_one_day_true, add_retention_person, person_subscription_expired_true, person_subscription_expired_false
 from bot.database.models.main import Persons
 from bot.keyboards.reply.user_reply import user_menu
 from bot.misc.Payment.KassaSmart import KassaSmart
@@ -76,8 +76,9 @@ async def process_subscriptions(bot: Bot, config):
         for person in all_persons:
             lang_user = await get_lang(person.tgid)
 
-            # Проверяем, истекла ли подписка
-            if person.subscription and person.subscription < current_time:
+            # Проверяем, истекла ли подписка (и еще не обработана)
+            # subscription_expired = False означает что это ПЕРВЫЙ РАЗ когда подписка истекла
+            if person.subscription and person.subscription < current_time and not person.subscription_expired:
                 if person.payment_method_id:
                     # Автоплатеж возможен
                     current_tariff_cost = await get_current_tariff(person.subscription_months)
@@ -89,12 +90,13 @@ async def process_subscriptions(bot: Bot, config):
                             except Exception as e:
                                 log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                                 # Продолжаем, так как подписка действительно истекла
-                        await person_banned_true(person.tgid)
+                        await person_subscription_expired_true(person.tgid)
+                        # Send notification without reply menu (system message)
                         await bot.send_photo(
                             chat_id=person.tgid,
                             photo=FSInputFile('bot/img/ended_subscribe.jpg'),
                             caption=_('tariff_cost_changed', lang_user),
-                            reply_markup=await user_menu(person, person.lang)
+                            reply_markup=ReplyKeyboardRemove()
                         )
                         continue
                     # Попытка автоплатежа
@@ -115,13 +117,15 @@ async def process_subscriptions(bot: Bot, config):
                         if success:
                             # Продление подписки
                             await add_time_person(person.tgid, person.subscription_months * CONFIG.COUNT_SECOND_MOTH)
+                            await person_subscription_expired_false(person.tgid)  # Сброс флага истечения
                             await person_one_day_true(person.tgid)
+                            # Send success notification without reply menu (system message)
                             await bot.send_message(
                                 chat_id=person.tgid,
                                 text=_('payment_success', lang_user).format(
                                     months_count=person.subscription_months
                                 ),
-                                reply_markup=await user_menu(person, lang_user)
+                                reply_markup=ReplyKeyboardRemove()
                             )
                             await add_retention_person(person.tgid, 1)
                             await add_payment(
@@ -159,13 +163,9 @@ async def process_subscriptions(bot: Bot, config):
                                 except Exception as e:
                                     log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                                     # Продолжаем, так как подписка действительно истекла
-                            await person_banned_true(person.tgid)
-                            await bot.send_photo(
-                                chat_id=person.tgid,
-                                photo=FSInputFile('bot/img/ended_subscribe.jpg'),
-                                caption=_('ended_sub_message', person.lang),
-                                reply_markup=await user_menu(person, person.lang)
-                            )
+                            await person_subscription_expired_true(person.tgid)
+                            # Сообщение не отправляется - статус показывается в главном меню
+                            log.info(f"Subscription expired for user {person.tgid} (autopay failed)")
                 else:
                     log.info("Can't pay")
                     # Автоплатеж невозможен, предлагаем обновить подписку вручную
@@ -175,13 +175,9 @@ async def process_subscriptions(bot: Bot, config):
                         except Exception as e:
                             log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                             # Продолжаем, так как подписка действительно истекла
-                    await person_banned_true(person.tgid)
-                    await bot.send_photo(
-                        chat_id=person.tgid,
-                        photo=FSInputFile('bot/img/ended_subscribe.jpg'),
-                        caption=_('ended_sub_message', person.lang),
-                        reply_markup=await user_menu(person, person.lang)
-                    )
+                    await person_subscription_expired_true(person.tgid)
+                    # Сообщение не отправляется - статус показывается в главном меню
+                    log.info(f"Subscription expired for user {person.tgid} (no autopay)")
             elif (person.subscription and
                   person.subscription <= (current_time + COUNT_SECOND_DAY) and
                   person.payment_method_id is None and person.notion_oneday):

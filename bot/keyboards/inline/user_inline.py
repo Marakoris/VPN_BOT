@@ -65,7 +65,7 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
 
     # Добавляем кнопку "Назад"
     kb.button(
-        text="⬅️ Назад                                ",
+        text="⬅️ Назад",
         callback_data=MainMenuAction(action='subscription')
     )
 
@@ -201,17 +201,51 @@ async def share_link(ref_link, lang, ref_balance=None) -> InlineKeyboardMarkup:
                 text=_('enough_funds_withdraw_btn', lang),
                 callback_data='none'
             )
+
+    # Кнопки для скачивания статистики
+    kb.button(
+        text="📊 Скачать статистику по клиентам",
+        callback_data='download_affiliate_stats'
+    )
+    kb.button(
+        text="💰 Скачать статистику по выплатам",
+        callback_data='download_withdrawal_stats'
+    )
+
+    # Кнопка с документацией
+    kb.button(
+        text="📖 Условия реферальной программы",
+        url="https://heavy-weight-a87.notion.site/NoBorderVPN-18d2ac7dfb078050a322df104dcaa4c2"
+    )
+
     kb.button(
         text=_('write_the_admin_btn', lang),
         callback_data='message_admin'
     )
+
+    # Добавляем кнопку "Назад"
+    from bot.misc.callbackData import MainMenuAction
+    kb.button(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='bonuses').pack()
+    )
+
     kb.adjust(1)
     return kb.as_markup()
 
 
 async def promo_code_button(lang) -> InlineKeyboardMarkup:
+    from bot.misc.callbackData import MainMenuAction
+
     kb = InlineKeyboardBuilder()
     kb.button(text=_('write_the_promo_btn', lang), callback_data='promo_code')
+
+    # Добавляем кнопку "Назад"
+    kb.button(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='bonuses').pack()
+    )
+
     kb.adjust(1)
     return kb.as_markup()
 
@@ -262,12 +296,12 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
     # 0. Admin panel (в начале для админов)
     if person.tgid in CONFIG.admins_ids:
         kb.button(
-            text="⚙️ Админ панель                        ",
+            text="⚙️ Админ панель",
             callback_data=MainMenuAction(action='admin')
         )
 
-    # 1. Попробовать бесплатно (только если подписка истекла)
-    if int(person.subscription) < time_now:
+    # 1. Попробовать бесплатно (только если подписка истекла, не использован пробный период, и не забанен)
+    if int(person.subscription) < time_now and not person.free_trial_used and not person.banned:
         kb.button(
             text="🆓 Попробовать бесплатно (3 дня)",
             callback_data=MainMenuAction(action='free_trial')
@@ -275,25 +309,25 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
 
     # 2. Купить подписку
     kb.button(
-        text="💳 Купить подписку                     ",
+        text="💳 Купить подписку",
         callback_data=MainMenuAction(action='subscription')
     )
 
     # 3. Мои ключи VPN
     kb.button(
-        text="🔑 Мои ключи VPN                      ",
+        text="🔑 Мои ключи VPN",
         callback_data=MainMenuAction(action='my_keys')
     )
 
     # 4. Бонусы и друзья (объединили referral + bonus)
     kb.button(
-        text="💰 Бонусы и друзья                    ",
+        text="💰 Бонусы и друзья",
         callback_data=MainMenuAction(action='bonuses')
     )
 
     # 5. Помощь
     kb.button(
-        text="❓ Помощь и поддержка               ",
+        text="❓ Помощь и поддержка",
         callback_data=MainMenuAction(action='help')
     )
 
