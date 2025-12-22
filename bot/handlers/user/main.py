@@ -88,10 +88,11 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             else:
                 await m.answer(_('referral_error', lang))
                 reference = None
+        # Регистрируем с subscription=0 (пробный период активируется отдельно)
         await add_new_person(
             m.from_user,
             user_name,
-            CONFIG.trial_period,
+            0,  # Не даём подписку автоматически - пользователь активирует пробный период сам
             reference,
             client_id  # Добавляем ClientID в базу данных
         )
@@ -99,8 +100,14 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             photo=FSInputFile('bot/img/hello_bot.jpg'),
             caption=_('hello_message', lang).format(name_bot=CONFIG.name)
         )
+        # Сообщение о пробном периоде
         if CONFIG.trial_period != 0:
-            await m.answer(_('trial_message', lang))
+            await m.answer(
+                "🎁 <b>Для вас доступен пробный период!</b>\n\n"
+                "Получите 3 дня бесплатного VPN прямо сейчас.\n"
+                "Нажмите кнопку «🎁 Активировать пробный период» в меню ниже.",
+                parse_mode="HTML"
+            )
     else:
         if client_id is not None:
             await add_client_id_person(m.from_user.id, client_id)
@@ -113,14 +120,22 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
     # Отправляем inline меню
     from datetime import datetime
     import time
-    subscription_end = datetime.utcfromtimestamp(
-        int(person.subscription) + CONFIG.UTC_time * 3600
-    ).strftime('%d.%m.%Y %H:%M')
 
-    # Определяем статус подписки (только по timestamp, игнорируем флаг subscription_expired)
-    if person.subscription < int(time.time()):
+    # Определяем статус подписки
+    if person.subscription == 0:
+        # Подписка ещё не активирована (новый пользователь)
+        subscription_info = "🆕 Подписка не активирована"
+    elif person.subscription < int(time.time()):
+        # Подписка истекла
+        subscription_end = datetime.utcfromtimestamp(
+            int(person.subscription) + CONFIG.UTC_time * 3600
+        ).strftime('%d.%m.%Y %H:%M')
         subscription_info = f"❌ Подписка истекла: {subscription_end}"
     else:
+        # Подписка активна
+        subscription_end = datetime.utcfromtimestamp(
+            int(person.subscription) + CONFIG.UTC_time * 3600
+        ).strftime('%d.%m.%Y %H:%M')
         subscription_info = f"⏰ Подписка активна до: {subscription_end}"
 
     await m.answer(
@@ -653,24 +668,39 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await callback.message.answer("❌ User not found")
             return
 
-        # Проверяем, не забанен ли пользователь (РЕАЛЬНЫЙ бан)
+        # Проверяем, не забанен ли пользователь (истекла подписка или реальный бан)
         if person.banned:
-            await callback.message.answer("⛔ <b>Доступ заблокирован</b>\n\nВаш аккаунт заблокирован.", parse_mode="HTML")
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from aiogram.types import InlineKeyboardButton
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(
+                text="💳 Продлить подписку",
+                callback_data="buy_subscription"
+            ))
+            await callback.message.answer(
+                "⏰ <b>Ваша подписка закончилась!</b>\n\n"
+                "Если хотите продолжить пользоваться нашими услугами, "
+                "пожалуйста продлите подписку.",
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
             return
 
         # Проверяем подписку (только по timestamp)
         if person.subscription < int(time.time()):
             from aiogram.utils.keyboard import InlineKeyboardBuilder
             from aiogram.types import InlineKeyboardButton
-            from bot.misc.callbackData import MainMenuAction
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(
-                text=_('to_extend_btn', lang),
-                callback_data=MainMenuAction(action='subscription').pack()
+                text="💳 Продлить подписку",
+                callback_data="buy_subscription"
             ))
             await callback.message.answer(
-                _('ended_sub_message', lang),
-                reply_markup=kb.as_markup()
+                "⏰ <b>Ваша подписка закончилась!</b>\n\n"
+                "Если хотите продолжить пользоваться нашими услугами, "
+                "пожалуйста продлите подписку.",
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
             )
             return
 
@@ -785,8 +815,16 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             callback_data=MainMenuAction(action='my_keys').pack()
         ))
 
+        # Определяем тип подписки и дату окончания
+        from datetime import datetime
+        is_trial = person.free_trial_used and person.subscription_price is None
+        end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y')
+
+        subscription_status = "🎁 <b>Пробная подписка</b>" if is_trial else "✅ <b>Активная подписка</b>"
+
         message_text = (
-            "✅ <b>Единая подписка на VPN</b>\n\n"
+            f"{subscription_status}\n"
+            f"📅 Действует до: <b>{end_date}</b>\n\n"
             "📡 <b>Ваш URL подписки:</b>\n"
             f"<code>{subscription_url}</code>\n\n"
             "🔐 <b>Доступные протоколы:</b>\n"
@@ -1112,11 +1150,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         # Обновляем person после добавления времени
         person = await get_person(callback.from_user.id)
 
-        # Показываем сообщение об активации
+        # Показываем сообщение об активации с датой окончания
+        from datetime import datetime
+        end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
         await callback.message.answer(
             "🎉 <b>Пробный период активирован!</b>\n\n"
-            "✅ Вам добавлено 3 дня подписки\n\n"
-            "Сейчас покажу вашу единую подписку...",
+            "✅ Вы получили <b>3 дня бесплатного VPN</b>\n\n"
+            f"📅 Действует до: <b>{end_date}</b>\n\n"
+            "Сейчас покажу вашу подписку и инструкцию по подключению...",
             parse_mode="HTML"
         )
 
@@ -1447,14 +1488,22 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         import time
 
         person = await get_person(callback.from_user.id)
-        subscription_end = datetime.utcfromtimestamp(
-            int(person.subscription) + CONFIG.UTC_time * 3600
-        ).strftime('%d.%m.%Y %H:%M')
 
-        # Определяем статус подписки (только по timestamp, игнорируем флаг subscription_expired)
-        if person.subscription < int(time.time()):
+        # Определяем статус подписки
+        if person.subscription == 0:
+            # Подписка ещё не активирована (новый пользователь)
+            subscription_info = "🆕 Подписка не активирована"
+        elif person.subscription < int(time.time()):
+            # Подписка истекла
+            subscription_end = datetime.utcfromtimestamp(
+                int(person.subscription) + CONFIG.UTC_time * 3600
+            ).strftime('%d.%m.%Y %H:%M')
             subscription_info = f"❌ Подписка истекла: {subscription_end}"
         else:
+            # Подписка активна
+            subscription_end = datetime.utcfromtimestamp(
+                int(person.subscription) + CONFIG.UTC_time * 3600
+            ).strftime('%d.%m.%Y %H:%M')
             subscription_info = f"⏰ Подписка активна до: {subscription_end}"
 
         message_text = _('start_message', lang).format(

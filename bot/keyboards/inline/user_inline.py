@@ -300,10 +300,10 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
             callback_data=MainMenuAction(action='admin')
         )
 
-    # 1. Попробовать бесплатно (только если подписка истекла, не использован пробный период, и не забанен)
-    if int(person.subscription) < time_now and not person.free_trial_used and not person.banned:
+    # 1. Активировать пробный период (для новых пользователей без подписки и не использовавших trial)
+    if int(person.subscription) <= time_now and not person.free_trial_used and not person.banned:
         kb.button(
-            text="🆓 Попробовать бесплатно (3 дня)",
+            text="🎁 Активировать пробный период (3 дня)",
             callback_data=MainMenuAction(action='free_trial')
         )
 

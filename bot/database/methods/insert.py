@@ -19,18 +19,20 @@ from bot.database.models.main import (
 async def add_new_person(from_user, username, subscription, ref_user, client_id):
     moscow_tz = ZoneInfo("Europe/Moscow")
     async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Если subscription > 0 - добавляем к текущему времени
+        # Если subscription == 0 - оставляем 0 (пробный период активируется отдельно)
+        subscription_time = int(time.time()) + subscription if subscription > 0 else 0
         tom = Persons(
             tgid=from_user.id,
             username=username,
             fullname=from_user.full_name,
-            subscription=int(time.time()) + subscription,
+            subscription=subscription_time,
             lang_tg=from_user.language_code or None,
             referral_user_tgid=ref_user or None,
             client_id=client_id,
-            first_interaction=datetime.datetime.now(moscow_tz)
+            first_interaction=datetime.datetime.now(moscow_tz),
+            banned=False  # Новый пользователь не забанен
         )
-        if subscription == 0:
-            tom.banned = True
         db.add(tom)
         await db.commit()
 

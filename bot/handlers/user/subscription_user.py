@@ -163,10 +163,21 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         await callback.answer("❌ User not found", show_alert=True)
         return
 
-    # Проверяем, не забанен ли пользователь (РЕАЛЬНЫЙ бан)
+    # Проверяем, не забанен ли пользователь (истекла подписка или реальный бан)
     if person.banned:
-        await callback.answer("⛔ Доступ заблокирован", show_alert=True)
-        await callback.message.edit_text("⛔ <b>Доступ заблокирован</b>\n\nВаш аккаунт заблокирован.", parse_mode="HTML")
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="💳 Продлить подписку",
+            callback_data="buy_subscription"
+        ))
+        await callback.answer("⏰ Подписка истекла", show_alert=True)
+        await callback.message.edit_text(
+            "⏰ <b>Ваша подписка закончилась!</b>\n\n"
+            "Если хотите продолжить пользоваться нашими услугами, "
+            "пожалуйста продлите подписку.",
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
         return
 
     # Проверяем, не истекла ли подписка (только по timestamp)
@@ -178,7 +189,9 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         ))
         await callback.answer("⏰ Подписка истекла", show_alert=True)
         await callback.message.edit_text(
-            "⏰ <b>Подписка истекла</b>\n\nДля активации Единой подписки необходимо продлить подписку.",
+            "⏰ <b>Ваша подписка закончилась!</b>\n\n"
+            "Если хотите продолжить пользоваться нашими услугами, "
+            "пожалуйста продлите подписку.",
             reply_markup=kb.as_markup(),
             parse_mode="HTML"
         )
