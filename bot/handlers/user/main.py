@@ -971,6 +971,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         from bot.misc.util import CONFIG
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         from bot.misc.callbackData import MainMenuAction
+        from bot.keyboards.inline.user_inline import renew
 
         person = await get_person(callback.from_user.id)
 
