@@ -671,9 +671,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             # Показываем меню выбора тарифов
             kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
             kb_with_back = InlineKeyboardBuilder()
+            from aiogram.types import InlineKeyboardButton
             for row in kb.inline_keyboard:
                 for button in row:
-                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
+                    if button.url:
+                        kb_with_back.row(InlineKeyboardButton(text=button.text, url=button.url))
+                    elif button.callback_data:
+                        kb_with_back.button(text=button.text, callback_data=button.callback_data)
             kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='my_keys'))
             kb_with_back.adjust(1)
 
@@ -879,9 +883,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             # Показываем меню выбора тарифов
             kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
             kb_with_back = InlineKeyboardBuilder()
+            from aiogram.types import InlineKeyboardButton
             for row in kb.inline_keyboard:
                 for button in row:
-                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
+                    if button.url:
+                        kb_with_back.row(InlineKeyboardButton(text=button.text, url=button.url))
+                    elif button.callback_data:
+                        kb_with_back.button(text=button.text, callback_data=button.callback_data)
             kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='my_keys'))
             kb_with_back.adjust(1)
 
@@ -1083,9 +1091,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         kb = await choosing_lang()
         # Добавляем кнопку "Назад"
         kb_with_back = InlineKeyboardBuilder()
+        from aiogram.types import InlineKeyboardButton
         for row in kb.inline_keyboard:
             for button in row:
-                kb_with_back.button(text=button.text, callback_data=button.callback_data)
+                if button.url:
+                    kb_with_back.row(InlineKeyboardButton(text=button.text, url=button.url))
+                elif button.callback_data:
+                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
         kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         kb_with_back.adjust(1)
 
