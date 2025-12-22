@@ -6,19 +6,7 @@ async def set_commands(bot: Bot):
     commands = [
         BotCommand(
             command='start',
-            description='Start bot'
-        ),
-        BotCommand(
-            command='subscription',
-            description='Приобрести подписку'
-        ),
-        BotCommand(
-            command='partnership',
-            description='Партнёрская программа'
-        ),
-        BotCommand(
-            command='bonus',
-            description='Получить бонус'
+            description='Запустить бота'
         ),
     ]
 

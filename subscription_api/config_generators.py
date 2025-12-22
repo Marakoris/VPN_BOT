@@ -62,8 +62,11 @@ async def generate_vless_config(
         reality_settings = stream_settings.get("realitySettings", {})
         settings_data = reality_settings.get("settings", {})
 
-        fingerprint = settings_data.get("fingerprint", "chrome")
-        public_key = settings_data.get("publicKey", "")
+        # Check both locations for fingerprint and publicKey (different x-ui versions)
+        # Old format: realitySettings.settings.publicKey
+        # New format: realitySettings.publicKey
+        fingerprint = settings_data.get("fingerprint") or reality_settings.get("fingerprint", "chrome")
+        public_key = settings_data.get("publicKey") or reality_settings.get("publicKey", "")
         server_names = reality_settings.get("serverNames", [])
         short_ids = reality_settings.get("shortIds", [])
 
