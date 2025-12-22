@@ -98,16 +98,9 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         )
         await m.answer_photo(
             photo=FSInputFile('bot/img/hello_bot.jpg'),
-            caption=_('hello_message', lang).format(name_bot=CONFIG.name)
+            caption=_('hello_message', lang).format(name_bot=CONFIG.name),
+            parse_mode="HTML"
         )
-        # Сообщение о пробном периоде
-        if CONFIG.trial_period != 0:
-            await m.answer(
-                "🎁 <b>Для вас доступен пробный период!</b>\n\n"
-                "Получите 3 дня бесплатного VPN прямо сейчас.\n"
-                "Нажмите кнопку «🎁 Активировать пробный период» в меню ниже.",
-                parse_mode="HTML"
-            )
     else:
         if client_id is not None:
             await add_client_id_person(m.from_user.id, client_id)
