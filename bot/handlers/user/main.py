@@ -117,8 +117,8 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         int(person.subscription) + CONFIG.UTC_time * 3600
     ).strftime('%d.%m.%Y %H:%M')
 
-    # Определяем статус подписки
-    if person.subscription_expired or person.subscription < int(time.time()):
+    # Определяем статус подписки (только по timestamp, игнорируем флаг subscription_expired)
+    if person.subscription < int(time.time()):
         subscription_info = f"❌ Подписка истекла: {subscription_end}"
     else:
         subscription_info = f"⏰ Подписка активна до: {subscription_end}"
@@ -658,8 +658,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await callback.message.answer("⛔ <b>Доступ заблокирован</b>\n\nВаш аккаунт заблокирован.", parse_mode="HTML")
             return
 
-        # Проверяем подписку (истекла или помечена как expired)
-        if person.subscription_expired or person.subscription < int(time.time()):
+        # Проверяем подписку (только по timestamp)
+        if person.subscription < int(time.time()):
             from aiogram.utils.keyboard import InlineKeyboardBuilder
             from aiogram.types import InlineKeyboardButton
             from bot.misc.callbackData import MainMenuAction
@@ -1451,8 +1451,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             int(person.subscription) + CONFIG.UTC_time * 3600
         ).strftime('%d.%m.%Y %H:%M')
 
-        # Определяем статус подписки
-        if person.subscription_expired or person.subscription < int(time.time()):
+        # Определяем статус подписки (только по timestamp, игнорируем флаг subscription_expired)
+        if person.subscription < int(time.time()):
             subscription_info = f"❌ Подписка истекла: {subscription_end}"
         else:
             subscription_info = f"⏰ Подписка активна до: {subscription_end}"

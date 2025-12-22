@@ -4,6 +4,7 @@ Subscription handlers for user
 Handles subscription URL generation and management
 """
 import logging
+import time
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
@@ -57,36 +58,73 @@ async def get_subscription_url(message: Message, state: FSMContext) -> None:
     # User has active subscription - show URL
     subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
 
-    # Create keyboard with helpful links
+    # Create keyboard with Happ download links (by platform)
     kb = InlineKeyboardBuilder()
+
+    # 📱 МОБИЛЬНЫЕ (самые популярные)
+    # Android - одна кнопка на всю ширину
     kb.row(
         InlineKeyboardButton(
-            text="📱 V2RayNG (Android)",
-            url="https://play.google.com/store/apps/details?id=com.v2ray.ang"
+            text="📱 Android",
+            url="https://play.google.com/store/apps/details?id=com.happproxy"
         )
     )
+
+    # iPhone - две версии в одном ряду
     kb.row(
         InlineKeyboardButton(
-            text="🍎 Shadowrocket (iOS)",
-            url="https://apps.apple.com/app/shadowrocket/id932747118"
+            text="📱 iPhone (Global)",
+            url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215"
+        ),
+        InlineKeyboardButton(
+            text="📱 iPhone (RUS)",
+            url="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973"
         )
     )
+
+    # 🖥 ДЕСКТОП
+    # Windows и macOS в одном ряду
     kb.row(
         InlineKeyboardButton(
-            text="📋 Copy URL",
-            url=subscription_url
+            text="🖥 Windows",
+            url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe"
+        ),
+        InlineKeyboardButton(
+            text="🖥 macOS",
+            url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
+        )
+    )
+
+    # Linux - отдельная кнопка
+    kb.row(
+        InlineKeyboardButton(
+            text="🖥 Linux (deb)",
+            url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb"
+        )
+    )
+
+    # 📺 ТЕЛЕВИЗОРЫ
+    # Android TV и Apple TV в одном ряду
+    kb.row(
+        InlineKeyboardButton(
+            text="📺 Android TV",
+            url="https://play.google.com/store/apps/details?id=com.happproxy"
+        ),
+        InlineKeyboardButton(
+            text="📺 Apple TV",
+            url="https://apps.apple.com/us/app/happ-proxy-utility-for-tv/id6748297274"
         )
     )
 
     message_text = (
-        "✅ <b>Your Subscription URL:</b>\n\n"
+        "✅ <b>Ваш Subscription URL:</b>\n\n"
         f"<code>{subscription_url}</code>\n\n"
-        "📱 <b>How to use:</b>\n"
-        "1. Install V2RayNG (Android) or Shadowrocket (iOS)\n"
-        "2. Add subscription using URL above\n"
-        "3. Update subscription to get all servers\n"
-        "4. Connect to any server!\n\n"
-        "🔄 The URL updates automatically when servers change"
+        "📱 <b>Как использовать:</b>\n"
+        "1. Скачайте приложение Happ для вашей платформы\n"
+        "2. Откройте приложение и добавьте подписку по URL выше\n"
+        "3. Обновите список серверов\n"
+        "4. Подключайтесь к любому серверу!\n\n"
+        "🔄 URL обновляется автоматически при изменении серверов"
     )
 
     await message.answer(
@@ -125,6 +163,27 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         await callback.answer("❌ User not found", show_alert=True)
         return
 
+    # Проверяем, не забанен ли пользователь (РЕАЛЬНЫЙ бан)
+    if person.banned:
+        await callback.answer("⛔ Доступ заблокирован", show_alert=True)
+        await callback.message.edit_text("⛔ <b>Доступ заблокирован</b>\n\nВаш аккаунт заблокирован.", parse_mode="HTML")
+        return
+
+    # Проверяем, не истекла ли подписка (только по timestamp)
+    if person.subscription < int(time.time()):
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(
+            text="💳 Продлить подписку",
+            callback_data="buy_subscription"
+        ))
+        await callback.answer("⏰ Подписка истекла", show_alert=True)
+        await callback.message.edit_text(
+            "⏰ <b>Подписка истекла</b>\n\nДля активации Единой подписки необходимо продлить подписку.",
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
+        return
+
     # Show processing message
     await callback.answer("⏳ Activating...")
     await callback.message.edit_text("⏳ <b>Activating subscription...</b>\n\nPlease wait, creating keys on all servers...")
@@ -140,36 +199,73 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         # Success - show subscription URL
         subscription_url = f"{CONFIG.subscription_api_url}/sub/{token}"
 
-        # Create keyboard with helpful links
+        # Create keyboard with Happ download links (by platform)
         kb = InlineKeyboardBuilder()
+
+        # 📱 МОБИЛЬНЫЕ (самые популярные)
+        # Android - одна кнопка на всю ширину
         kb.row(
             InlineKeyboardButton(
-                text="📱 V2RayNG (Android)",
-                url="https://play.google.com/store/apps/details?id=com.v2ray.ang"
+                text="📱 Android",
+                url="https://play.google.com/store/apps/details?id=com.happproxy"
             )
         )
+
+        # iPhone - две версии в одном ряду
         kb.row(
             InlineKeyboardButton(
-                text="🍎 Shadowrocket (iOS)",
-                url="https://apps.apple.com/app/shadowrocket/id932747118"
+                text="📱 iPhone (Global)",
+                url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215"
+            ),
+            InlineKeyboardButton(
+                text="📱 iPhone (RUS)",
+                url="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973"
             )
         )
+
+        # 🖥 ДЕСКТОП
+        # Windows и macOS в одном ряду
         kb.row(
             InlineKeyboardButton(
-                text="📋 Copy URL",
-                url=subscription_url
+                text="🖥 Windows",
+                url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe"
+            ),
+            InlineKeyboardButton(
+                text="🖥 macOS",
+                url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
+            )
+        )
+
+        # Linux - отдельная кнопка
+        kb.row(
+            InlineKeyboardButton(
+                text="🖥 Linux (deb)",
+                url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb"
+            )
+        )
+
+        # 📺 ТЕЛЕВИЗОРЫ
+        # Android TV и Apple TV в одном ряду
+        kb.row(
+            InlineKeyboardButton(
+                text="📺 Android TV",
+                url="https://play.google.com/store/apps/details?id=com.happproxy"
+            ),
+            InlineKeyboardButton(
+                text="📺 Apple TV",
+                url="https://apps.apple.com/us/app/happ-proxy-utility-for-tv/id6748297274"
             )
         )
 
         message_text = (
-            "✅ <b>Subscription Activated!</b>\n\n"
+            "✅ <b>Подписка активирована!</b>\n\n"
             f"<code>{subscription_url}</code>\n\n"
-            "📱 <b>Next steps:</b>\n"
-            "1. Install V2RayNG (Android) or Shadowrocket (iOS)\n"
-            "2. Add subscription using URL above\n"
-            "3. Update subscription to get all servers\n"
-            "4. Connect and enjoy!\n\n"
-            "🔄 URL updates automatically"
+            "📱 <b>Следующие шаги:</b>\n"
+            "1. Скачайте приложение Happ для вашей платформы\n"
+            "2. Добавьте подписку используя URL выше\n"
+            "3. Обновите список серверов\n"
+            "4. Подключайтесь и наслаждайтесь!\n\n"
+            "🔄 URL обновляется автоматически"
         )
 
         await callback.message.edit_text(
