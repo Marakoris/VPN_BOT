@@ -655,46 +655,56 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     if action == 'subscription_url':
         # Inline version of subscription URL handler
         import time
+        from bot.misc.util import CONFIG
+        from bot.keyboards.inline.user_inline import renew
         person = await get_person(callback.from_user.id)
 
         if not person:
             await callback.message.answer("❌ User not found")
             return
 
-        # Проверяем, не забанен ли пользователь (истекла подписка или реальный бан)
-        if person.banned:
+        # Проверяем подписку (по timestamp или banned)
+        if person.banned or person.subscription == 0 or person.subscription < int(time.time()):
             from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(
-                text="💳 Продлить подписку",
-                callback_data="buy_subscription"
-            ))
-            await callback.message.answer(
-                "⏰ <b>Ваша подписка закончилась!</b>\n\n"
-                "Если хотите продолжить пользоваться нашими услугами, "
-                "пожалуйста продлите подписку.",
-                reply_markup=kb.as_markup(),
-                parse_mode="HTML"
-            )
-            return
+            from bot.misc.callbackData import MainMenuAction
 
-        # Проверяем подписку (только по timestamp)
-        if person.subscription < int(time.time()):
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(
-                text="💳 Продлить подписку",
-                callback_data="buy_subscription"
-            ))
-            await callback.message.answer(
-                "⏰ <b>Ваша подписка закончилась!</b>\n\n"
-                "Если хотите продолжить пользоваться нашими услугами, "
-                "пожалуйста продлите подписку.",
-                reply_markup=kb.as_markup(),
-                parse_mode="HTML"
+            # Показываем меню выбора тарифов
+            kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
+            kb_with_back = InlineKeyboardBuilder()
+            for row in kb.inline_keyboard:
+                for button in row:
+                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
+            kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='my_keys'))
+            kb_with_back.adjust(1)
+
+            message_text = (
+                "📡 <b>Единая подписка на VPN</b>\n\n"
+                "⚠️ Для использования единой подписки необходимо оформить тариф.\n\n"
+                "🎁 <b>Что вы получите:</b>\n"
+                "• Один URL для всех серверов\n"
+                "• VLESS Reality + Shadowsocks 2022\n"
+                "• Автоматическое обновление серверов\n"
+                "• Безлимитный трафик\n\n"
+                "💳 <b>Выберите тариф:</b>"
             )
+
+            try:
+                await callback.message.edit_text(
+                    text=message_text,
+                    reply_markup=kb_with_back.as_markup(),
+                    parse_mode="HTML"
+                )
+            except:
+                try:
+                    await callback.message.delete()
+                except:
+                    pass
+                await bot.send_message(
+                    chat_id=callback.from_user.id,
+                    text=message_text,
+                    reply_markup=kb_with_back.as_markup(),
+                    parse_mode="HTML"
+                )
             return
 
         # Import subscription functions
@@ -853,6 +863,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         from aiogram.types import InlineKeyboardButton
         from bot.misc.callbackData import ChooseOutlineServer
         from bot.database.methods.get import get_free_servers
+        from bot.keyboards.inline.user_inline import renew
+        from bot.misc.util import CONFIG
 
         person = await get_person(callback.from_user.id)
 
@@ -860,18 +872,46 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await callback.message.answer("❌ User not found")
             return
 
-        # Check subscription
-        if person.subscription < int(time.time()):
+        # Check subscription - показываем меню тарифов
+        if person.banned or person.subscription == 0 or person.subscription < int(time.time()):
             from bot.misc.callbackData import MainMenuAction
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(
-                text=_('to_extend_btn', lang),
-                callback_data=MainMenuAction(action='subscription').pack()
-            ))
-            await callback.message.answer(
-                _('ended_sub_message', lang),
-                reply_markup=kb.as_markup()
+
+            # Показываем меню выбора тарифов
+            kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
+            kb_with_back = InlineKeyboardBuilder()
+            for row in kb.inline_keyboard:
+                for button in row:
+                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
+            kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='my_keys'))
+            kb_with_back.adjust(1)
+
+            message_text = (
+                "🪐 <b>Outline VPN</b>\n\n"
+                "⚠️ Для использования Outline необходимо оформить тариф.\n\n"
+                "🎁 <b>Что вы получите:</b>\n"
+                "• Отдельный ключ для каждого сервера\n"
+                "• Протокол Shadowsocks (Outline)\n"
+                "• Безлимитный трафик\n\n"
+                "💳 <b>Выберите тариф:</b>"
             )
+
+            try:
+                await callback.message.edit_text(
+                    text=message_text,
+                    reply_markup=kb_with_back.as_markup(),
+                    parse_mode="HTML"
+                )
+            except:
+                try:
+                    await callback.message.delete()
+                except:
+                    pass
+                await bot.send_message(
+                    chat_id=callback.from_user.id,
+                    text=message_text,
+                    reply_markup=kb_with_back.as_markup(),
+                    parse_mode="HTML"
+                )
             return
 
         # Get Outline servers (type_vpn=0)
