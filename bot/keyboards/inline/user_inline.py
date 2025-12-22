@@ -90,6 +90,7 @@ async def choose_type_vpn() -> InlineKeyboardMarkup:
 
 
 async def renew(CONFIG, lang, tg_id: int, payment_method_id) -> InlineKeyboardMarkup:
+    from aiogram.types import InlineKeyboardButton
     kb = InlineKeyboardBuilder()
     user = await get_person(tg_id)
     if user.subscription_price is None:
@@ -117,6 +118,9 @@ async def renew(CONFIG, lang, tg_id: int, payment_method_id) -> InlineKeyboardMa
         )
     if payment_method_id is not None:
         kb.button(text=_('turn_off_autopay_btn', lang), callback_data='turn_off_autopay')
+    # Кнопка оферты
+    if CONFIG.offer_url:
+        kb.row(InlineKeyboardButton(text="📋 Договор оферты", url=CONFIG.offer_url))
     kb.adjust(1)
     return kb.as_markup()
 

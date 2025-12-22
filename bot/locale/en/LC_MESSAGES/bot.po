@@ -867,6 +867,9 @@ msgstr "Offer contract 📋"
 msgid "turn_off_autopay_btn"
 msgstr "Turn off automatic debits 🤖"
 
+msgid "autopay_enabled_after_payment"
+msgstr "🤖 <b>Auto-renewal enabled</b>\n\nYour subscription will be automatically renewed using your saved card.\n\nYou can disable auto-renewal at any time:"
+
 msgid "instruction_use_iphone_btn"
 msgstr "Instructions for iPhone"
 

@@ -978,9 +978,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         # Формируем клавиатуру с кнопкой "Назад"
         kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
         kb_with_back = InlineKeyboardBuilder()
+        from aiogram.types import InlineKeyboardButton
         for row in kb.inline_keyboard:
             for button in row:
-                kb_with_back.button(text=button.text, callback_data=button.callback_data)
+                # Копируем кнопку с учётом типа (callback_data или url)
+                if button.url:
+                    kb_with_back.row(InlineKeyboardButton(text=button.text, url=button.url))
+                elif button.callback_data:
+                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
         kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         kb_with_back.adjust(1)
 

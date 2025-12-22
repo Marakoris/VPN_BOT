@@ -96,6 +96,22 @@ class PaymentSystem:
         except Exception:
             log.error(Exception)
 
+        # Проверяем, сохранён ли метод оплаты для автоподписки (YooKassa)
+        try:
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            # Перечитываем person, так как payment_method_id мог быть сохранён перед вызовом successful_payment
+            person_updated = await get_person(self.user_id)
+            if person_updated and person_updated.payment_method_id:
+                kb = InlineKeyboardBuilder()
+                kb.button(text=_('turn_off_autopay_btn', lang_user), callback_data='turn_off_autopay')
+                kb.adjust(1)
+                await self.message.answer(
+                    _('autopay_enabled_after_payment', lang_user),
+                    reply_markup=kb.as_markup()
+                )
+        except Exception as e:
+            log.warning(f"Could not send autopay notification: {e}")
+
         if CONFIG.auto_extension:
             await check_auto_renewal(
                 person,
