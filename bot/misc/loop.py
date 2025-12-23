@@ -98,11 +98,10 @@ async def check_date(person, bot: Bot):
 
                 # Update last notification timestamp
                 await update_last_expiry_notification(person.tgid)
-        # Check for 3-day reminder (only for users WITHOUT autopay)
+        # Check for 3-day reminder
         elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY * 3
               and person.subscription > int(time.time()) + COUNT_SECOND_DAY * 2
-              and not person.notion_threedays
-              and person.payment_method_id is None):
+              and not person.notion_threedays):
             await person_three_days_true(person.tgid)
 
             # Send 3-day reminder with full payment keyboard
@@ -114,11 +113,10 @@ async def check_date(person, bot: Bot):
                 reply_markup=kb
             )
 
-        # Check for 2-day reminder (only for users WITHOUT autopay)
+        # Check for 2-day reminder
         elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY * 2
               and person.subscription > int(time.time()) + COUNT_SECOND_DAY
-              and not person.notion_twodays
-              and person.payment_method_id is None):
+              and not person.notion_twodays):
             await person_two_days_true(person.tgid)
 
             # Send 2-day reminder with full payment keyboard
@@ -130,10 +128,9 @@ async def check_date(person, bot: Bot):
                 reply_markup=kb
             )
 
-        # Check for 1-day reminder (only for users WITHOUT autopay)
+        # Check for 1-day reminder
         elif (person.subscription <= int(time.time()) + COUNT_SECOND_DAY
-              and not person.notion_oneday
-              and person.payment_method_id is None):
+              and not person.notion_oneday):
             await person_one_day_true(person.tgid)
 
             # Send 1-day reminder with full payment keyboard
