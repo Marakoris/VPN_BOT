@@ -107,6 +107,9 @@ class PaymentSystem:
             if person_after_payment.payment_method_id:
                 success_message += "\n🔄 Автоподписка подключена"
 
+            # Подсказка что ничего делать не нужно
+            success_message += "\n\nℹ️ Если VPN уже настроен — ничего делать не нужно, всё работает"
+
             # Кнопка перехода к VPN подключению
             from aiogram.utils.keyboard import InlineKeyboardBuilder
             from bot.misc.callbackData import MainMenuAction
