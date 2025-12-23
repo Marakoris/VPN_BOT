@@ -20,6 +20,7 @@ from bot.database.methods.update import (
 from bot.keyboards.reply.user_reply import balance_menu, back_menu
 from bot.misc.language import Localization, get_lang
 from bot.misc.loop import check_auto_renewal
+from bot.misc.traffic_monitor import reset_user_traffic
 from bot.misc.util import CONFIG
 from bot.misc.yandex_metrika import YandexMetrikaAPI
 
@@ -74,6 +75,9 @@ class PaymentSystem:
                 self.user_id,
                 self.days_count * CONFIG.COUNT_SECOND_DAY):
             await self.message.answer(_('error_send_admin', lang_user))
+
+        # Сброс счётчика трафика при оплате
+        await reset_user_traffic(self.user_id)
 
         await add_retention_person(self.user_id, 1)
 

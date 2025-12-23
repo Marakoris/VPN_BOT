@@ -27,6 +27,7 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users
 from bot.misc.util import CONFIG
 
 
@@ -99,6 +100,18 @@ async def start_bot():
         args=(bot,),
         id='backup_and_upload_task',  # Уникальный идентификатор задачи
         replace_existing=True  # Заменяет задачу, если она уже существует
+    )
+
+    # Добавляем задачу мониторинга трафика (каждый час)
+    async def traffic_monitor_job():
+        await update_all_users_traffic()
+        await check_and_block_exceeded_users(bot)
+
+    scheduler.add_job(
+        traffic_monitor_job,
+        trigger=CronTrigger(minute=0),  # Каждый час в :00
+        id='traffic_monitor',
+        replace_existing=True
     )
 
 

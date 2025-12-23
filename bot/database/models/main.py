@@ -55,6 +55,10 @@ class Persons(Base):
     subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен
     free_trial_used = Column(Boolean, default=False)  # Использовал ли пользователь бесплатный пробный период
     subscription_expired = Column(Boolean, default=False)  # Истекла ли подписка (мягкое ограничение, не бан)
+    # Traffic monitoring fields
+    total_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик со всех серверов
+    traffic_reset_date = Column(TIMESTAMP(timezone=True), nullable=True)  # Дата последнего сброса трафика
+    traffic_limit_bytes = Column(BigInteger, default=536870912000)  # Лимит трафика (500GB по умолчанию)
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),
