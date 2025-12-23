@@ -22,6 +22,7 @@ from bot.database.methods.update import (
 from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
+from bot.keyboards.inline.user_inline import renew
 
 log = logging.getLogger(__name__)
 
@@ -72,18 +73,8 @@ async def check_date(person, bot: Bot):
 
                 await person_banned_true(person.tgid)
 
-                # Send notification with "Renew subscription" button
-                from bot.misc.callbackData import MainMenuAction
-                from aiogram.utils.keyboard import InlineKeyboardBuilder
-                from aiogram.types import InlineKeyboardButton
-
-                kb = InlineKeyboardBuilder()
-                kb.row(
-                    InlineKeyboardButton(
-                        text=_('to_extend_btn', person.lang),
-                        callback_data=MainMenuAction(action='subscription').pack()
-                    )
-                )
+                # Build full payment keyboard (with super offer + prices + oferta)
+                kb = await renew(CONFIG, person.lang, person.tgid, person.payment_method_id)
 
                 # Determine message based on how long subscription has been expired
                 days_expired = (current_time - person.subscription) // COUNT_SECOND_DAY
@@ -94,7 +85,7 @@ async def check_date(person, bot: Bot):
                         chat_id=person.tgid,
                         photo=FSInputFile('bot/img/ended_subscribe.jpg'),
                         caption=_('ended_sub_message', person.lang),
-                        reply_markup=kb.as_markup()
+                        reply_markup=kb
                     )
                 else:
                     # Daily reminder
@@ -102,7 +93,7 @@ async def check_date(person, bot: Bot):
                         chat_id=person.tgid,
                         text=f"⏰ Напоминание: Ваша подписка истекла {days_expired} дн. назад\n\n" +
                              _('ended_sub_message', person.lang),
-                        reply_markup=kb.as_markup()
+                        reply_markup=kb
                     )
 
                 # Update last notification timestamp
@@ -113,23 +104,13 @@ async def check_date(person, bot: Bot):
               and not person.notion_threedays):
             await person_three_days_true(person.tgid)
 
-            # Send 3-day reminder with "Renew subscription" button
-            from bot.misc.callbackData import MainMenuAction
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-
-            kb = InlineKeyboardBuilder()
-            kb.row(
-                InlineKeyboardButton(
-                    text=_('to_extend_btn', person.lang),
-                    callback_data=MainMenuAction(action='subscription').pack()
-                )
-            )
+            # Send 3-day reminder with full payment keyboard
+            kb = await renew(CONFIG, person.lang, person.tgid, person.payment_method_id)
 
             await bot.send_message(
                 person.tgid,
                 _('alert_to_renew_sub', person.lang) + "\n\n⏰ Осталось 3 дня",
-                reply_markup=kb.as_markup()
+                reply_markup=kb
             )
 
         # Check for 2-day reminder
@@ -138,23 +119,13 @@ async def check_date(person, bot: Bot):
               and not person.notion_twodays):
             await person_two_days_true(person.tgid)
 
-            # Send 2-day reminder with "Renew subscription" button
-            from bot.misc.callbackData import MainMenuAction
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-
-            kb = InlineKeyboardBuilder()
-            kb.row(
-                InlineKeyboardButton(
-                    text=_('to_extend_btn', person.lang),
-                    callback_data=MainMenuAction(action='subscription').pack()
-                )
-            )
+            # Send 2-day reminder with full payment keyboard
+            kb = await renew(CONFIG, person.lang, person.tgid, person.payment_method_id)
 
             await bot.send_message(
                 person.tgid,
                 _('alert_to_renew_sub', person.lang) + "\n\n⏰ Осталось 2 дня",
-                reply_markup=kb.as_markup()
+                reply_markup=kb
             )
 
         # Check for 1-day reminder
@@ -162,23 +133,13 @@ async def check_date(person, bot: Bot):
               and not person.notion_oneday):
             await person_one_day_true(person.tgid)
 
-            # Send 1-day reminder with "Renew subscription" button
-            from bot.misc.callbackData import MainMenuAction
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from aiogram.types import InlineKeyboardButton
-
-            kb = InlineKeyboardBuilder()
-            kb.row(
-                InlineKeyboardButton(
-                    text=_('to_extend_btn', person.lang),
-                    callback_data=MainMenuAction(action='subscription').pack()
-                )
-            )
+            # Send 1-day reminder with full payment keyboard
+            kb = await renew(CONFIG, person.lang, person.tgid, person.payment_method_id)
 
             await bot.send_message(
                 person.tgid,
                 _('alert_to_renew_sub', person.lang) + "\n\n⏰ Остался 1 день",
-                reply_markup=kb.as_markup()
+                reply_markup=kb
             )
         return
     except Exception as e:
