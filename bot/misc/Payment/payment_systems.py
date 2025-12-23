@@ -89,28 +89,37 @@ class PaymentSystem:
             log.error(Exception)
 
         try:
-            await self.message.answer(
-                _('payment_success', lang_user),
-                reply_markup=await back_menu(lang_user)
-            )
-        except Exception:
-            log.error(Exception)
+            # Удаляем предыдущее сообщение о пополнении (если есть)
+            if hasattr(self, 'payment_message') and self.payment_message:
+                try:
+                    await self.payment_message.delete()
+                except Exception:
+                    pass  # Сообщение могло быть уже удалено
 
-        # Проверяем, сохранён ли метод оплаты для автоподписки (YooKassa)
-        try:
+            # Получаем обновлённые данные для показа даты окончания и автоподписки
+            person_after_payment = await get_person(self.user_id)
+            subscription_end = datetime.fromtimestamp(person_after_payment.subscription).strftime('%d.%m.%Y')
+
+            # Формируем сообщение с периодом
+            success_message = _('payment_success', lang_user) + f"\n\n📅 Подписка активна до: <b>{subscription_end}</b>"
+
+            # Добавляем информацию об автоподписке если она подключена
+            if person_after_payment.payment_method_id:
+                success_message += "\n🔄 Автоподписка подключена"
+
+            # Кнопка перехода к VPN подключению
             from aiogram.utils.keyboard import InlineKeyboardBuilder
-            # Перечитываем person, так как payment_method_id мог быть сохранён перед вызовом successful_payment
-            person_updated = await get_person(self.user_id)
-            if person_updated and person_updated.payment_method_id:
-                kb = InlineKeyboardBuilder()
-                kb.button(text=_('turn_off_autopay_btn', lang_user), callback_data='turn_off_autopay')
-                kb.adjust(1)
-                await self.message.answer(
-                    _('autopay_enabled_after_payment', lang_user),
-                    reply_markup=kb.as_markup()
-                )
+            from bot.misc.callbackData import MainMenuAction
+            kb = InlineKeyboardBuilder()
+            kb.button(text="🔑 Подключиться к VPN", callback_data=MainMenuAction(action='my_keys'))
+            kb.adjust(1)
+
+            await self.message.answer(
+                success_message,
+                reply_markup=kb.as_markup()
+            )
         except Exception as e:
-            log.warning(f"Could not send autopay notification: {e}")
+            log.error(f"Error sending success message: {e}")
 
         if CONFIG.auto_extension:
             await check_auto_renewal(

@@ -103,7 +103,8 @@ class KassaSmart(PaymentSystem):
         Configuration.secret_key = self.SECRET_KEY
         lang_user = await get_lang(self.user_id)
         link_invoice = await self.invoice(lang_user)
-        await self.message.answer(
+        # Сохраняем сообщение о пополнении для удаления после успешной оплаты
+        self.payment_message = await self.message.answer(
             _('payment_balance_text', lang_user).format(price=self.price),
             reply_markup=await pay_and_check(link_invoice, lang_user)
         )
