@@ -30,17 +30,10 @@ async def get_user_traffic_from_server(server: Servers, telegram_id: int) -> int
         await manager.login()
 
         if server.type_vpn == 0:  # Outline
-            # Outline returns keys with used_bytes attribute
-            all_keys = await manager.get_all_user()
-            if not all_keys:
-                return 0
-
-            for key in all_keys:
-                if key.name == str(telegram_id):
-                    used = getattr(key, 'used_bytes', 0) or 0
-                    log.debug(f"[Traffic] User {telegram_id} on {server.name} (Outline): {used} bytes")
-                    return used
-            return 0
+            # Use get_user_traffic method which calls metrics endpoint
+            used = await manager.client.get_user_traffic(telegram_id)
+            log.debug(f"[Traffic] User {telegram_id} on {server.name} (Outline): {used} bytes")
+            return used
 
         elif server.type_vpn == 1:  # VLESS
             email = f"{telegram_id}_vless"

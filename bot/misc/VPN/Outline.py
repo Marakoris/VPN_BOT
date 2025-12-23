@@ -101,3 +101,22 @@ class Outline(BaseVpn):
         except Exception as e:
             print(e)
         return key
+
+    async def get_user_traffic(self, telegram_id) -> int:
+        """Get traffic usage for a specific user in bytes"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                return 0
+
+            # Get transferred data from metrics endpoint
+            metrics = await self.client_outline.get_transferred_data()
+            if not metrics or 'bytesTransferredByUserId' not in metrics:
+                return 0
+
+            # Key ID in metrics is string
+            key_id = str(client.key_id)
+            return metrics['bytesTransferredByUserId'].get(key_id, 0)
+        except Exception as e:
+            print(f"[Outline] get_user_traffic error: {e}")
+            return 0
