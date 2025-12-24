@@ -1248,50 +1248,22 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         person = await get_person(callback.from_user.id)
         end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
 
-        # Показываем сообщение об активации
-        await callback.message.answer(
-            f"🎉 <b>Пробный период активирован!</b>\n\n"
-            f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
-            f"📅 Действует до: <b>{end_date}</b>",
-            parse_mode="HTML"
-        )
-
-        # Показываем меню выбора VPN (как my_keys)
+        # Одно сообщение с кнопкой подключения
         builder = InlineKeyboardBuilder()
         builder.button(
-            text="📡 Единая подписка (рекомендуем)",
-            callback_data=MainMenuAction(action='subscription_url')
-        )
-        builder.button(
-            text="🪐 Outline VPN",
-            callback_data=MainMenuAction(action='outline')
+            text="🔑 Подключить VPN",
+            callback_data=MainMenuAction(action='my_keys')
         )
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
-        menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
-                     "• Один URL для всех серверов\n"
-                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
-                     "• Автоматическое обновление списка серверов\n"
-                     "• Проще в использовании\n\n"
-                     "🪐 <b>Outline VPN</b>\n"
-                     "• Классический вариант\n"
-                     "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)")
-
-        try:
-            await callback.message.edit_text(
-                text=menu_text,
-                reply_markup=builder.as_markup(),
-                parse_mode="HTML"
-            )
-        except:
-            await callback.message.answer(
-                text=menu_text,
-                reply_markup=builder.as_markup(),
-                parse_mode="HTML"
-            )
+        await callback.message.edit_text(
+            f"🎉 <b>Пробный период активирован!</b>\n\n"
+            f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
+            f"📅 Действует до: <b>{end_date}</b>",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
 
     elif action == 'free_trial_subscription':
         # Активируем пробный период и показываем единую подписку
