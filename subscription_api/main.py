@@ -1487,13 +1487,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 <div class="step">
                     <div class="step-icon">⊕</div>
                     <div class="step-title">Добавить ключ</div>
-                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
-                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                    <div class="step-desc">Нажмите кнопку — ключ скопируется и откроется приложение</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="addToOutline()">🔌 Добавить ключ</button>
+                        <button class="btn btn-outline" onclick="copyKey()">📋 Скопировать</button>
+                    </div>
                 </div>
                 <div class="step completed">
                     <div class="step-icon">✓</div>
                     <div class="step-title">Подключитесь</div>
-                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                    <div class="step-desc">Если ключ не добавился — вставьте из буфера обмена</div>
                 </div>
             </div>
         </div>
@@ -1510,13 +1513,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 <div class="step">
                     <div class="step-icon">⊕</div>
                     <div class="step-title">Добавить ключ</div>
-                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
-                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                    <div class="step-desc">Нажмите кнопку — ключ скопируется и откроется приложение</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="addToOutline()">🔌 Добавить ключ</button>
+                        <button class="btn btn-outline" onclick="copyKey()">📋 Скопировать</button>
+                    </div>
                 </div>
                 <div class="step completed">
                     <div class="step-icon">✓</div>
                     <div class="step-title">Подключитесь</div>
-                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                    <div class="step-desc">Если ключ не добавился — вставьте из буфера обмена</div>
                 </div>
             </div>
         </div>
@@ -1533,13 +1539,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 <div class="step">
                     <div class="step-icon">⊕</div>
                     <div class="step-title">Добавить ключ</div>
-                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
-                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                    <div class="step-desc">Нажмите кнопку — ключ скопируется и откроется приложение</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="addToOutline()">🔌 Добавить ключ</button>
+                        <button class="btn btn-outline" onclick="copyKey()">📋 Скопировать</button>
+                    </div>
                 </div>
                 <div class="step completed">
                     <div class="step-icon">✓</div>
                     <div class="step-title">Подключитесь</div>
-                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                    <div class="step-desc">Если ключ не добавился — вставьте из буфера обмена</div>
                 </div>
             </div>
         </div>
@@ -1556,13 +1565,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 <div class="step">
                     <div class="step-icon">⊕</div>
                     <div class="step-title">Добавить ключ</div>
-                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
-                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                    <div class="step-desc">Нажмите кнопку — ключ скопируется и откроется приложение</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="addToOutline()">🔌 Добавить ключ</button>
+                        <button class="btn btn-outline" onclick="copyKey()">📋 Скопировать</button>
+                    </div>
                 </div>
                 <div class="step completed">
                     <div class="step-icon">✓</div>
                     <div class="step-title">Подключитесь</div>
-                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                    <div class="step-desc">Если ключ не добавился — вставьте из буфера обмена</div>
                 </div>
             </div>
         </div>
@@ -1579,13 +1591,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 <div class="step">
                     <div class="step-icon">⊕</div>
                     <div class="step-title">Добавить ключ</div>
-                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
-                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                    <div class="step-desc">Нажмите кнопку — ключ скопируется и откроется приложение</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="addToOutline()">🔌 Добавить ключ</button>
+                        <button class="btn btn-outline" onclick="copyKey()">📋 Скопировать</button>
+                    </div>
                 </div>
                 <div class="step completed">
                     <div class="step-icon">✓</div>
                     <div class="step-title">Подключитесь</div>
-                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                    <div class="step-desc">Если ключ не добавился — вставьте из буфера обмена</div>
                 </div>
             </div>
         </div>
@@ -1609,6 +1624,29 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 const toast = document.getElementById('copyToast');
                 toast.classList.add('show');
                 setTimeout(() => toast.classList.remove('show'), 2000);
+            }});
+        }}
+
+        function addToOutline() {{
+            // Сначала копируем ключ в буфер обмена
+            navigator.clipboard.writeText(outlineKey).then(() => {{
+                // Показываем уведомление
+                const toast = document.getElementById('copyToast');
+                toast.textContent = '✓ Ключ скопирован! Вставьте в Outline';
+                toast.classList.add('show');
+
+                // Открываем Outline через deep link
+                setTimeout(() => {{
+                    window.location.href = outlineKey;
+                }}, 500);
+
+                setTimeout(() => {{
+                    toast.classList.remove('show');
+                    toast.textContent = '✓ Ключ скопирован!';
+                }}, 3000);
+            }}).catch(() => {{
+                // Если копирование не сработало, просто открываем
+                window.location.href = outlineKey;
             }});
         }}
     </script>
