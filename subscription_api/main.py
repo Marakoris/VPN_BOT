@@ -1177,6 +1177,456 @@ async def add_subscription_deeplink(token: str, request: Request):
         )
 
 
+# ==================== OUTLINE DEEP LINK ENDPOINT ====================
+
+@app.get("/outline/{encoded_key}", response_class=HTMLResponse, tags=["Outline"])
+async def outline_deeplink(encoded_key: str, request: Request):
+    """
+    Beautiful landing page for adding Outline key to VPN apps.
+    Key is passed as base64 encoded string.
+    """
+    import base64
+    import urllib.parse
+
+    try:
+        # Decode the key
+        try:
+            outline_key = base64.urlsafe_b64decode(encoded_key).decode('utf-8')
+        except Exception:
+            return HTMLResponse(content=get_error_page("Неверная ссылка", "Ссылка на ключ недействительна."), status_code=400)
+
+        # Create ssconf:// deep link for Outline
+        # Format: ssconf://base64(ss://...)
+        outline_key_encoded = urllib.parse.quote(outline_key, safe='')
+
+        log.info(f"[Outline] Serving key page from {request.client.host}")
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Outline VPN - NoBorder</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 500px;
+            margin: 0 auto;
+        }}
+
+        /* Header */
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }}
+        .logo-section {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .logo {{
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #00bfa5, #1de9b6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }}
+        .brand-name {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+        .header-icons {{
+            display: flex;
+            gap: 10px;
+        }}
+        .header-icon {{
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            text-decoration: none;
+            color: #fff;
+            transition: background 0.2s;
+        }}
+        .header-icon:hover {{
+            background: rgba(255,255,255,0.2);
+        }}
+
+        /* Key Card */
+        .key-card {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }}
+        .key-title {{
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 10px;
+        }}
+        .key-value {{
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #00bfa5;
+            background: rgba(0,191,165,0.1);
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }}
+
+        /* Section Title */
+        .section-title {{
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }}
+
+        /* Platform Tabs */
+        .platform-tabs {{
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }}
+        .platform-tab {{
+            flex: 1;
+            padding: 12px 8px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-width: 80px;
+        }}
+        .platform-tab.active {{
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }}
+        .platform-tab:hover {{
+            color: #fff;
+        }}
+
+        /* Platform Content */
+        .platform-content {{
+            display: none;
+        }}
+        .platform-content.active {{
+            display: block;
+        }}
+
+        /* Steps */
+        .steps {{
+            position: relative;
+            padding-left: 40px;
+        }}
+        .steps::before {{
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 30px;
+            bottom: 30px;
+            width: 2px;
+            background: linear-gradient(180deg, #00bfa5 0%, #1de9b6 100%);
+        }}
+        .step {{
+            position: relative;
+            margin-bottom: 30px;
+        }}
+        .step:last-child {{
+            margin-bottom: 0;
+        }}
+        .step-icon {{
+            position: absolute;
+            left: -40px;
+            width: 26px;
+            height: 26px;
+            background: #0f0f1a;
+            border: 2px solid #00bfa5;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #00bfa5;
+        }}
+        .step.completed .step-icon {{
+            background: #00bfa5;
+            color: #000;
+        }}
+        .step-title {{
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 6px;
+        }}
+        .step-desc {{
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 12px;
+        }}
+
+        /* Buttons */
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }}
+        .btn-outline {{
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }}
+        .btn-outline:hover {{
+            background: rgba(255,255,255,0.1);
+        }}
+        .btn-primary {{
+            background: linear-gradient(135deg, #00bfa5 0%, #1de9b6 100%);
+            color: #000;
+        }}
+        .btn-primary:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 191, 165, 0.3);
+        }}
+
+        /* Copy notification */
+        .copy-toast {{
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #00bfa5;
+            color: #000;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s;
+        }}
+        .copy-toast.show {{
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">🪐</div>
+                <span class="brand-name">Outline VPN</span>
+            </div>
+            <div class="header-icons">
+                <a href="https://t.me/VPN_NB_test_bot" class="header-icon" title="Открыть бота">✈️</a>
+            </div>
+        </div>
+
+        <!-- Key Card -->
+        <div class="key-card">
+            <div class="key-title">🔑 Ваш ключ (нажмите чтобы скопировать)</div>
+            <div class="key-value" onclick="copyKey()">{outline_key[:50]}...</div>
+        </div>
+
+        <!-- Installation Section -->
+        <div class="section-title">Установка</div>
+
+        <!-- Platform Tabs -->
+        <div class="platform-tabs">
+            <button class="platform-tab active" onclick="switchPlatform('android')">📱 Android</button>
+            <button class="platform-tab" onclick="switchPlatform('ios')">🍎 iPhone</button>
+            <button class="platform-tab" onclick="switchPlatform('windows')">🖥 Windows</button>
+            <button class="platform-tab" onclick="switchPlatform('macos')">🍏 macOS</button>
+            <button class="platform-tab" onclick="switchPlatform('linux')">🐧 Linux</button>
+        </div>
+
+        <!-- Android Content -->
+        <div id="android-content" class="platform-content active">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">↓</div>
+                    <div class="step-title">Скачайте Outline</div>
+                    <div class="step-desc">Установите приложение из Google Play</div>
+                    <a href="https://play.google.com/store/apps/details?id=org.outline.android.client" class="btn btn-outline" target="_blank">📥 GOOGLE PLAY</a>
+                </div>
+                <div class="step">
+                    <div class="step-icon">⊕</div>
+                    <div class="step-title">Добавить ключ</div>
+                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
+                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">✓</div>
+                    <div class="step-title">Подключитесь</div>
+                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- iOS Content -->
+        <div id="ios-content" class="platform-content">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">↓</div>
+                    <div class="step-title">Скачайте Outline</div>
+                    <div class="step-desc">Установите приложение из App Store</div>
+                    <a href="https://apps.apple.com/us/app/outline-app/id1356177741" class="btn btn-outline" target="_blank">📥 APP STORE</a>
+                </div>
+                <div class="step">
+                    <div class="step-icon">⊕</div>
+                    <div class="step-title">Добавить ключ</div>
+                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
+                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">✓</div>
+                    <div class="step-title">Подключитесь</div>
+                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Windows Content -->
+        <div id="windows-content" class="platform-content">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">↓</div>
+                    <div class="step-title">Скачайте Outline</div>
+                    <div class="step-desc">Скачайте и установите приложение</div>
+                    <a href="https://github.com/Jigsaw-Code/outline-apps/releases/latest" class="btn btn-outline" target="_blank">📥 СКАЧАТЬ</a>
+                </div>
+                <div class="step">
+                    <div class="step-icon">⊕</div>
+                    <div class="step-title">Добавить ключ</div>
+                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
+                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">✓</div>
+                    <div class="step-title">Подключитесь</div>
+                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- macOS Content -->
+        <div id="macos-content" class="platform-content">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">↓</div>
+                    <div class="step-title">Скачайте Outline</div>
+                    <div class="step-desc">Установите приложение из App Store</div>
+                    <a href="https://apps.apple.com/us/app/outline-app/id1356178125" class="btn btn-outline" target="_blank">📥 APP STORE</a>
+                </div>
+                <div class="step">
+                    <div class="step-icon">⊕</div>
+                    <div class="step-title">Добавить ключ</div>
+                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
+                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">✓</div>
+                    <div class="step-title">Подключитесь</div>
+                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Linux Content -->
+        <div id="linux-content" class="platform-content">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">↓</div>
+                    <div class="step-title">Скачайте Outline</div>
+                    <div class="step-desc">Скачайте AppImage для Linux</div>
+                    <a href="https://github.com/Jigsaw-Code/outline-apps/releases/latest" class="btn btn-outline" target="_blank">📥 СКАЧАТЬ</a>
+                </div>
+                <div class="step">
+                    <div class="step-icon">⊕</div>
+                    <div class="step-title">Добавить ключ</div>
+                    <div class="step-desc">Скопируйте ключ и добавьте в приложении</div>
+                    <button class="btn btn-primary" onclick="copyKey()">📋 Скопировать ключ</button>
+                </div>
+                <div class="step completed">
+                    <div class="step-icon">✓</div>
+                    <div class="step-title">Подключитесь</div>
+                    <div class="step-desc">Откройте приложение и нажмите "Подключить"</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Copy Toast -->
+    <div class="copy-toast" id="copyToast">✓ Ключ скопирован!</div>
+
+    <script>
+        const outlineKey = "{outline_key}";
+
+        function switchPlatform(platform) {{
+            document.querySelectorAll('.platform-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            document.querySelectorAll('.platform-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(platform + '-content').classList.add('active');
+        }}
+
+        function copyKey() {{
+            navigator.clipboard.writeText(outlineKey).then(() => {{
+                const toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            }});
+        }}
+    </script>
+</body>
+</html>
+        """
+
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        log.error(f"[Outline] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(content=get_error_page("Ошибка", "Что-то пошло не так. Попробуйте ещё раз."),
+            status_code=500
+        )
+
+
 # ==================== ERROR HANDLERS ====================
 
 @app.exception_handler(404)

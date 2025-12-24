@@ -6,11 +6,12 @@ Part of simplified menu refactoring (2025-12-08).
 """
 import logging
 import time
+import base64
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, WebAppInfo
 
 from bot.database.methods.get import get_person, get_server_id, get_free_servers
 from bot.database.methods.update import add_user_in_server, server_space_update
@@ -18,6 +19,9 @@ from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.callbackData import ChooseOutlineServer
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
+
+# Outline page base URL
+OUTLINE_PAGE_URL = "https://vpnnoborder.sytes.net/outline"
 
 log = logging.getLogger(__name__)
 _ = Localization.text
@@ -176,51 +180,25 @@ async def connect_outline(
         )
         return
 
-    # Success - send key with download buttons
+    # Success - send link to Outline page
     try:
         await call.message.delete()
         await status_msg.delete()
     except:
         pass
 
-    # Create keyboard with Outline download links (by platform)
+    # Encode key for URL
+    encoded_key = base64.urlsafe_b64encode(config.encode('utf-8')).decode('utf-8')
+    outline_page_link = f"{OUTLINE_PAGE_URL}/{encoded_key}"
+
+    # Create keyboard with link to Outline page
     kb = InlineKeyboardBuilder()
 
-    # 📱 МОБИЛЬНЫЕ (самые популярные)
-    # Android - одна кнопка на всю ширину
+    # Кнопка открытия страницы подключения
     kb.row(
         InlineKeyboardButton(
-            text="📱 Android",
-            url="https://play.google.com/store/apps/details?id=org.outline.android.client"
-        )
-    )
-
-    # iPhone - одна кнопка
-    kb.row(
-        InlineKeyboardButton(
-            text="📱 iPhone",
-            url="https://apps.apple.com/us/app/outline-app/id1356177741"
-        )
-    )
-
-    # 🖥 ДЕСКТОП
-    # Windows и macOS в одном ряду
-    kb.row(
-        InlineKeyboardButton(
-            text="🖥 Windows",
-            url="https://github.com/Jigsaw-Code/outline-apps/releases/latest"
-        ),
-        InlineKeyboardButton(
-            text="🖥 macOS",
-            url="https://apps.apple.com/us/app/outline-app/id1356178125"
-        )
-    )
-
-    # Linux - отдельная кнопка
-    kb.row(
-        InlineKeyboardButton(
-            text="🖥 Linux",
-            url="https://github.com/Jigsaw-Code/outline-apps/releases/latest"
+            text="🔌 Подключиться",
+            url=outline_page_link
         )
     )
 
@@ -233,17 +211,15 @@ async def connect_outline(
         )
     )
 
-    # Unified message with key and download buttons
+    # Message with link
     message_text = (
-        f"🔑 <b>Ваш Outline ключ</b>\n\n"
-        f"<code>{config}</code>\n\n"
-        f"📱 <b>Как использовать:</b>\n"
-        f"1. Скачайте приложение Outline для вашей платформы\n"
-        f"2. Откройте приложение\n"
-        f"3. Нажмите \"Добавить сервер\" / \"Add Server\"\n"
-        f"4. Вставьте ключ выше\n"
-        f"5. Подключайтесь!\n\n"
-        f"💡 Скопируйте ключ нажав на него"
+        f"🪐 <b>Outline VPN - {server.name}</b>\n\n"
+        f"Нажмите кнопку ниже для подключения.\n"
+        f"На странице вы найдёте:\n"
+        f"• Ссылки для скачивания приложения\n"
+        f"• Ваш ключ для подключения\n"
+        f"• Инструкции по настройке\n\n"
+        f"💡 Страница работает на всех устройствах"
     )
 
     await bot.send_message(
