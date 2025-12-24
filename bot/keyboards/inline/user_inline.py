@@ -91,8 +91,18 @@ async def choose_type_vpn() -> InlineKeyboardMarkup:
 
 async def renew(CONFIG, lang, tg_id: int, payment_method_id) -> InlineKeyboardMarkup:
     from aiogram.types import InlineKeyboardButton
+    import time
     kb = InlineKeyboardBuilder()
     user = await get_person(tg_id)
+    time_now = int(time.time())
+
+    # Кнопка пробного периода (для новых пользователей)
+    if not user.free_trial_used and not user.banned and int(user.subscription) <= time_now:
+        kb.button(
+            text="🎁 3 дня бесплатно",
+            callback_data=MainMenuAction(action='free_trial')
+        )
+
     if user.subscription_price is None:
         supper_offer: SuperOffer = await get_super_offer()
         if supper_offer is not None:
@@ -304,14 +314,7 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
             callback_data=MainMenuAction(action='admin')
         )
 
-    # 1. Активировать пробный период (для новых пользователей без подписки и не использовавших trial)
-    if int(person.subscription) <= time_now and not person.free_trial_used and not person.banned:
-        kb.button(
-            text="🎁 Активировать пробный период (3 дня)",
-            callback_data=MainMenuAction(action='free_trial')
-        )
-
-    # 2. Оплатить VPN
+    # 1. Оплатить VPN
     kb.button(
         text="💳 Оплатить VPN",
         callback_data=MainMenuAction(action='subscription')
