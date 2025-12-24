@@ -183,6 +183,7 @@ async def command_pay(message: Message, state: FSMContext):
     from bot.misc.callbackData import MainMenuAction
     from aiogram.types import InlineKeyboardButton
 
+    await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
     person = await get_person(message.from_user.id)
 
@@ -214,6 +215,7 @@ async def command_connect(message: Message, state: FSMContext):
     from bot.keyboards.inline.user_inline import renew
     from aiogram.types import InlineKeyboardButton
 
+    await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
     person = await get_person(message.from_user.id)
 
@@ -263,6 +265,7 @@ async def command_help(message: Message, state: FSMContext):
     """Команда /help - помощь и поддержка"""
     from bot.misc.callbackData import MainMenuAction
 
+    await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
     builder = InlineKeyboardBuilder()
     builder.button(text="💬 Написать в поддержку", url="https://t.me/VPN_YouSupport_bot")
@@ -745,6 +748,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     log.info(f"[MainMenu] Handler triggered! Action: {action}, User: {callback.from_user.id}")
 
     await callback.answer()
+    await state.clear()  # Очищаем FSM состояние при возврате в меню
     lang = await get_lang(callback.from_user.id, state)
 
     if action == 'subscription_url':
