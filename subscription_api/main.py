@@ -11,6 +11,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -47,6 +48,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Mount static files directory
+static_dir = os.path.join(os.path.dirname(__file__), 'static')
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # ==================== STARTUP/SHUTDOWN ====================
@@ -388,203 +394,785 @@ async def unban_ip_endpoint(ip: str):
         )
 
 
+# ==================== HELPER FUNCTIONS ====================
+
+def get_error_page(title: str, message: str) -> str:
+    """Generate error page HTML"""
+    return f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title} - NoBorder VPN</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .container {{
+            text-align: center;
+            max-width: 400px;
+        }}
+        .icon {{ font-size: 64px; margin-bottom: 20px; }}
+        h1 {{ color: #ff6b6b; margin-bottom: 15px; font-size: 24px; }}
+        p {{ color: #888; line-height: 1.6; }}
+        .btn {{
+            display: inline-block;
+            margin-top: 20px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+            color: #000;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 600;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <a href="https://t.me/VPN_NB_test_bot" class="btn">Открыть бота</a>
+    </div>
+</body>
+</html>
+"""
+
+
 # ==================== DEEP LINK ENDPOINT ====================
 
 @app.get("/add/{token}", response_class=HTMLResponse, tags=["Subscription"])
 async def add_subscription_deeplink(token: str, request: Request):
     """
-    Deep link redirect for Happ app
-
-    Opens Happ app and adds subscription automatically.
-    Similar to https://add.aliusvpn.ru/ios?id=...&link=happ://add/?
-
-    Args:
-        token: Subscription token
-
-    Returns:
-        HTML page with automatic redirect to happ://add/?{subscription_url}
+    Beautiful landing page for adding subscription to VPN apps.
+    Similar to Alius VPN style page.
     """
     client_ip = request.client.host
+    import urllib.parse
+    from datetime import datetime
 
     try:
         # Verify token first
         user_id = verify_subscription_token(token)
         if not user_id:
             record_failed_attempt(client_ip, reason="invalid_token")
-            return HTMLResponse(
-                content="""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <title>Invalid Token</title>
-                    <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                               display: flex; justify-content: center; align-items: center;
-                               height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
-                        .container { text-align: center; padding: 20px; }
-                        h1 { color: #ff6b6b; }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>Invalid Token</h1>
-                        <p>The subscription link is invalid or expired.</p>
-                        <p>Please get a new link from the bot.</p>
-                    </div>
-                </body>
-                </html>
-                """,
-                status_code=401
-            )
+            return HTMLResponse(content=get_error_page("Неверная ссылка", "Ссылка на подписку недействительна или истекла.<br>Получите новую ссылку в боте."), status_code=401)
 
-        # Build subscription URL
-        subscription_url = f"http://185.58.204.196:8003/sub/{token}"
+        # Get user info for displaying subscription expiry
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            statement = select(Persons).filter(Persons.id == user_id)
+            result = await db.execute(statement)
+            user = result.scalar_one_or_none()
 
-        # Build deep link for Happ
-        deep_link = f"happ://add/?{subscription_url}"
+        # Calculate subscription expiry
+        expiry_text = "Неизвестно"
+        if user and user.subscription:
+            from datetime import datetime
+            expiry_date = datetime.fromtimestamp(user.subscription)
+            now = datetime.now()
+            diff = expiry_date - now
+            if diff.days > 30:
+                months = diff.days // 30
+                expiry_text = f"Истекает через {months} мес."
+            elif diff.days > 0:
+                expiry_text = f"Истекает через {diff.days} дн."
+            elif diff.days == 0:
+                expiry_text = "Истекает сегодня"
+            else:
+                expiry_text = "Подписка истекла"
+
+        user_display = f"_{user.tgid}" if user else "Пользователь"
+
+        # Build URLs
+        encoded_token = urllib.parse.quote(token, safe='')
+        subscription_url = f"https://vpnnoborder.sytes.net/sub/{encoded_token}"
+        deep_link_happ = f"happ://add/{subscription_url}"
+        deep_link_v2raytun = f"v2raytun://import/{subscription_url}"
 
         log.info(f"[Deep Link] User {user_id} accessing add link from {client_ip}")
 
-        # Return HTML with automatic redirect
         html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>NoBorder VPN - Add Subscription</title>
-            <meta http-equiv="refresh" content="1;url={deep_link}">
-            <style>
-                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-                    color: #fff;
-                    min-height: 100vh;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    padding: 20px;
-                }}
-                .container {{
-                    text-align: center;
-                    max-width: 400px;
-                    background: rgba(255,255,255,0.1);
-                    border-radius: 20px;
-                    padding: 40px 30px;
-                    backdrop-filter: blur(10px);
-                }}
-                .logo {{ font-size: 48px; margin-bottom: 20px; }}
-                h1 {{
-                    font-size: 24px;
-                    margin-bottom: 15px;
-                    color: #4ade80;
-                }}
-                p {{
-                    color: #94a3b8;
-                    margin-bottom: 20px;
-                    line-height: 1.6;
-                }}
-                .spinner {{
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid rgba(255,255,255,0.1);
-                    border-top-color: #4ade80;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                    margin: 20px auto;
-                }}
-                @keyframes spin {{
-                    to {{ transform: rotate(360deg); }}
-                }}
-                .btn {{
-                    display: inline-block;
-                    background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
-                    color: #000;
-                    padding: 15px 30px;
-                    border-radius: 12px;
-                    text-decoration: none;
-                    font-weight: 600;
-                    margin-top: 20px;
-                    transition: transform 0.2s, box-shadow 0.2s;
-                }}
-                .btn:hover {{
-                    transform: translateY(-2px);
-                    box-shadow: 0 10px 20px rgba(74, 222, 128, 0.3);
-                }}
-                .manual {{
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid rgba(255,255,255,0.1);
-                }}
-                .manual p {{ font-size: 14px; }}
-                .copy-box {{
-                    background: rgba(0,0,0,0.3);
-                    border-radius: 8px;
-                    padding: 12px;
-                    margin: 10px 0;
-                    word-break: break-all;
-                    font-family: monospace;
-                    font-size: 12px;
-                    color: #94a3b8;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NoBorder VPN</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 500px;
+            margin: 0 auto;
+        }}
+
+        /* Header */
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }}
+        .logo-section {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .logo {{
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #ff8c00, #ffb347);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }}
+        .brand-name {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+        .header-icons {{
+            display: flex;
+            gap: 10px;
+        }}
+        .header-icon {{
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            text-decoration: none;
+            color: #fff;
+            transition: background 0.2s;
+        }}
+        .header-icon:hover {{
+            background: rgba(255,255,255,0.2);
+        }}
+
+        /* User Card */
+        .user-card {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .user-check {{
+            width: 24px;
+            height: 24px;
+            background: #00d9ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 14px;
+        }}
+        .user-info {{
+            flex: 1;
+        }}
+        .user-name {{
+            font-weight: 600;
+            font-size: 16px;
+        }}
+        .user-expiry {{
+            font-size: 13px;
+            color: #888;
+            margin-top: 2px;
+        }}
+        .user-arrow {{
+            color: #666;
+            font-size: 20px;
+        }}
+
+        /* Section Title */
+        .section-title {{
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }}
+
+        /* Platform Tabs */
+        .platform-tabs {{
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 25px;
+        }}
+        .platform-tab {{
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }}
+        .platform-tab.active {{
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }}
+        .platform-tab:hover {{
+            color: #fff;
+        }}
+
+        /* App Tabs */
+        .app-tabs {{
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }}
+        .app-tab {{
+            flex: 1;
+            padding: 14px;
+            border-radius: 25px;
+            border: 2px solid transparent;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }}
+        .app-tab.active {{
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+        }}
+        .app-tab:hover {{
+            background: rgba(255,255,255,0.1);
+        }}
+        .app-tab-icon {{
+            font-size: 16px;
+        }}
+
+        /* Steps */
+        .steps {{
+            position: relative;
+            padding-left: 40px;
+        }}
+        .steps::before {{
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 30px;
+            bottom: 30px;
+            width: 2px;
+            background: linear-gradient(180deg, #00d9ff 0%, #00ff88 100%);
+        }}
+        .step {{
+            position: relative;
+            margin-bottom: 30px;
+        }}
+        .step:last-child {{
+            margin-bottom: 0;
+        }}
+        .step-icon {{
+            position: absolute;
+            left: -40px;
+            width: 26px;
+            height: 26px;
+            background: #0f0f1a;
+            border: 2px solid #00d9ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #00d9ff;
+        }}
+        .step.completed .step-icon {{
+            background: #00d9ff;
+            color: #000;
+        }}
+        .step-title {{
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 6px;
+        }}
+        .step-desc {{
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 12px;
+        }}
+
+        /* Buttons */
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }}
+        .btn-outline {{
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }}
+        .btn-outline:hover {{
+            background: rgba(255,255,255,0.1);
+        }}
+        .btn-primary {{
+            background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+            color: #000;
+        }}
+        .btn-primary:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 217, 255, 0.3);
+        }}
+
+        /* Tips */
+        .tips {{
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            font-size: 13px;
+            color: #888;
+            line-height: 1.8;
+        }}
+        .tips-title {{
+            color: #fff;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }}
+        .tips code {{
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #00d9ff;
+        }}
+
+        /* Hidden content */
+        .platform-content {{
+            display: none;
+        }}
+        .platform-content.active {{
+            display: block;
+        }}
+        .app-content {{
+            display: none;
+        }}
+        .app-content.active {{
+            display: block;
+        }}
+
+        /* Copy notification */
+        .copy-toast {{
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #00d9ff;
+            color: #000;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s;
+        }}
+        .copy-toast.show {{
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
                 <div class="logo">🌐</div>
-                <h1>Opening Happ...</h1>
-                <div class="spinner"></div>
-                <p>The app should open automatically.<br>If it doesn't, click the button below.</p>
+                <span class="brand-name">NoBorder VPN</span>
+            </div>
+            <div class="header-icons">
+                <a href="https://t.me/VPN_NB_test_bot" class="header-icon" title="Открыть бота">✈️</a>
+            </div>
+        </div>
 
-                <a href="{deep_link}" class="btn">Open in Happ</a>
+        <!-- User Card -->
+        <div class="user-card">
+            <div class="user-check">✓</div>
+            <div class="user-info">
+                <div class="user-name">{user_display}</div>
+                <div class="user-expiry">{expiry_text}</div>
+            </div>
+            <div class="user-arrow">›</div>
+        </div>
 
-                <div class="manual">
-                    <p>Don't have Happ installed?</p>
-                    <p><a href="https://play.google.com/store/apps/details?id=com.happproxy" style="color: #4ade80;">Download for Android</a></p>
-                    <p><a href="https://apps.apple.com/app/happ-proxy-utility/id6504287215" style="color: #4ade80;">Download for iPhone</a></p>
+        <!-- Installation Section -->
+        <div class="section-title">Установка</div>
 
-                    <p style="margin-top: 20px;">Or copy subscription URL:</p>
-                    <div class="copy-box">{subscription_url}</div>
+        <!-- Platform Tabs -->
+        <div class="platform-tabs">
+            <button class="platform-tab active" onclick="switchPlatform('android')">📱 Android</button>
+            <button class="platform-tab" onclick="switchPlatform('ios')">🍎 iPhone</button>
+            <button class="platform-tab" onclick="switchPlatform('macos')">🍏 macOS</button>
+            <button class="platform-tab" onclick="switchPlatform('windows')">🖥 Windows</button>
+            <button class="platform-tab" onclick="switchPlatform('tv')">📺 TV</button>
+        </div>
+
+        <!-- Android Content -->
+        <div id="android-content" class="platform-content active">
+            <div class="app-tabs">
+                <button class="app-tab active" onclick="switchApp('android', 'happ')">⭐ Happ</button>
+                <button class="app-tab" onclick="switchApp('android', 'v2raytun')">V2RayTun</button>
+            </div>
+
+            <div id="android-happ" class="app-content active">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ</div>
+                        <div class="step-desc">Установите приложение из Google Play или скачайте APK напрямую.</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://play.google.com/store/apps/details?id=com.happproxy" class="btn btn-outline" target="_blank">📥 GOOGLE PLAY</a>
+                            <a href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk" class="btn btn-outline" target="_blank">📦 APK</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже, чтобы добавить подписку</div>
+                        <a href="{deep_link_happ}" class="btn btn-primary">Добавить подписку</a>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
                 </div>
             </div>
 
-            <script>
-                // Try to open deep link immediately
-                window.location.href = "{deep_link}";
-            </script>
-        </body>
-        </html>
+            <div id="android-v2raytun" class="app-content">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте V2RayTun</div>
+                        <div class="step-desc">Установите приложение из Google Play или скачайте APK напрямую.</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://play.google.com/store/apps/details?id=com.v2raytun.android" class="btn btn-outline" target="_blank">📥 GOOGLE PLAY</a>
+                            <a href="https://github.com/DigneZzZ/v2raytun/releases/download/3.12.46/v2RayTun_arm64-v8a.apk" class="btn btn-outline" target="_blank">📦 APK</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже, чтобы добавить подписку</div>
+                        <a href="{deep_link_v2raytun}" class="btn btn-primary">Добавить подписку</a>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- iOS Content -->
+        <div id="ios-content" class="platform-content">
+            <div class="app-tabs">
+                <button class="app-tab active" onclick="switchApp('ios', 'happ')">⭐ Happ</button>
+                <button class="app-tab" onclick="switchApp('ios', 'v2raytun')">V2RayTun</button>
+            </div>
+
+            <div id="ios-happ" class="app-content active">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ</div>
+                        <div class="step-desc">Выберите версию для вашего региона:</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215" class="btn btn-outline" target="_blank">🌍 Global</a>
+                            <a href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973" class="btn btn-outline" target="_blank">🇷🇺 Россия</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже, чтобы добавить подписку</div>
+                        <a href="{deep_link_happ}" class="btn btn-primary">Добавить подписку</a>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ios-v2raytun" class="app-content">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте V2RayTun</div>
+                        <div class="step-desc">Установите приложение из App Store</div>
+                        <a href="https://apps.apple.com/app/v2raytun/id6476628951" class="btn btn-outline" target="_blank">📥 APP STORE</a>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже, чтобы добавить подписку</div>
+                        <a href="{deep_link_v2raytun}" class="btn btn-primary">Добавить подписку</a>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- macOS Content -->
+        <div id="macos-content" class="platform-content">
+            <div class="app-tabs">
+                <button class="app-tab active" onclick="switchApp('macos', 'happ')">⭐ Happ</button>
+            </div>
+
+            <div id="macos-happ" class="app-content active">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ</div>
+                        <div class="step-desc">Выберите версию для вашего региона:</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215" class="btn btn-outline" target="_blank">🌍 Global</a>
+                            <a href="https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973" class="btn btn-outline" target="_blank">🇷🇺 Россия</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже или скопируйте ссылку вручную</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="{deep_link_happ}" class="btn btn-primary">Добавить подписку</a>
+                            <button class="btn btn-outline" onclick="copyUrl()">📋 Скопировать</button>
+                        </div>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Windows Content -->
+        <div id="windows-content" class="platform-content">
+            <div class="app-tabs">
+                <button class="app-tab active" onclick="switchApp('windows', 'happ')">⭐ Happ</button>
+                <button class="app-tab" onclick="switchApp('windows', 'v2raytun')">V2RayTun</button>
+            </div>
+
+            <div id="windows-happ" class="app-content active">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ</div>
+                        <div class="step-desc">Нажмите на кнопку ниже и установите приложение.</div>
+                        <a href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" class="btn btn-outline" target="_blank">📥 WINDOWS</a>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже или скопируйте ссылку вручную</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="{deep_link_happ}" class="btn btn-primary">Добавить подписку</a>
+                            <button class="btn btn-outline" onclick="copyUrl()">📋 Скопировать</button>
+                        </div>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="windows-v2raytun" class="app-content">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте V2RayTun</div>
+                        <div class="step-desc">Нажмите на кнопку ниже и установите приложение.</div>
+                        <a href="/static/v2raytun_setup.exe" class="btn btn-outline" target="_blank">📥 WINDOWS</a>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Добавить подписку</div>
+                        <div class="step-desc">Нажмите кнопку ниже или скопируйте ссылку вручную</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="{deep_link_v2raytun}" class="btn btn-primary">Добавить подписку</a>
+                            <button class="btn btn-outline" onclick="copyUrl()">📋 Скопировать</button>
+                        </div>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Откройте приложение и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TV Content -->
+        <div id="tv-content" class="platform-content">
+            <div class="app-tabs">
+                <button class="app-tab active" onclick="switchApp('tv', 'androidtv')">🤖 Android TV</button>
+                <button class="app-tab" onclick="switchApp('tv', 'appletv')">🍎 Apple TV</button>
+            </div>
+
+            <div id="tv-androidtv" class="app-content active">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ для Android TV</div>
+                        <div class="step-desc">Установите приложение из Google Play</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://play.google.com/store/apps/details?id=com.happproxy" class="btn btn-outline" target="_blank">📥 GOOGLE PLAY</a>
+                            <a href="https://www.happ.su/main/ru/faq/android-tv" class="btn btn-outline" target="_blank">📖 Инструкция</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Ссылка на подписку</div>
+                        <div class="step-desc">Скопируйте ссылку для добавления в приложение</div>
+                        <button class="btn btn-primary" onclick="copyUrl()">📋 Скопировать ссылку</button>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Следуйте инструкции и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tv-appletv" class="app-content">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">↓</div>
+                        <div class="step-title">Скачайте Happ для Apple TV</div>
+                        <div class="step-desc">Установите приложение из App Store</div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <a href="https://apps.apple.com/us/app/happ-proxy-utility-for-tv/id6748297274" class="btn btn-outline" target="_blank">📥 APP STORE</a>
+                            <a href="https://www.happ.su/main/ru/faq/apple-tv-tvos" class="btn btn-outline" target="_blank">📖 Инструкция</a>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">⊕</div>
+                        <div class="step-title">Ссылка на подписку</div>
+                        <div class="step-desc">Скопируйте ссылку для добавления в приложение</div>
+                        <button class="btn btn-primary" onclick="copyUrl()">📋 Скопировать ссылку</button>
+                    </div>
+                    <div class="step completed">
+                        <div class="step-icon">✓</div>
+                        <div class="step-title">Подключите и используйте</div>
+                        <div class="step-desc">Следуйте инструкции и подключитесь к серверу</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="tips">
+            <div class="tips-title">Если у вас не работает Интернет после подключения VPN:</div>
+            1. Перейдите в настройки в боковой панели приложения<br>
+            2. Перейдите в пункт "Дополнительные настройки"<br>
+            - Установите галочку <code>Использовать локальный DNS</code><br>
+            - Снимите галочку с <code>TUN</code> и включите <code>Системный прокси</code><br><br>
+            Если не помогло, включите <code>TUN</code> и выключите <code>Системный прокси</code>
+        </div>
+    </div>
+
+    <!-- Copy Toast -->
+    <div class="copy-toast" id="copyToast">✓ Ссылка скопирована!</div>
+
+    <script>
+        const subscriptionUrl = "{subscription_url}";
+
+        function switchPlatform(platform) {{
+            // Update tabs
+            document.querySelectorAll('.platform-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update content
+            document.querySelectorAll('.platform-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(platform + '-content').classList.add('active');
+        }}
+
+        function switchApp(platform, app) {{
+            // Update tabs within platform
+            const container = document.getElementById(platform + '-content');
+            container.querySelectorAll('.app-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update app content
+            container.querySelectorAll('.app-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(platform + '-' + app).classList.add('active');
+        }}
+
+        function copyUrl() {{
+            navigator.clipboard.writeText(subscriptionUrl).then(() => {{
+                const toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            }});
+        }}
+    </script>
+</body>
+</html>
         """
 
         return HTMLResponse(content=html_content)
 
     except Exception as e:
         log.error(f"[Deep Link] Error: {e}")
-        return HTMLResponse(
-            content="""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <title>Error</title>
-                <style>
-                    body { font-family: -apple-system, sans-serif;
-                           display: flex; justify-content: center; align-items: center;
-                           height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
-                    .container { text-align: center; }
-                    h1 { color: #ff6b6b; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Error</h1>
-                    <p>Something went wrong. Please try again.</p>
-                </div>
-            </body>
-            </html>
-            """,
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(content=get_error_page("Ошибка", "Что-то пошло не так. Попробуйте ещё раз."),
             status_code=500
         )
 

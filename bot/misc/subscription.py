@@ -239,6 +239,79 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
             return None
 
 
+# ==================== SUBSCRIPTION SYNC ====================
+
+async def sync_subscription_keys(user_id: int) -> dict:
+    """
+    Sync subscription keys: create missing keys on new servers
+
+    This function checks all active servers and creates keys
+    where they don't exist yet. Used when user requests subscription URL.
+
+    Args:
+        user_id: User's telegram ID (tgid)
+
+    Returns:
+        dict with 'created' count and 'errors' count
+    """
+    result = {'created': 0, 'errors': 0, 'checked': 0}
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        try:
+            # Get user
+            statement = select(Persons).filter(Persons.tgid == user_id)
+            user_result = await db.execute(statement)
+            user = user_result.scalar_one_or_none()
+
+            if not user or not user.subscription_active:
+                return result
+
+            # Get all active servers (VLESS + Shadowsocks)
+            statement = select(Servers).filter(
+                Servers.work == True,
+                Servers.type_vpn.in_([1, 2]),
+                Servers.space < MAX_PEOPLE_SERVER
+            ).order_by(Servers.id)
+
+            server_result = await db.execute(statement)
+            servers = server_result.scalars().all()
+
+            for server in servers:
+                result['checked'] += 1
+                try:
+                    server_manager = ServerManager(server)
+                    await server_manager.login()
+
+                    # Check if key exists
+                    existing_client = await server_manager.get_user(user_id)
+
+                    if not existing_client:
+                        # Create missing key
+                        log.info(f"[Subscription Sync] Creating missing key for {user_id} on {server.name}")
+                        create_result = await server_manager.add_client(user_id)
+
+                        if create_result is not False:
+                            result['created'] += 1
+                            server.space += 1
+                        else:
+                            result['errors'] += 1
+
+                except Exception as e:
+                    log.error(f"[Subscription Sync] Error on server {server.id}: {e}")
+                    result['errors'] += 1
+                    continue
+
+            if result['created'] > 0:
+                await db.commit()
+                log.info(f"[Subscription Sync] User {user_id}: created {result['created']} keys")
+
+            return result
+
+        except Exception as e:
+            log.error(f"[Subscription Sync] Failed for user {user_id}: {e}")
+            return result
+
+
 # ==================== SUBSCRIPTION EXPIRATION ====================
 
 async def expire_subscription(user_id: int) -> bool:

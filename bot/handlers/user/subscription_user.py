@@ -5,6 +5,7 @@ Handles subscription URL generation and management
 """
 import logging
 import time
+import urllib.parse
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
@@ -12,7 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 
 from bot.database.methods.get import get_person
-from bot.misc.subscription import activate_subscription, get_user_subscription_status
+from bot.misc.subscription import activate_subscription, get_user_subscription_status, sync_subscription_keys
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 
@@ -55,9 +56,16 @@ async def get_subscription_url(message: Message, state: FSMContext) -> None:
         )
         return
 
-    # User has active subscription - show URL
-    subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
-    add_link_url = f"{CONFIG.subscription_api_url}/add/{status['token']}"
+    # User has active subscription - sync keys on new servers first
+    sync_result = await sync_subscription_keys(person.tgid)
+    if sync_result['created'] > 0:
+        log.info(f"[Subscription] Synced {sync_result['created']} new keys for user {person.tgid}")
+
+    # Show URL
+    # URL-encode token (base64 may contain = which needs encoding)
+    encoded_token = urllib.parse.quote(status['token'], safe='')
+    subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
+    add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
 
     # Create keyboard with Happ download links (by platform)
     kb = InlineKeyboardBuilder()
@@ -221,8 +229,10 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
             return
 
         # Success - show subscription URL
-        subscription_url = f"{CONFIG.subscription_api_url}/sub/{token}"
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{token}"
+        # URL-encode token (base64 may contain = which needs encoding)
+        encoded_token = urllib.parse.quote(token, safe='')
+        subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
+        add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
 
         # Create keyboard with Happ download links (by platform)
         kb = InlineKeyboardBuilder()
