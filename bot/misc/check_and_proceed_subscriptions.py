@@ -4,7 +4,7 @@ import time
 from datetime import date
 
 from aiogram import Bot
-from aiogram.types import FSInputFile, ReplyKeyboardRemove
+from aiogram.types import FSInputFile
 from aiogram.utils.formatting import Text
 
 from bot.database.methods.get import get_all_subscription, get_server_id, get_all_user
@@ -91,12 +91,11 @@ async def process_subscriptions(bot: Bot, config):
                                 log.warning(f"Failed to delete key for user {person.tgid}, server may be unavailable: {e}")
                                 # Продолжаем, так как подписка действительно истекла
                         await person_subscription_expired_true(person.tgid)
-                        # Send notification without reply menu (system message)
+                        # Send notification (keep existing reply keyboard)
                         await bot.send_photo(
                             chat_id=person.tgid,
                             photo=FSInputFile('bot/img/ended_subscribe.jpg'),
-                            caption=_('tariff_cost_changed', lang_user),
-                            reply_markup=ReplyKeyboardRemove()
+                            caption=_('tariff_cost_changed', lang_user)
                         )
                         continue
                     # Попытка автоплатежа
@@ -119,13 +118,12 @@ async def process_subscriptions(bot: Bot, config):
                             await add_time_person(person.tgid, person.subscription_months * CONFIG.COUNT_SECOND_MOTH)
                             await person_subscription_expired_false(person.tgid)  # Сброс флага истечения
                             await person_one_day_true(person.tgid)
-                            # Send success notification without reply menu (system message)
+                            # Send success notification (keep existing reply keyboard)
                             await bot.send_message(
                                 chat_id=person.tgid,
                                 text=_('payment_success', lang_user).format(
                                     months_count=person.subscription_months
-                                ),
-                                reply_markup=ReplyKeyboardRemove()
+                                )
                             )
                             await add_retention_person(person.tgid, 1)
                             await add_payment(

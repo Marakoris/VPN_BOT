@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.payload import decode_payload
 
@@ -105,32 +105,25 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         if client_id is not None:
             await add_client_id_person(m.from_user.id, client_id)
     person = await get_person(m.from_user.id)
-    # Убираем нижнее меню
-    remove_msg = await m.answer(
-        text="⚙️",
-        reply_markup=ReplyKeyboardRemove()
-    )
+
     # Отправляем inline меню
-    from datetime import datetime
     import time
 
     # Определяем статус подписки
     if person.subscription == 0:
-        # Подписка ещё не активирована (новый пользователь)
         subscription_info = "🆕 Подписка не активирована"
     elif person.subscription < int(time.time()):
-        # Подписка истекла
         subscription_end = datetime.utcfromtimestamp(
             int(person.subscription) + CONFIG.UTC_time * 3600
         ).strftime('%d.%m.%Y %H:%M')
         subscription_info = f"❌ Подписка истекла: {subscription_end}"
     else:
-        # Подписка активна
         subscription_end = datetime.utcfromtimestamp(
             int(person.subscription) + CONFIG.UTC_time * 3600
         ).strftime('%d.%m.%Y %H:%M')
         subscription_info = f"⏰ Подписка активна до: {subscription_end}"
 
+    # Отправляем главное меню с inline-кнопками
     await m.answer(
         text=_('start_message', lang).format(
             subscription_info=subscription_info,
@@ -140,11 +133,6 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         ),
         reply_markup=await user_menu_inline(person, lang)
     )
-    # Удаляем техническое сообщение
-    try:
-        await remove_msg.delete()
-    except:
-        pass
 
     person = await get_person(m.from_user.id)
     # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
@@ -182,6 +170,113 @@ async def send_help_message(message: Message, state: FSMContext):
     await message.answer(
         text=_('support_message'),
         reply_markup=builder.as_markup()
+    )
+
+
+# ==================== QUICK COMMANDS ====================
+
+@user_router.message(Command("pay"))
+async def command_pay(message: Message, state: FSMContext):
+    """Команда /pay - быстрый переход к оплате VPN"""
+    import time
+    from bot.keyboards.inline.user_inline import renew
+    from bot.misc.callbackData import MainMenuAction
+    from aiogram.types import InlineKeyboardButton
+
+    lang = await get_lang(message.from_user.id, state)
+    person = await get_person(message.from_user.id)
+
+    if not person:
+        await message.answer("❌ Пользователь не найден. Нажмите /start")
+        return
+
+    # Показываем меню выбора тарифов
+    kb = await renew(CONFIG, lang, message.from_user.id, person.payment_method_id)
+    # Добавляем кнопку "Главное меню"
+    kb.inline_keyboard.append([InlineKeyboardButton(
+        text="🏠 Главное меню",
+        callback_data=MainMenuAction(action='back_to_menu').pack()
+    )])
+
+    await message.answer(
+        text="💳 <b>Оплата VPN</b>\n\n"
+             "Выберите тариф:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+
+@user_router.message(Command("connect"))
+async def command_connect(message: Message, state: FSMContext):
+    """Команда /connect - быстрый переход к подключению VPN"""
+    import time
+    from bot.misc.callbackData import MainMenuAction
+    from bot.keyboards.inline.user_inline import renew
+    from aiogram.types import InlineKeyboardButton
+
+    lang = await get_lang(message.from_user.id, state)
+    person = await get_person(message.from_user.id)
+
+    if not person:
+        await message.answer("❌ Пользователь не найден. Нажмите /start")
+        return
+
+    # Проверяем подписку - если не активна, показываем тарифы
+    if person.subscription == 0 or person.subscription < int(time.time()):
+        kb = await renew(CONFIG, lang, message.from_user.id, person.payment_method_id)
+        # Добавляем кнопку "Главное меню"
+        kb.inline_keyboard.append([InlineKeyboardButton(
+            text="🏠 Главное меню",
+            callback_data=MainMenuAction(action='back_to_menu').pack()
+        )])
+
+        await message.answer(
+            text="🔑 <b>Подключение VPN</b>\n\n"
+                 "⚠️ Для подключения необходимо оформить подписку.\n\n"
+                 "💳 <b>Выберите тариф:</b>",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+        return
+
+    # Подписка активна - показываем меню подключения
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📡 Единая подписка (рекомендуем)", callback_data=MainMenuAction(action='subscription_url'))
+    kb.button(text="🪐 Outline VPN", callback_data=MainMenuAction(action='outline'))
+    kb.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
+    kb.adjust(1)
+
+    await message.answer(
+        text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+             "📡 <b>Единая подписка</b> (рекомендуем)\n"
+             "• Один URL для всех серверов\n"
+             "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
+             "🪐 <b>Outline VPN</b>\n"
+             "• Отдельный ключ для каждого сервера",
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+
+
+@user_router.message(Command("help"))
+async def command_help(message: Message, state: FSMContext):
+    """Команда /help - помощь и поддержка"""
+    from bot.misc.callbackData import MainMenuAction
+
+    lang = await get_lang(message.from_user.id, state)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💬 Написать в поддержку", url="https://t.me/VPN_YouSupport_bot")
+    builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
+    builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
+    builder.adjust(1)
+
+    await message.answer(
+        text="❓ <b>Помощь и поддержка</b>\n\n"
+             "Если у вас возникли вопросы или проблемы:\n\n"
+             "• Напишите в поддержку — ответим в течение часа\n"
+             "• Посмотрите документацию — там есть ответы на частые вопросы",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
     )
 
 
@@ -846,11 +941,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             "🔐 <b>Доступные протоколы:</b>\n"
             "• VLESS Reality - максимальная безопасность\n"
             "• Shadowsocks 2022 - высокая скорость\n\n"
-            "📱 <b>Быстрое подключение:</b>\n"
-            "Нажмите <b>🔌 Подключиться</b> — подписка добавится в приложение автоматически!\n\n"
+            "📱 <b>Как подключиться:</b>\n"
+            "Нажмите <b>🔌 Подключиться</b> — откроется страница настройки, "
+            "где можно скачать приложение и добавить подписку\n\n"
             "📋 <b>Или вручную:</b>\n"
-            "1. Скачайте Happ для вашей платформы\n"
-            "2. Скопируйте URL выше и добавьте в приложении\n\n"
+            "1. Установите приложение Happ\n"
+            "2. Скопируйте URL выше\n"
+            "3. Вставьте в приложении\n\n"
             "🔄 Список серверов обновляется автоматически"
         )
 
@@ -1169,7 +1266,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             text="🪐 Outline VPN",
             callback_data=MainMenuAction(action='outline')
         )
-        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
@@ -1366,7 +1463,48 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         )
 
     elif action == 'my_keys':
-        # Показываем меню выбора типа VPN для получения ключей
+        # Проверяем подписку - если не активна, сразу показываем тарифы
+        import time
+        from bot.keyboards.inline.user_inline import renew
+        from bot.misc.util import CONFIG
+        from aiogram.types import InlineKeyboardButton
+
+        person = await get_person(callback.from_user.id)
+
+        if not person:
+            await callback.message.answer("❌ Пользователь не найден")
+            return
+
+        # Если подписка не активна - сразу показываем тарифы
+        if person.subscription == 0 or person.subscription < int(time.time()):
+            kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
+            # Добавляем кнопку "Назад"
+            kb.inline_keyboard.append([InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=MainMenuAction(action='back_to_menu').pack()
+            )])
+
+            menu_text = (
+                "🔑 <b>Подключение VPN</b>\n\n"
+                "⚠️ Для подключения необходимо оформить подписку.\n\n"
+                "💳 <b>Выберите тариф:</b>"
+            )
+
+            try:
+                await callback.message.edit_text(
+                    text=menu_text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except:
+                await callback.message.answer(
+                    text=menu_text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            return
+
+        # Подписка активна - показываем меню выбора протоколов
         from aiogram.utils.keyboard import InlineKeyboardBuilder
 
         builder = InlineKeyboardBuilder()
@@ -1378,7 +1516,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             text="🪐 Outline VPN",
             callback_data=MainMenuAction(action='outline')
         )
-        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
@@ -1416,7 +1554,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder = InlineKeyboardBuilder()
         builder.button(text="👥 Реферальная программа", callback_data=MainMenuAction(action='referral'))
         builder.button(text="🎁 Ввести промокод", callback_data=MainMenuAction(action='bonus'))
-        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         try:
@@ -1445,7 +1583,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder = InlineKeyboardBuilder()
         builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
         builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
-        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         try:
@@ -1472,7 +1610,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder.button(text="👥 Группы", callback_data=MainMenuAction(action='admin_groups'))
         builder.button(text="⭐ Супер предложение", callback_data=MainMenuAction(action='admin_super_offer'))
         builder.button(text="🔄 Регенерация ключей", callback_data=MainMenuAction(action='admin_regenerate'))
-        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
         try:

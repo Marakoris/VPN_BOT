@@ -311,15 +311,15 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
             callback_data=MainMenuAction(action='free_trial')
         )
 
-    # 2. Купить подписку
+    # 2. Оплатить VPN
     kb.button(
-        text="💳 Купить подписку",
+        text="💳 Оплатить VPN",
         callback_data=MainMenuAction(action='subscription')
     )
 
-    # 3. Мои ключи VPN
+    # 3. Подключить VPN
     kb.button(
-        text="🔑 Мои ключи VPN",
+        text="🔑 Подключить VPN",
         callback_data=MainMenuAction(action='my_keys')
     )
 

@@ -6,7 +6,19 @@ async def set_commands(bot: Bot):
     commands = [
         BotCommand(
             command='start',
-            description='Запустить бота'
+            description='Главное меню'
+        ),
+        BotCommand(
+            command='pay',
+            description='Оплатить VPN'
+        ),
+        BotCommand(
+            command='connect',
+            description='Подключить VPN'
+        ),
+        BotCommand(
+            command='help',
+            description='Помощь и поддержка'
         ),
     ]
 
