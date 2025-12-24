@@ -10,7 +10,7 @@ from typing import Optional
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Response, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -384,6 +384,207 @@ async def unban_ip_endpoint(ip: str):
         log.error(f"Unban IP error: {e}")
         return JSONResponse(
             content={"error": str(e)},
+            status_code=500
+        )
+
+
+# ==================== DEEP LINK ENDPOINT ====================
+
+@app.get("/add/{token}", response_class=HTMLResponse, tags=["Subscription"])
+async def add_subscription_deeplink(token: str, request: Request):
+    """
+    Deep link redirect for Happ app
+
+    Opens Happ app and adds subscription automatically.
+    Similar to https://add.aliusvpn.ru/ios?id=...&link=happ://add/?
+
+    Args:
+        token: Subscription token
+
+    Returns:
+        HTML page with automatic redirect to happ://add/?{subscription_url}
+    """
+    client_ip = request.client.host
+
+    try:
+        # Verify token first
+        user_id = verify_subscription_token(token)
+        if not user_id:
+            record_failed_attempt(client_ip, reason="invalid_token")
+            return HTMLResponse(
+                content="""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Invalid Token</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                               display: flex; justify-content: center; align-items: center;
+                               height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
+                        .container { text-align: center; padding: 20px; }
+                        h1 { color: #ff6b6b; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>Invalid Token</h1>
+                        <p>The subscription link is invalid or expired.</p>
+                        <p>Please get a new link from the bot.</p>
+                    </div>
+                </body>
+                </html>
+                """,
+                status_code=401
+            )
+
+        # Build subscription URL
+        subscription_url = f"http://185.58.204.196:8003/sub/{token}"
+
+        # Build deep link for Happ
+        deep_link = f"happ://add/?{subscription_url}"
+
+        log.info(f"[Deep Link] User {user_id} accessing add link from {client_ip}")
+
+        # Return HTML with automatic redirect
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>NoBorder VPN - Add Subscription</title>
+            <meta http-equiv="refresh" content="1;url={deep_link}">
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                    color: #fff;
+                    min-height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    padding: 20px;
+                }}
+                .container {{
+                    text-align: center;
+                    max-width: 400px;
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 20px;
+                    padding: 40px 30px;
+                    backdrop-filter: blur(10px);
+                }}
+                .logo {{ font-size: 48px; margin-bottom: 20px; }}
+                h1 {{
+                    font-size: 24px;
+                    margin-bottom: 15px;
+                    color: #4ade80;
+                }}
+                p {{
+                    color: #94a3b8;
+                    margin-bottom: 20px;
+                    line-height: 1.6;
+                }}
+                .spinner {{
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid rgba(255,255,255,0.1);
+                    border-top-color: #4ade80;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin: 20px auto;
+                }}
+                @keyframes spin {{
+                    to {{ transform: rotate(360deg); }}
+                }}
+                .btn {{
+                    display: inline-block;
+                    background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+                    color: #000;
+                    padding: 15px 30px;
+                    border-radius: 12px;
+                    text-decoration: none;
+                    font-weight: 600;
+                    margin-top: 20px;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }}
+                .btn:hover {{
+                    transform: translateY(-2px);
+                    box-shadow: 0 10px 20px rgba(74, 222, 128, 0.3);
+                }}
+                .manual {{
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid rgba(255,255,255,0.1);
+                }}
+                .manual p {{ font-size: 14px; }}
+                .copy-box {{
+                    background: rgba(0,0,0,0.3);
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin: 10px 0;
+                    word-break: break-all;
+                    font-family: monospace;
+                    font-size: 12px;
+                    color: #94a3b8;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="logo">🌐</div>
+                <h1>Opening Happ...</h1>
+                <div class="spinner"></div>
+                <p>The app should open automatically.<br>If it doesn't, click the button below.</p>
+
+                <a href="{deep_link}" class="btn">Open in Happ</a>
+
+                <div class="manual">
+                    <p>Don't have Happ installed?</p>
+                    <p><a href="https://play.google.com/store/apps/details?id=com.happproxy" style="color: #4ade80;">Download for Android</a></p>
+                    <p><a href="https://apps.apple.com/app/happ-proxy-utility/id6504287215" style="color: #4ade80;">Download for iPhone</a></p>
+
+                    <p style="margin-top: 20px;">Or copy subscription URL:</p>
+                    <div class="copy-box">{subscription_url}</div>
+                </div>
+            </div>
+
+            <script>
+                // Try to open deep link immediately
+                window.location.href = "{deep_link}";
+            </script>
+        </body>
+        </html>
+        """
+
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        log.error(f"[Deep Link] Error: {e}")
+        return HTMLResponse(
+            content="""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Error</title>
+                <style>
+                    body { font-family: -apple-system, sans-serif;
+                           display: flex; justify-content: center; align-items: center;
+                           height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
+                    .container { text-align: center; }
+                    h1 { color: #ff6b6b; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Error</h1>
+                    <p>Something went wrong. Please try again.</p>
+                </div>
+            </body>
+            </html>
+            """,
             status_code=500
         )
 
