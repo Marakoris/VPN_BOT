@@ -380,12 +380,18 @@ async def add_time_user_state(message: Message, state: FSMContext) -> None:
             )
         )
 
-        # Send main message with inline button (keep reply keyboard)
+        # Send message and hide reply keyboard, then show inline button
         await message.bot.send_message(
             client.tgid,
             _('donated_days', client.lang).format(days=count_day),
-            reply_markup=kb.as_markup(),
+            reply_markup=ReplyKeyboardRemove(),
             parse_mode=ParseMode.HTML
+        )
+        # Send inline keyboard with action button
+        await message.bot.send_message(
+            client.tgid,
+            "👇 Нажмите, чтобы получить ключи:",
+            reply_markup=kb.as_markup()
         )
     except Exception as e:
         log.info(f'user block bot: {e}')

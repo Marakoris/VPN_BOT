@@ -233,8 +233,8 @@ async def share_link(ref_link, lang, ref_balance=None) -> InlineKeyboardMarkup:
     )
 
     kb.button(
-        text=_('write_the_admin_btn', lang),
-        callback_data='message_admin'
+        text="💬 Написать в поддержку",
+        url="https://t.me/VPN_YouSupport_bot"
     )
 
     # Добавляем кнопку "Назад"
