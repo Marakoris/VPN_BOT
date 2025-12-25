@@ -6,6 +6,7 @@ This FastAPI application provides subscription endpoints for VPN clients.
 import sys
 import os
 import logging
+import asyncio
 from typing import Optional
 from datetime import datetime
 
@@ -229,52 +230,47 @@ async def get_subscription(token: str, request: Request):
                 log.warning(f"[Subscription API] No servers found")
                 return ""
 
-            # 5. Check which servers have keys for this user
-            user_servers = []
-            for server in all_servers:
+            # 5. Check which servers have keys for this user (PARALLEL)
+            async def check_server(server):
+                """Check if user has key on server and generate config"""
                 try:
                     server_manager = ServerManager(server)
                     await server_manager.login()
                     existing_client = await server_manager.get_user(user.tgid)
 
                     if existing_client:
-                        user_servers.append(server)
+                        # Generate config URL for this server
+                        config_url = await generate_config(server, user.tgid)
+                        return config_url
+                    return None
                 except Exception as e:
-                    log.debug(f"[Subscription API] Error checking server {server.id}: {e}")
-                    continue
+                    log.debug(f"[Subscription API] Error with server {server.id}: {e}")
+                    return None
 
-            if not user_servers:
+            # Run all server checks in parallel
+            results = await asyncio.gather(
+                *[check_server(server) for server in all_servers],
+                return_exceptions=True
+            )
+
+            # Filter successful configs
+            config_lines = [r for r in results if r and not isinstance(r, Exception)]
+
+            if not config_lines:
                 log.warning(f"[Subscription API] No keys found for user {user.tgid}")
                 return ""
-
-            # 6. Generate actual VPN configurations
-            config_lines = []
-
-            for server in user_servers:
-                try:
-                    # Generate config URL for this server
-                    config_url = await generate_config(server, user.tgid)
-
-                    if config_url:
-                        config_lines.append(config_url)
-                    else:
-                        log.warning(f"[Subscription API] Failed to generate config for server {server.id}")
-
-                except Exception as e:
-                    log.error(f"[Subscription API] Error generating config for server {server.id}: {e}")
-                    continue
 
             # 7. Log access
             await log_subscription_access(
                 user_id=user.id,
                 ip_address=request.client.host,
                 user_agent=request.headers.get("user-agent", "unknown"),
-                servers_count=len(user_servers)
+                servers_count=len(config_lines)
             )
 
             log.info(
                 f"[Subscription API] ✅ Served subscription for user {user.tgid}: "
-                f"{len(user_servers)} servers from {request.client.host}"
+                f"{len(config_lines)} servers from {request.client.host}"
             )
 
             # Prepare response with custom headers for subscription title
