@@ -38,6 +38,7 @@ from .subscription_user import subscription_router
 from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
 from ...misc.yandex_metrika import YandexMetrikaAPI
+from ...misc.traffic_monitor import get_user_traffic_info, format_bytes
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,32 @@ def get_subscription_menu_text(person, lang) -> str:
     """
     base_text = _('choosing_month_sub', lang)
     return base_text + get_autopay_info(person)
+
+
+async def get_traffic_info(telegram_id: int) -> str:
+    """
+    Возвращает информацию о трафике для отображения в главном меню.
+    """
+    try:
+        traffic_info = await get_user_traffic_info(telegram_id)
+        if traffic_info is None:
+            return ""
+
+        used = traffic_info['used_formatted']
+        limit = traffic_info['limit_formatted']
+        percent = traffic_info['percent_used']
+
+        # Выбираем emoji в зависимости от процента использования
+        if percent >= 90:
+            emoji = "🔴"
+        elif percent >= 70:
+            emoji = "🟡"
+        else:
+            emoji = "🟢"
+
+        return f"\n{emoji} Трафик: {used} / {limit} ({percent}%)"
+    except Exception:
+        return ""
 
 
 user_router = Router()
@@ -155,6 +182,11 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             int(person.subscription) + CONFIG.UTC_time * 3600
         ).strftime('%d.%m.%Y %H:%M')
         subscription_info = f"⏰ Подписка активна до: {subscription_end}"
+
+    # Добавляем информацию о трафике (только для активных подписок)
+    if person.subscription and person.subscription > int(time.time()):
+        traffic_str = await get_traffic_info(person.tgid)
+        subscription_info += traffic_str
 
     # Отправляем главное меню с inline-кнопками
     await m.answer(
@@ -1771,6 +1803,11 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 int(person.subscription) + CONFIG.UTC_time * 3600
             ).strftime('%d.%m.%Y %H:%M')
             subscription_info = f"⏰ Подписка активна до: {subscription_end}"
+
+        # Добавляем информацию о трафике (только для активных подписок)
+        if person.subscription and person.subscription > int(time.time()):
+            traffic_str = await get_traffic_info(person.tgid)
+            subscription_info += traffic_str
 
         message_text = _('start_message', lang).format(
             subscription_info=subscription_info,

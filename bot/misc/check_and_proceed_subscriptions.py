@@ -11,6 +11,8 @@ from bot.database.methods.get import get_all_subscription, get_server_id, get_al
 from bot.database.methods.insert import crate_or_update_stats, add_payment
 from bot.database.methods.update import add_time_person, server_space_update, person_banned_true, person_one_day_false, \
     person_one_day_true, add_retention_person, person_subscription_expired_true, person_subscription_expired_false
+from bot.misc.subscription import activate_subscription
+from bot.misc.traffic_monitor import reset_user_traffic
 from bot.database.models.main import Persons
 from bot.keyboards.reply.user_reply import user_menu
 from bot.misc.Payment.KassaSmart import KassaSmart
@@ -118,6 +120,21 @@ async def process_subscriptions(bot: Bot, config):
                             await add_time_person(person.tgid, person.subscription_months * CONFIG.COUNT_SECOND_MOTH)
                             await person_subscription_expired_false(person.tgid)  # Сброс флага истечения
                             await person_one_day_true(person.tgid)
+
+                            # Активируем ключи на всех серверах (ВАЖНО!)
+                            try:
+                                await activate_subscription(person.tgid)
+                                log.info(f"[Autopay] Subscription activated for user {person.tgid}")
+                            except Exception as e:
+                                log.error(f"[Autopay] Failed to activate subscription for user {person.tgid}: {e}")
+
+                            # Сброс счётчика трафика при автооплате
+                            try:
+                                await reset_user_traffic(person.tgid)
+                                log.info(f"[Autopay] Traffic reset for user {person.tgid}")
+                            except Exception as e:
+                                log.error(f"[Autopay] Failed to reset traffic for user {person.tgid}: {e}")
+
                             # Send success notification (keep existing reply keyboard)
                             await bot.send_message(
                                 chat_id=person.tgid,

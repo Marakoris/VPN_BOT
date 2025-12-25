@@ -20,6 +20,8 @@ from bot.database.methods.update import (
     server_space_update, add_time_person, reduce_balance_person
 )
 from bot.misc.VPN.ServerManager import ServerManager
+from bot.misc.subscription import activate_subscription
+from bot.misc.traffic_monitor import reset_user_traffic
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from bot.keyboards.inline.user_inline import renew
@@ -177,6 +179,21 @@ async def check_auto_renewal(person, bot, text):
                         price,
                         person.tgid
                     )
+
+                    # Активируем ключи на всех серверах (ВАЖНО!)
+                    try:
+                        await activate_subscription(person.tgid)
+                        log.info(f"[Balance Autopay] Subscription activated for user {person.tgid}")
+                    except Exception as e:
+                        log.error(f"[Balance Autopay] Failed to activate subscription for user {person.tgid}: {e}")
+
+                    # Сброс счётчика трафика при продлении через баланс
+                    try:
+                        await reset_user_traffic(person.tgid)
+                        log.info(f"[Balance Autopay] Traffic reset for user {person.tgid}")
+                    except Exception as e:
+                        log.error(f"[Balance Autopay] Failed to reset traffic for user {person.tgid}: {e}")
+
                     person_new = await get_person(person.tgid)
 
                     # Send autopay notification with "My keys" button
