@@ -112,10 +112,15 @@ class KassaSmart(PaymentSystem):
             f'Create payment link YooKassaSmart '
             f'User: (ID: {self.user_id}'
         )
+        # Запускаем проверку оплаты как background task чтобы не блокировать бота
+        asyncio.create_task(self._check_payment_background())
+
+    async def _check_payment_background(self):
+        """Background task wrapper for check_payment with exception handling"""
         try:
             await self.check_payment()
         except Exception as e:
-            log.error(f'The payment period has expired {e}')
+            log.error(f'The payment period has expired: {e}')
 
     def __str__(self):
         return 'YooKassaSmart payment system'

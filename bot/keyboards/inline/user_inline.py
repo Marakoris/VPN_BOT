@@ -297,12 +297,14 @@ async def message_admin_user(tgid_user, lang) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
+async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
     """
     Inline-версия главного меню (кнопки в окне сообщения)
     """
     import time
     from datetime import datetime
+    from aiogram.utils.deep_linking import create_start_link
+    from urllib.parse import quote
 
     kb = InlineKeyboardBuilder()
     time_now = int(time.time())
@@ -337,6 +339,19 @@ async def user_menu_inline(person, lang) -> InlineKeyboardMarkup:
         text="❓ Помощь и поддержка",
         callback_data=MainMenuAction(action='help')
     )
+
+    # 6. Пригласить друга (реферальная ссылка)
+    if bot is not None:
+        try:
+            referral_link = await create_start_link(bot, str(person.tgid), encode=True)
+            share_text = "🔒 Лучший VPN для обхода блокировок! Попробуй:"
+            share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
+            kb.button(
+                text="👥 Пригласить друга",
+                url=share_url
+            )
+        except Exception:
+            pass  # Если не удалось создать ссылку - не показываем кнопку
 
     kb.adjust(1)
     return kb.as_markup()

@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.payload import decode_payload
 
@@ -50,6 +50,10 @@ user_router.include_routers(callback_user, referral_router, subscription_router,
 
 @user_router.message(Command("start"))
 async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObject = None):
+    # Скрываем старую reply клавиатуру
+    hide_msg = await m.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await hide_msg.delete()
+
     # Получаем полный текст команды /start
     full_command = m.text
 
@@ -131,7 +135,7 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             balance=person.balance,
             referral_money=person.referral_balance
         ),
-        reply_markup=await user_menu_inline(person, lang)
+        reply_markup=await user_menu_inline(person, lang, bot)
     )
 
     person = await get_person(m.from_user.id)
@@ -183,6 +187,10 @@ async def command_pay(message: Message, state: FSMContext):
     from bot.misc.callbackData import MainMenuAction
     from aiogram.types import InlineKeyboardButton
 
+    # Скрываем старую reply клавиатуру
+    hide_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await hide_msg.delete()
+
     await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
     person = await get_person(message.from_user.id)
@@ -214,6 +222,10 @@ async def command_connect(message: Message, state: FSMContext):
     from bot.misc.callbackData import MainMenuAction
     from bot.keyboards.inline.user_inline import renew
     from aiogram.types import InlineKeyboardButton
+
+    # Скрываем старую reply клавиатуру
+    hide_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await hide_msg.delete()
 
     await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
@@ -264,6 +276,10 @@ async def command_connect(message: Message, state: FSMContext):
 async def command_help(message: Message, state: FSMContext):
     """Команда /help - помощь и поддержка"""
     from bot.misc.callbackData import MainMenuAction
+
+    # Скрываем старую reply клавиатуру
+    hide_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await hide_msg.delete()
 
     await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
@@ -1240,7 +1256,15 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await callback.answer("⚠️ Вы уже использовали пробный период", show_alert=True)
             return
 
-        # Добавляем 3 дня
+        # Сразу отвечаем на callback и показываем сообщение о загрузке
+        await callback.answer()
+        await callback.message.edit_text(
+            "⏳ <b>Активируем пробный период...</b>\n\n"
+            "Подождите, идёт настройка VPN серверов.",
+            parse_mode="HTML"
+        )
+
+        # Добавляем 3 дня (это также активирует подписку на всех серверах)
         trial_seconds = 3 * CONFIG.COUNT_SECOND_DAY
         await add_time_person(person.tgid, trial_seconds)
 
@@ -1251,7 +1275,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         person = await get_person(callback.from_user.id)
         end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
 
-        # Одно сообщение с кнопкой подключения
+        # Показываем итоговое сообщение с кнопкой подключения
         builder = InlineKeyboardBuilder()
         builder.button(
             text="🔑 Подключить VPN",
@@ -1260,13 +1284,26 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
-        await callback.message.edit_text(
+        success_text = (
             f"🎉 <b>Пробный период активирован!</b>\n\n"
             f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
-            f"📅 Действует до: <b>{end_date}</b>",
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
+            f"📅 Действует до: <b>{end_date}</b>"
         )
+
+        try:
+            await callback.message.edit_text(
+                success_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            log.error(f"[free_trial] edit_text failed: {e}")
+            # Если edit не сработал, отправляем новое сообщение
+            await callback.message.answer(
+                success_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
 
     elif action == 'free_trial_subscription':
         # Активируем пробный период и показываем единую подписку
@@ -1691,7 +1728,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             # Пробуем отредактировать текст
             await callback.message.edit_text(
                 text=message_text,
-                reply_markup=await user_menu_inline(person, lang)
+                reply_markup=await user_menu_inline(person, lang, bot)
             )
         except:
             # Если не получилось, удаляем и отправляем новое
@@ -1703,7 +1740,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await bot.send_message(
                 chat_id=callback.from_user.id,
                 text=message_text,
-                reply_markup=await user_menu_inline(person, lang)
+                reply_markup=await user_menu_inline(person, lang, bot)
             )
 
 

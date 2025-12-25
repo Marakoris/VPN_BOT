@@ -117,13 +117,51 @@ def verify_subscription_token(token: str) -> Optional[int]:
 
 # ==================== SUBSCRIPTION ACTIVATION ====================
 
+async def _activate_on_server(server, user_id: int) -> tuple:
+    """
+    Helper function to activate subscription on a single server.
+    Returns: (server_id, success: bool, is_new_key: bool)
+    """
+    try:
+        server_manager = ServerManager(server)
+        await server_manager.login()
+
+        # Check if key already exists on server
+        existing_client = await server_manager.get_user(user_id)
+
+        if not existing_client:
+            # Create new key
+            log.debug(f"[Subscription] Creating key for user {user_id} on server {server.id} ({server.name})")
+            result = await server_manager.add_client(user_id)
+
+            if result is not False:
+                return (server.id, True, True)  # success, new key created
+            else:
+                log.error(f"[Subscription] Failed to create key on server {server.id}")
+                return (server.id, False, False)
+        else:
+            # Key exists, enable it
+            log.debug(f"[Subscription] Enabling key for user {user_id} on server {server.id} ({server.name})")
+            result = await server_manager.enable_client(user_id)
+
+            if result:
+                return (server.id, True, False)  # success, existing key enabled
+            else:
+                log.error(f"[Subscription] Failed to enable key on server {server.id}")
+                return (server.id, False, False)
+
+    except Exception as e:
+        log.error(f"[Subscription] Error on server {server.id}: {e}")
+        return (server.id, False, False)
+
+
 async def activate_subscription(user_id: int, include_outline: bool = False) -> Optional[str]:
     """
-    Activate subscription: create/enable keys on ALL servers
+    Activate subscription: create/enable keys on ALL servers IN PARALLEL
 
     This function:
     1. Gets all active servers (VLESS + Shadowsocks, optionally Outline)
-    2. Creates new keys or enables existing ones on each server
+    2. Creates new keys or enables existing ones on each server (PARALLEL)
     3. Sets subscription_active = true
     4. Generates/returns subscription token
 
@@ -134,6 +172,8 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
     Returns:
         subscription_token or None if error
     """
+    import asyncio
+
     log.info(f"[Subscription] Activating for user {user_id} (include_outline={include_outline})")
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
@@ -168,47 +208,35 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                 log.warning(f"[Subscription] No available servers found")
                 return None
 
-            log.info(f"[Subscription] Found {len(servers)} servers for user {user_id}")
+            log.info(f"[Subscription] Found {len(servers)} servers for user {user_id}, activating in parallel...")
 
-            # 3. Create/enable keys on each server
+            # 3. Create/enable keys on ALL servers IN PARALLEL
+            tasks = [_activate_on_server(server, user_id) for server in servers]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Process results
             success_count = 0
             error_count = 0
+            new_keys_server_ids = []
 
-            for server in servers:
-                try:
-                    server_manager = ServerManager(server)
-                    await server_manager.login()
-
-                    # Check if key already exists on server
-                    existing_client = await server_manager.get_user(user_id)
-
-                    if not existing_client:
-                        # Create new key
-                        log.debug(f"[Subscription] Creating key for user {user_id} on server {server.id} ({server.name})")
-                        result = await server_manager.add_client(user_id)
-
-                        if result is not False:
-                            success_count += 1
-                            # Increment server space counter
-                            server.space += 1
-                        else:
-                            error_count += 1
-                            log.error(f"[Subscription] Failed to create key on server {server.id}")
-                    else:
-                        # Key exists, enable it
-                        log.debug(f"[Subscription] Enabling key for user {user_id} on server {server.id} ({server.name})")
-                        result = await server_manager.enable_client(user_id)
-
-                        if result:
-                            success_count += 1
-                        else:
-                            error_count += 1
-                            log.error(f"[Subscription] Failed to enable key on server {server.id}")
-
-                except Exception as e:
+            for res in results:
+                if isinstance(res, Exception):
                     error_count += 1
-                    log.error(f"[Subscription] Error on server {server.id}: {e}")
-                    continue
+                    log.error(f"[Subscription] Parallel task exception: {res}")
+                else:
+                    server_id, success, is_new_key = res
+                    if success:
+                        success_count += 1
+                        if is_new_key:
+                            new_keys_server_ids.append(server_id)
+                    else:
+                        error_count += 1
+
+            # Update server.space for servers where new keys were created
+            if new_keys_server_ids:
+                for server in servers:
+                    if server.id in new_keys_server_ids:
+                        server.space += 1
 
             # 4. Set subscription_active = true and commit all changes
             user.subscription_active = True
@@ -228,7 +256,7 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
 
             log.info(
                 f"[Subscription] ✅ Activated for user {user_id}: "
-                f"{success_count} success, {error_count} errors"
+                f"{success_count} success, {error_count} errors (parallel)"
             )
 
             return token

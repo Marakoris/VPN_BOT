@@ -17,8 +17,8 @@ class Lava(PaymentSystem):
     CHECK_ID: str = None
     ID: str = None
 
-    def __init__(self, config, message, user_id, price, months_count, check_id=None):
-        super().__init__(message, user_id, price, months_count)
+    def __init__(self, config, message, user_id, fullname, price, months_count, price_on_db, check_id=None):
+        super().__init__(message, user_id, fullname, price, months_count, price_on_db)
         self.CHECK_ID = check_id
         self.CLIENT = LavaBusinessClient(
             private_key=config.lava_token_secret,
@@ -59,10 +59,15 @@ class Lava(PaymentSystem):
             f'Create payment link Lava '
             f'User: ID: {self.user_id}'
         )
+        # Запускаем проверку оплаты как background task чтобы не блокировать бота
+        asyncio.create_task(self._check_payment_background())
+
+    async def _check_payment_background(self):
+        """Background task wrapper for check_payment with exception handling"""
         try:
             await self.check_payment()
         except Exception as e:
-            log.error(e, 'The payment period has expired')
+            log.error(f'The payment period has expired: {e}')
 
     def __str__(self):
         return 'Lava payment system'

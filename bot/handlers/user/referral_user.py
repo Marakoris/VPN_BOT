@@ -5,7 +5,7 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaDocument, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaDocument, BufferedInputFile, ReplyKeyboardRemove
 from aiogram.utils.deep_linking import create_start_link
 from aiogram.utils.formatting import Text, Italic
 from sqlalchemy.exc import InvalidRequestError
@@ -127,6 +127,10 @@ async def successful_payment(call: CallbackQuery, state: FSMContext):
 
     lang = await get_lang(call.from_user.id, state)
 
+    # Скрываем старую reply клавиатуру
+    hide_msg = await call.message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await hide_msg.delete()
+
     # Создаем inline клавиатуру с кнопкой "Назад"
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(
@@ -238,7 +242,7 @@ async def promo_check(message: Message, state: FSMContext):
             await add_time_person(person.tgid, add_days_number * CONFIG.COUNT_SECOND_DAY)
             await message.answer(
                 _('promo_success_user', lang).format(amount=add_days_number),
-                reply_markup=await user_menu_inline(person, lang)
+                reply_markup=await user_menu_inline(person, lang, message.bot)
             )
             await state.clear()
         except InvalidRequestError:

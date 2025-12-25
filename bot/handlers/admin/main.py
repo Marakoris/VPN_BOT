@@ -3,7 +3,7 @@ import logging
 
 from aiogram import Router, F
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, ReplyKeyboardRemove
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.formatting import Text, Bold, Spoiler, Code
@@ -447,7 +447,7 @@ async def mailing_text(message: Message, state: FSMContext):
 
         count_not_suc = 0
 
-        # Отправка сообщений
+        # Отправка сообщений (с ReplyKeyboardRemove для скрытия старой клавиатуры)
         if message.photo:
             photo = message.photo[-1]
             caption = message.caption if message.caption else ''
@@ -456,7 +456,8 @@ async def mailing_text(message: Message, state: FSMContext):
                     await message.bot.send_photo(
                         user.tgid,
                         photo.file_id,
-                        caption=caption
+                        caption=caption,
+                        reply_markup=ReplyKeyboardRemove()
                     )
                 except Exception as e:
                     log.info(e, 'user block bot')
@@ -466,7 +467,8 @@ async def mailing_text(message: Message, state: FSMContext):
             for user in users:
                 try:
                     await message.bot.send_message(
-                        user.tgid, message.text
+                        user.tgid, message.text,
+                        reply_markup=ReplyKeyboardRemove()
                     )
                 except Exception as e:
                     log.info(e, 'user block bot')
