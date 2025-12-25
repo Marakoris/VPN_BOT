@@ -44,6 +44,35 @@ log = logging.getLogger(__name__)
 _ = Localization.text
 btn_text = Localization.get_reply_button
 
+
+def get_autopay_info(person) -> str:
+    """
+    Возвращает информацию об автооплате для добавления к любому меню тарифов.
+    """
+    from datetime import datetime
+
+    if person.payment_method_id is not None:
+        # Автооплата включена
+        next_payment_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y') if person.subscription else "—"
+        price = person.subscription_price if person.subscription_price else CONFIG.month_cost[0]
+
+        return (
+            f"\n\n✅ <b>Автооплата включена</b>\n"
+            f"📅 Следующее списание: <b>{next_payment_date}</b>\n"
+            f"💰 Сумма: <b>{price} ₽</b>"
+        )
+    else:
+        return "\n\n⚠️ <i>Автооплата отключена</i>"
+
+
+def get_subscription_menu_text(person, lang) -> str:
+    """
+    Генерирует текст для меню подписки с информацией об автооплате.
+    """
+    base_text = _('choosing_month_sub', lang)
+    return base_text + get_autopay_info(person)
+
+
 user_router = Router()
 user_router.include_routers(callback_user, referral_router, subscription_router, outline_router)
 
@@ -208,8 +237,7 @@ async def command_pay(message: Message, state: FSMContext):
     )])
 
     await message.answer(
-        text="💳 <b>Оплата VPN</b>\n\n"
-             "Выберите тариф:",
+        text=get_subscription_menu_text(person, lang),
         reply_markup=kb,
         parse_mode="HTML"
     )
@@ -247,7 +275,7 @@ async def command_connect(message: Message, state: FSMContext):
         await message.answer(
             text="🔑 <b>Подключение VPN</b>\n\n"
                  "⚠️ Для подключения необходимо оформить подписку.\n\n"
-                 "💳 <b>Выберите тариф:</b>",
+                 "💳 <b>Выберите тариф:</b>" + get_autopay_info(person),
             reply_markup=kb,
             parse_mode="HTML"
         )
@@ -570,8 +598,9 @@ async def info_subscription(m: Message | CallbackQuery, state: FSMContext, bot: 
     await bot.send_photo(
         chat_id=user_id,
         photo=FSInputFile('bot/img/pay_subscribe.jpg'),
-        caption=_('choosing_month_sub', lang),
-        reply_markup=await renew(CONFIG, lang, user_id, person.payment_method_id)
+        caption=get_subscription_menu_text(person, lang),
+        reply_markup=await renew(CONFIG, lang, user_id, person.payment_method_id),
+        parse_mode="HTML"
     )
 
     # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
@@ -611,15 +640,38 @@ async def info_message_handler(m: Message, state: FSMContext) -> None:
 
 @user_router.callback_query(F.data == 'turn_off_autopay')
 async def turn_off_autopay_handler(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
+    """Отключение автооплаты с обновлением меню"""
+    lang = await get_lang(callback.from_user.id, state)
+
     if await delete_payment_method_id_person(callback.from_user.id):
-        await callback.message.answer(
-            text=_('turned_off_autopay', await get_lang(callback.from_user.id, state))
-        )
+        await callback.answer("✅ Автооплата отключена", show_alert=True)
+
+        # Обновляем меню подписки
+        person = await get_person(callback.from_user.id)
+
+        # Формируем клавиатуру (теперь без кнопки отключения автооплаты)
+        kb = await renew(CONFIG, lang, callback.from_user.id, person.payment_method_id)
+        kb_with_back = InlineKeyboardBuilder()
+        for row in kb.inline_keyboard:
+            for button in row:
+                if button.url:
+                    kb_with_back.row(InlineKeyboardButton(text=button.text, url=button.url))
+                elif button.callback_data:
+                    kb_with_back.button(text=button.text, callback_data=button.callback_data)
+        kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
+        kb_with_back.adjust(1)
+
+        # Обновляем сообщение с новым текстом
+        try:
+            await callback.message.edit_text(
+                text=get_subscription_menu_text(person, lang),
+                reply_markup=kb_with_back.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            log.error(f"[turn_off_autopay] edit_text failed: {e}")
     else:
-        await callback.message.answer(
-            text=_('no_user_in_db', await get_lang(callback.from_user.id, state))
-        )
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
 @user_router.callback_query(DownloadClient.filter())
@@ -805,7 +857,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 "• Автоматическое обновление серверов\n"
                 "• Безлимитный трафик\n\n"
                 "💳 <b>Выберите тариф:</b>"
-            )
+            ) + get_autopay_info(person)
 
             try:
                 await callback.message.edit_text(
@@ -1025,7 +1077,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 "• Протокол Shadowsocks (Outline)\n"
                 "• Безлимитный трафик\n\n"
                 "💳 <b>Выберите тариф:</b>"
-            )
+            ) + get_autopay_info(person)
 
             try:
                 await callback.message.edit_text(
@@ -1120,11 +1172,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         kb_with_back.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu'))
         kb_with_back.adjust(1)
 
-        # Редактируем текущее сообщение
+        # Редактируем текущее сообщение с информацией об автооплате
+        menu_text = get_subscription_menu_text(person, lang)
         try:
             await callback.message.edit_text(
-                text=_('choosing_month_sub', lang),
-                reply_markup=kb_with_back.as_markup()
+                text=menu_text,
+                reply_markup=kb_with_back.as_markup(),
+                parse_mode="HTML"
             )
         except:
             # Если не получилось, удаляем и отправляем новое
@@ -1134,8 +1188,9 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 pass
             await bot.send_message(
                 chat_id=callback.from_user.id,
-                text=_('choosing_month_sub', lang),
-                reply_markup=kb_with_back.as_markup()
+                text=menu_text,
+                reply_markup=kb_with_back.as_markup(),
+                parse_mode="HTML"
             )
 
     elif action == 'referral':
@@ -1499,7 +1554,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 "🔑 <b>Подключение VPN</b>\n\n"
                 "⚠️ Для подключения необходимо оформить подписку.\n\n"
                 "💳 <b>Выберите тариф:</b>"
-            )
+            ) + get_autopay_info(person)
 
             try:
                 await callback.message.edit_text(
