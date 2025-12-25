@@ -7,12 +7,14 @@ import sys
 import os
 import logging
 import asyncio
+import base64
 from typing import Optional
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -48,6 +50,15 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# Add CORS middleware for Happ and other VPN clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Mount static files directory
@@ -230,7 +241,10 @@ async def get_subscription(token: str, request: Request):
                 log.warning(f"[Subscription API] No servers found")
                 return ""
 
-            # 5. Check which servers have keys for this user (PARALLEL)
+            # 5. Check which servers have keys for this user (PARALLEL with early return)
+            SERVER_TIMEOUT = 1.5  # seconds per server (reduced for Happ compatibility)
+            TOTAL_TIMEOUT = 3     # max total time for all servers
+
             async def check_server(server):
                 """Check if user has key on server and generate config"""
                 try:
@@ -239,7 +253,6 @@ async def get_subscription(token: str, request: Request):
                     existing_client = await server_manager.get_user(user.tgid)
 
                     if existing_client:
-                        # Generate config URL for this server
                         config_url = await generate_config(server, user.tgid)
                         return config_url
                     return None
@@ -247,14 +260,51 @@ async def get_subscription(token: str, request: Request):
                     log.debug(f"[Subscription API] Error with server {server.id}: {e}")
                     return None
 
-            # Run all server checks in parallel
-            results = await asyncio.gather(
-                *[check_server(server) for server in all_servers],
-                return_exceptions=True
-            )
+            async def check_server_with_timeout(server):
+                """Wrap check_server with per-server timeout"""
+                try:
+                    return await asyncio.wait_for(check_server(server), timeout=SERVER_TIMEOUT)
+                except asyncio.TimeoutError:
+                    log.warning(f"[Subscription API] Timeout for server {server.id} ({server.name})")
+                    return None
 
-            # Filter successful configs
-            config_lines = [r for r in results if r and not isinstance(r, Exception)]
+            # Run all server checks with TOTAL timeout - return what we get
+            tasks = [asyncio.create_task(check_server_with_timeout(server)) for server in all_servers]
+
+            try:
+                # Wait for all tasks but with total timeout
+                done, pending = await asyncio.wait(tasks, timeout=TOTAL_TIMEOUT)
+
+                # Cancel any still pending tasks
+                for task in pending:
+                    task.cancel()
+                    log.warning(f"[Subscription API] Cancelled slow task")
+
+                # Get results from completed tasks
+                results = []
+                for task in done:
+                    try:
+                        result = task.result()
+                        if result:
+                            results.append(result)
+                    except Exception:
+                        pass
+
+            except asyncio.TimeoutError:
+                # Total timeout - get what we have
+                log.warning(f"[Subscription API] Total timeout reached, returning partial results")
+                results = []
+                for task in tasks:
+                    if task.done() and not task.cancelled():
+                        try:
+                            result = task.result()
+                            if result:
+                                results.append(result)
+                        except Exception:
+                            pass
+
+            # Use results directly (already filtered)
+            config_lines = results
 
             if not config_lines:
                 log.warning(f"[Subscription API] No keys found for user {user.tgid}")
@@ -277,10 +327,15 @@ async def get_subscription(token: str, request: Request):
             content = "\n".join(config_lines)
 
             # Add headers for readable subscription name in VPN clients
+            # Including headers that Happ and other clients expect
+            profile_title_b64 = base64.b64encode("NoBorder VPN 🔐".encode()).decode()
             headers = {
                 "content-disposition": 'attachment; filename="NoBorder VPN.txt"',
-                "profile-title": "NoBorder VPN",
-                "subscription-userinfo": f"upload=0; download=0; expire={int(user.subscription)}"
+                "profile-title": f"base64:{profile_title_b64}",
+                "profile-update-interval": "2",
+                "support-url": "https://t.me/NoBorderVPN_bot",
+                "subscription-userinfo": f"upload=0; download=0; expire={int(user.subscription)}",
+                "access-control-allow-origin": "*",
             }
 
             return PlainTextResponse(content=content, headers=headers)
@@ -491,8 +546,10 @@ async def add_subscription_deeplink(token: str, request: Request):
         # Build URLs
         encoded_token = urllib.parse.quote(token, safe='')
         subscription_url = f"https://vpnnoborder.sytes.net/sub/{encoded_token}"
-        deep_link_happ = f"happ://add/{subscription_url}"
-        deep_link_v2raytun = f"v2raytun://import/{subscription_url}"
+        # For deep links use raw token (without URL encoding) - Happ handles it better
+        raw_subscription_url = f"https://vpnnoborder.sytes.net/sub/{token}"
+        deep_link_happ = f"happ://add/{raw_subscription_url}"
+        deep_link_v2raytun = f"v2raytun://import/{raw_subscription_url}"
 
         log.info(f"[Deep Link] User {user_id} accessing add link from {client_ip}")
 

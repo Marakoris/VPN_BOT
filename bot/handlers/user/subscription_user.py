@@ -66,6 +66,8 @@ async def get_subscription_url(message: Message, state: FSMContext) -> None:
     encoded_token = urllib.parse.quote(status['token'], safe='')
     subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
     add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+    # Raw URL for happ:// deep links (without URL encoding)
+    raw_subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
 
     # Create keyboard with Happ download links (by platform)
     kb = InlineKeyboardBuilder()
@@ -100,12 +102,20 @@ async def get_subscription_url(message: Message, state: FSMContext) -> None:
     )
 
     # 🖥 ДЕСКТОП
-    # Windows и macOS в одном ряду
+    # Windows с deep link для Happ (используем raw URL без encoding)
+    happ_deep_link = f"happ://add/{raw_subscription_url}"
     kb.row(
         InlineKeyboardButton(
-            text="🖥 Windows",
+            text="🖥 Скачать Happ (Win)",
             url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe"
         ),
+        InlineKeyboardButton(
+            text="📲 Добавить в Happ",
+            url=happ_deep_link
+        )
+    )
+    # macOS
+    kb.row(
         InlineKeyboardButton(
             text="🖥 macOS",
             url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
@@ -234,6 +244,8 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         encoded_token = urllib.parse.quote(token, safe='')
         subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
         add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+        # Raw URL for happ:// deep links (without URL encoding)
+        raw_subscription_url = f"{CONFIG.subscription_api_url}/sub/{token}"
 
         # Create keyboard with Happ download links (by platform)
         kb = InlineKeyboardBuilder()
@@ -268,12 +280,20 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         )
 
         # 🖥 ДЕСКТОП
-        # Windows и macOS в одном ряду
+        # Windows с deep link для Happ (используем raw URL без encoding)
+        happ_deep_link = f"happ://add/{raw_subscription_url}"
         kb.row(
             InlineKeyboardButton(
-                text="🖥 Windows",
+                text="🖥 Скачать Happ (Win)",
                 url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe"
             ),
+            InlineKeyboardButton(
+                text="📲 Добавить в Happ",
+                url=happ_deep_link
+            )
+        )
+        # macOS
+        kb.row(
             InlineKeyboardButton(
                 text="🖥 macOS",
                 url="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg"
