@@ -46,6 +46,15 @@ _ = Localization.text
 btn_text = Localization.get_reply_button
 
 
+def get_back_to_menu_keyboard():
+    """
+    Возвращает inline клавиатуру с кнопкой "Назад в меню" для сообщений об ошибках.
+    """
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
+    return kb.as_markup()
+
+
 def get_autopay_info(person) -> str:
     """
     Возвращает информацию об автооплате для добавления к любому меню тарифов.
@@ -257,7 +266,10 @@ async def command_pay(message: Message, state: FSMContext):
     person = await get_person(message.from_user.id)
 
     if not person:
-        await message.answer("❌ Пользователь не найден. Нажмите /start")
+        await message.answer(
+            "❌ Пользователь не найден. Нажмите /start",
+            reply_markup=get_back_to_menu_keyboard()
+        )
         return
 
     # Показываем меню выбора тарифов
@@ -292,7 +304,10 @@ async def command_connect(message: Message, state: FSMContext):
     person = await get_person(message.from_user.id)
 
     if not person:
-        await message.answer("❌ Пользователь не найден. Нажмите /start")
+        await message.answer(
+            "❌ Пользователь не найден. Нажмите /start",
+            reply_markup=get_back_to_menu_keyboard()
+        )
         return
 
     # Проверяем подписку - если не активна, показываем тарифы
@@ -746,7 +761,10 @@ async def download_client_handler(callback: CallbackQuery, callback_data: Downlo
     }
 
     if platform not in platform_names:
-        await callback.message.answer("❌ Неизвестная платформа")
+        await callback.message.answer(
+            "❌ Неизвестная платформа",
+            reply_markup=get_back_to_menu_keyboard()
+        )
         return
 
     platform_name = platform_names[platform]
@@ -783,7 +801,10 @@ async def download_client_handler(callback: CallbackQuery, callback_data: Downlo
 
     except Exception as e:
         log.error(f"Failed to send Outline client for {platform}: {e}")
-        await callback.message.answer(f"❌ Не удалось отправить файл. Попробуйте позже.")
+        await callback.message.answer(
+            "❌ Не удалось отправить файл. Попробуйте позже.",
+            reply_markup=get_back_to_menu_keyboard()
+        )
 
 
 @user_router.callback_query(DownloadHiddify.filter())
@@ -812,7 +833,10 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
     }
 
     if platform not in download_urls:
-        await callback.message.answer("❌ Неизвестная платформа")
+        await callback.message.answer(
+            "❌ Неизвестная платформа",
+            reply_markup=get_back_to_menu_keyboard()
+        )
         return
 
     download_url = download_urls[platform]
@@ -834,7 +858,10 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
 
     except Exception as e:
         log.error(f"Failed to send Hiddify link for {platform}: {e}")
-        await callback.message.answer(f"❌ Не удалось отправить ссылку. Попробуйте позже.")
+        await callback.message.answer(
+            "❌ Не удалось отправить ссылку. Попробуйте позже.",
+            reply_markup=get_back_to_menu_keyboard()
+        )
 
 
 @user_router.callback_query(MainMenuAction.filter())
@@ -859,7 +886,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         person = await get_person(callback.from_user.id)
 
         if not person:
-            await callback.message.answer("❌ User not found")
+            await callback.message.answer(
+                "❌ User not found",
+                reply_markup=get_back_to_menu_keyboard()
+            )
             return
 
         # Проверяем подписку (по timestamp или banned)
@@ -919,7 +949,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         status = await get_user_subscription_status(person.tgid)
 
         if 'error' in status:
-            await callback.message.answer("❌ Error getting subscription status")
+            await callback.message.answer(
+                "❌ Error getting subscription status",
+                reply_markup=get_back_to_menu_keyboard()
+            )
             return
 
         # If no token or not active, offer to activate
@@ -1081,7 +1114,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         person = await get_person(callback.from_user.id)
 
         if not person:
-            await callback.message.answer("❌ User not found")
+            await callback.message.answer(
+                "❌ User not found",
+                reply_markup=get_back_to_menu_keyboard()
+            )
             return
 
         # Check subscription - показываем меню тарифов
@@ -1137,14 +1173,16 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             log.error(f"Error getting Outline servers: {e}")
             await callback.message.answer(
                 "❌ Outline серверы временно недоступны\n\n"
-                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks",
+                reply_markup=get_back_to_menu_keyboard()
             )
             return
 
         if not outline_servers:
             await callback.message.answer(
                 "❌ Нет доступных Outline серверов\n\n"
-                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks",
+                reply_markup=get_back_to_menu_keyboard()
             )
             return
 
@@ -1529,14 +1567,16 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         except Exception as e:
             await callback.message.answer(
                 "❌ Outline серверы временно недоступны\n\n"
-                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks",
+                reply_markup=get_back_to_menu_keyboard()
             )
             return
 
         if not outline_servers:
             await callback.message.answer(
                 "❌ Нет доступных Outline серверов\n\n"
-                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks"
+                "Используйте: 📲 Subscription URL для VLESS/Shadowsocks",
+                reply_markup=get_back_to_menu_keyboard()
             )
             return
 
@@ -1570,7 +1610,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         person = await get_person(callback.from_user.id)
 
         if not person:
-            await callback.message.answer("❌ Пользователь не найден")
+            await callback.message.answer(
+                "❌ Пользователь не найден",
+                reply_markup=get_back_to_menu_keyboard()
+            )
             return
 
         # Если подписка не активна - сразу показываем тарифы
