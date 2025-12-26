@@ -134,6 +134,8 @@ class PromoCode(Base):
     text = Column(String, unique=True, nullable=False)
     add_balance = Column(Integer, nullable=True)
     add_days = Column(Integer, nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # Срок действия промокода
+    created_at = Column(DateTime, server_default=func.now())  # Дата создания
     person = relationship(
         'Persons',
         secondary='person_promocode_association',
@@ -150,6 +152,7 @@ message_button_association = Table(
     Column('users_id', Integer, ForeignKey(
         'users.id', ondelete='CASCADE'
     )),
+    Column('used_at', DateTime, server_default=func.now()),
     UniqueConstraint('promocode_id', 'users_id', name='uq_users_promocode')
 )
 

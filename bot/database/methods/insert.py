@@ -67,12 +67,12 @@ async def add_static_user(name, server):
         await db.commit()
 
 
-async def add_promo(text_promo, add_days):
+async def add_promo(text_promo, add_days, expires_at=None):
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         promo_code = PromoCode(
             text=text_promo,
-            # add_balance=add_balance
-            add_days=add_days
+            add_days=add_days,
+            expires_at=expires_at
         )
         db.add(promo_code)
         await db.commit()

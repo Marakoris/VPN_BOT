@@ -15,7 +15,8 @@ from bot.database.models.main import (
     Payments,
     StaticPersons,
     PromoCode,
-    WithdrawalRequests, Groups, SuperOffer, AffiliateStatistics
+    WithdrawalRequests, Groups, SuperOffer, AffiliateStatistics,
+    message_button_association
 )
 from bot.misc.util import CONFIG
 
@@ -156,6 +157,27 @@ async def get_promo_code(text_promo):
         result = await db.execute(statement)
         promo_code = result.unique().scalar_one_or_none()
         return promo_code
+
+
+async def get_promo_usage_with_dates(promo_id: int):
+    """Получить использования промокода с датами"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        statement = select(
+            Persons.tgid,
+            Persons.username,
+            Persons.fullname,
+            message_button_association.c.used_at
+        ).select_from(
+            message_button_association
+        ).join(
+            Persons, message_button_association.c.users_id == Persons.id
+        ).where(
+            message_button_association.c.promocode_id == promo_id
+        ).order_by(
+            message_button_association.c.used_at.desc()
+        )
+        result = await db.execute(statement)
+        return result.fetchall()
 
 
 async def get_count_referral_user(tgid):

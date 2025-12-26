@@ -237,12 +237,31 @@ async def promo_check(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardButton
     from bot.misc.callbackData import MainMenuAction
 
+    from datetime import datetime
+
     lang = await get_lang(message.from_user.id, state)
     text_promo = message.text.strip()
     person = await get_person(message.from_user.id)
     promo_code = await get_promo_code(text_promo)
 
     if promo_code is not None:
+        # Проверяем срок действия промокода
+        if promo_code.expires_at and promo_code.expires_at < datetime.now():
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(
+                text="🔄 Попробовать другой",
+                callback_data='promo_code'
+            ))
+            kb.row(InlineKeyboardButton(
+                text="⬅️ Назад в меню",
+                callback_data=MainMenuAction(action='back_to_menu').pack()
+            ))
+            await message.answer(
+                "❌ Срок действия этого промокода истёк",
+                reply_markup=kb.as_markup()
+            )
+            return
+
         try:
             add_days_number = promo_code.add_days
             await add_pomo_code_person(
@@ -257,6 +276,20 @@ async def promo_check(message: Message, state: FSMContext):
                 await activate_subscription(person.tgid, include_outline=True)
             except Exception as e:
                 log.warning(f"Failed to activate subscription after promo: {e}")
+
+            # Уведомляем админов об использовании промокода
+            username_str = f"@{person.username}" if person.username else f"ID:{person.tgid}"
+            admin_text = (
+                f"🎟 <b>Использован промокод</b>\n\n"
+                f"👤 Пользователь: {username_str}\n"
+                f"📝 Промокод: <code>{text_promo}</code>\n"
+                f"📅 Дней: +{add_days_number}"
+            )
+            for admin_id in CONFIG.admins_ids:
+                try:
+                    await message.bot.send_message(admin_id, admin_text, parse_mode="HTML")
+                except Exception as e:
+                    log.error(f"Can't notify admin {admin_id} about promo usage: {e}")
 
             # Компактное меню после активации промокода
             from aiogram.utils.keyboard import InlineKeyboardBuilder

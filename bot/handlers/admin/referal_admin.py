@@ -13,7 +13,8 @@ from bot.database.methods.get import (
     get_all_promo_code,
     get_all_application_referral,
     get_application_referral_check_false,
-    get_promo_code
+    get_promo_code,
+    get_promo_usage_with_dates
 )
 from bot.database.methods.insert import add_promo
 from bot.database.methods.update import succes_aplication
@@ -44,6 +45,7 @@ referral_router = Router()
 class NewPromo(StatesGroup):
     input_text_promo = State()
     input_price_promo = State()
+    input_expires = State()  # Срок действия промокода
 
 
 @referral_router.message(F.text.in_(btn_text('admin_promo_btn')))
@@ -143,67 +145,151 @@ async def input_name(message: Message, state: FSMContext):
 @referral_router.message(NewPromo.input_price_promo)
 async def input_price_promo(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
-    from bot.keyboards.inline.admin_inline import admin_main_inline_menu, promocode_menu
+    from bot.keyboards.inline.admin_inline import admin_back_inline_menu
     try:
-        try:
-            promo_code = int(message.text.strip())
-        except Exception as e:
-            await message.answer(_('error_input_number_add_days', lang))
-            log.info(e)
-            return
-        data = await state.get_data()
-        await add_promo(data['text_promo'], promo_code)
-        await message.answer(
-            _('new_promo_success', lang),
+        add_days = int(message.text.strip())
+    except Exception as e:
+        await message.answer(_('error_input_number_add_days', lang))
+        log.info(e)
+        return
+
+    await state.update_data(add_days=add_days)
+
+    # Создаем кнопки для срока действия
+    kb = InlineKeyboardBuilder()
+    kb.button(text="7 дней", callback_data="promo_expires:7")
+    kb.button(text="30 дней", callback_data="promo_expires:30")
+    kb.button(text="90 дней", callback_data="promo_expires:90")
+    kb.button(text="♾ Бессрочный", callback_data="promo_expires:0")
+    kb.adjust(2)
+
+    await message.answer(
+        "📅 Выберите срок действия промокода:",
+        reply_markup=kb.as_markup()
+    )
+    await state.set_state(NewPromo.input_expires)
+
+
+@referral_router.callback_query(F.data.startswith("promo_expires:"))
+async def input_expires_promo(call: CallbackQuery, state: FSMContext):
+    from datetime import datetime, timedelta
+    from bot.keyboards.inline.admin_inline import promocode_menu
+
+    lang = await get_lang(call.from_user.id, state)
+    days = int(call.data.split(":")[1])
+
+    data = await state.get_data()
+    text_promo = data.get('text_promo')
+    add_days = data.get('add_days')
+
+    # Вычисляем дату истечения
+    expires_at = None
+    if days > 0:
+        expires_at = datetime.now() + timedelta(days=days)
+
+    try:
+        await add_promo(text_promo, add_days, expires_at)
+
+        expires_text = f"до {expires_at.strftime('%d.%m.%Y')}" if expires_at else "бессрочно"
+        await call.message.edit_text(
+            f"✅ Промокод <code>{text_promo}</code> создан!\n\n"
+            f"📅 Дней подписки: {add_days}\n"
+            f"⏰ Действует: {expires_text}",
             reply_markup=await promocode_menu(lang)
         )
     except Exception as e:
-        await message.answer(
+        await call.message.edit_text(
             _('error_new_promo_text', lang),
             reply_markup=await promocode_menu(lang)
         )
-        log.info(e, 'referal_admin.py Line 131')
+        log.error(f"Error creating promo: {e}")
+
+    await call.answer()
     await state.clear()
 
 
-@referral_router.callback_query(F.data == 'show_promo')
+@referral_router.callback_query(F.data.startswith('show_promo'))
 async def callback_show_promo(call: CallbackQuery, state: FSMContext):
+    from datetime import datetime
+
     lang = await get_lang(call.from_user.id, state)
     all_promo = await get_all_promo_code()
-    if len(all_promo) == 0:
-        await call.message.edit_text(
-            "❌ Нет промокодов",
-            reply_markup=await admin_back_inline_menu('promo', lang)
-        )
-        await call.answer()
-        return
 
-    # Формируем компактный список промокодов
-    text = "🎟 <b>Промокоды:</b>\n\n"
+    # Определяем фильтр (active/archived/all)
+    filter_type = 'active'  # по умолчанию
+    if ':' in call.data:
+        filter_type = call.data.split(':')[1]
+
+    now = datetime.now()
+
+    # Разделяем промокоды на активные и архивные
+    active_promos = []
+    archived_promos = []
     for promo in all_promo:
-        usage_count = len(promo.person) if promo.person else 0
-        text += (
-            f"<code>{promo.text}</code> — "
-            f"{promo.add_days} дн. — "
-            f"исп. {usage_count} раз\n"
-        )
+        if promo.expires_at and promo.expires_at < now:
+            archived_promos.append(promo)
+        else:
+            active_promos.append(promo)
 
-    text += "\n<i>Нажмите на промокод для деталей:</i>"
+    # Выбираем какие показывать
+    if filter_type == 'active':
+        display_promos = active_promos
+        title = "🎟 <b>Активные промокоды</b>"
+    elif filter_type == 'archived':
+        display_promos = archived_promos
+        title = "📦 <b>Архивные промокоды</b>"
+    else:
+        display_promos = all_promo
+        title = "🎟 <b>Все промокоды</b>"
 
-    # Кнопки для перехода в детали каждого промокода
+    if len(display_promos) == 0:
+        text = f"{title}\n\n❌ Нет промокодов"
+    else:
+        text = f"{title}\n\n"
+        for promo in display_promos:
+            usage_count = len(promo.person) if promo.person else 0
+            # Статус промокода
+            if promo.expires_at:
+                if promo.expires_at < now:
+                    status = "❌"
+                else:
+                    days_left = (promo.expires_at - now).days
+                    status = f"⏰{days_left}д"
+            else:
+                status = "♾"
+            text += (
+                f"{status} <code>{promo.text}</code> — "
+                f"{promo.add_days} дн. — "
+                f"исп. {usage_count}\n"
+            )
+
+    text += "\n<i>Нажмите на промокод для деталей</i>"
+
+    # Кнопки промокодов
     kb = InlineKeyboardBuilder()
-    for promo in all_promo:
+    for promo in display_promos:
         usage_count = len(promo.person) if promo.person else 0
+        # Иконка статуса в кнопке
+        if promo.expires_at and promo.expires_at < now:
+            icon = "❌"
+        elif promo.expires_at:
+            icon = "⏰"
+        else:
+            icon = "♾"
         kb.button(
-            text=f"{promo.text} ({usage_count})",
+            text=f"{icon} {promo.text} ({usage_count})",
             callback_data=PromocodeAction(id_promo=promo.id, action='view')
         )
     kb.adjust(2)
+
+    # Кнопки фильтров
     kb.row()
-    kb.button(
-        text='⬅️ Назад',
-        callback_data=AdminMenuNav(menu='promo').pack()
-    )
+    if filter_type != 'active':
+        kb.button(text=f"✅ Активные ({len(active_promos)})", callback_data="show_promo:active")
+    if filter_type != 'archived':
+        kb.button(text=f"📦 Архив ({len(archived_promos)})", callback_data="show_promo:archived")
+    kb.row()
+    kb.button(text='⬅️ Назад', callback_data=AdminMenuNav(menu='promo').pack())
 
     await call.message.edit_text(text, reply_markup=kb.as_markup())
     await call.answer()
@@ -228,22 +314,46 @@ async def callback_promo_action(
         return
 
     if action == 'view':
-        # Показываем детали промокода
-        usage_count = len(promo.person) if promo.person else 0
+        from datetime import datetime
+        now = datetime.now()
+
+        # Показываем детали промокода с датами использования
+        usages = await get_promo_usage_with_dates(promo.id)
+        usage_count = len(usages)
+
+        # Статус промокода
+        if promo.expires_at:
+            if promo.expires_at < now:
+                status = "❌ <b>Истёк</b>"
+                expires_text = promo.expires_at.strftime("%d.%m.%Y")
+            else:
+                days_left = (promo.expires_at - now).days
+                status = f"✅ <b>Активен</b> (ещё {days_left} дн.)"
+                expires_text = promo.expires_at.strftime("%d.%m.%Y")
+        else:
+            status = "♾ <b>Бессрочный</b>"
+            expires_text = None
+
         text = (
             f"🎟 <b>Промокод:</b> <code>{promo.text}</code>\n\n"
-            f"📅 Дней: <b>{promo.add_days}</b>\n"
-            f"👥 Использован: <b>{usage_count}</b> раз\n"
+            f"📅 Дней подписки: <b>{promo.add_days}</b>\n"
+            f"⏰ Статус: {status}\n"
         )
+        if expires_text:
+            text += f"📆 Действует до: {expires_text}\n"
+        if promo.created_at:
+            text += f"🕐 Создан: {promo.created_at.strftime('%d.%m.%Y')}\n"
+        text += f"👥 Использован: <b>{usage_count}</b> раз\n"
 
-        # Показываем кто использовал (до 10 пользователей в сообщении)
-        if promo.person:
+        # Показываем кто использовал с датой (до 10 пользователей в сообщении)
+        if usages:
             text += "\n<b>Использовали:</b>\n"
-            for i, user in enumerate(promo.person[:10], 1):
-                username = f"@{user.username}" if user.username else f"ID:{user.tgid}"
-                text += f"  {i}. {username}\n"
-            if len(promo.person) > 10:
-                text += f"  <i>...и ещё {len(promo.person) - 10}</i>\n"
+            for i, (tgid, username, fullname, used_at) in enumerate(usages[:10], 1):
+                user_name = f"@{username}" if username else f"ID:{tgid}"
+                date_str = used_at.strftime("%d.%m.%Y %H:%M") if used_at else "—"
+                text += f"  {i}. {user_name} — {date_str}\n"
+            if len(usages) > 10:
+                text += f"  <i>...и ещё {len(usages) - 10}</i>\n"
 
         kb = InlineKeyboardBuilder()
         if usage_count > 10:
@@ -300,22 +410,25 @@ async def callback_promo_action(
             await call.answer("❌ Ошибка удаления", show_alert=True)
 
     elif action == 'stats':
-        # Формируем файл со статистикой
-        if not promo.person:
+        # Формируем файл со статистикой с датами
+        usages = await get_promo_usage_with_dates(promo.id)
+        if not usages:
             await call.answer("❌ Нет данных об использовании", show_alert=True)
             return
 
         str_stats = f"Промокод: {promo.text}\n"
         str_stats += f"Дней: {promo.add_days}\n"
-        str_stats += f"Использований: {len(promo.person)}\n"
+        str_stats += f"Использований: {len(usages)}\n"
         str_stats += "=" * 40 + "\n\n"
         str_stats += "Кто использовал:\n\n"
 
-        for i, user in enumerate(promo.person, 1):
+        for i, (tgid, username, fullname, used_at) in enumerate(usages, 1):
+            date_str = used_at.strftime("%d.%m.%Y %H:%M") if used_at else "—"
             str_stats += (
-                f"{i}. @{user.username or 'N/A'}\n"
-                f"   ID: {user.tgid}\n"
-                f"   Имя: {user.fullname or 'N/A'}\n\n"
+                f"{i}. @{username or 'N/A'}\n"
+                f"   ID: {tgid}\n"
+                f"   Имя: {fullname or 'N/A'}\n"
+                f"   Дата: {date_str}\n\n"
             )
 
         file_stream = io.BytesIO(str_stats.encode()).getvalue()
