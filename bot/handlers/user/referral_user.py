@@ -76,6 +76,10 @@ async def send_admins(bot: Bot, amount):
 @referral_router.message(Command("bonus"))
 @referral_router.message(F.text.in_(btn_text('bonus_btn')))
 async def give_handler(m: Message, state: FSMContext) -> None:
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    from bot.misc.callbackData import MainMenuAction
+
     lang = await get_lang(m.from_user.id, state)
     link_ref = await get_referral_link(m)
     message_text = Text(
@@ -86,10 +90,19 @@ async def give_handler(m: Message, state: FSMContext) -> None:
         **message_text.as_kwargs(),
         reply_markup=await share_link(link_ref, lang)
     )
+
+    # Сразу показываем ввод промокода с кнопкой "Назад"
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='back_to_menu').pack()
+    ))
     await m.answer(
         _('referral_promo_code', lang),
-        reply_markup=await promo_code_button(lang)
+        reply_markup=kb.as_markup()
     )
+    # Сразу устанавливаем state для ввода промокода
+    await state.set_state(ActivatePromocode.input_promo)
 
 
 @referral_router.message(Command("partnership"))
@@ -127,10 +140,6 @@ async def successful_payment(call: CallbackQuery, state: FSMContext):
 
     lang = await get_lang(call.from_user.id, state)
 
-    # Скрываем старую reply клавиатуру
-    hide_msg = await call.message.answer("⏳", reply_markup=ReplyKeyboardRemove())
-    await hide_msg.delete()
-
     # Создаем inline клавиатуру с кнопкой "Назад"
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(
@@ -138,8 +147,9 @@ async def successful_payment(call: CallbackQuery, state: FSMContext):
         callback_data=MainMenuAction(action='bonus').pack()
     ))
 
-    await call.message.answer(
-        _('input_promo_user', lang),
+    # Редактируем текущее сообщение, убирая кнопку "Ввести промокод"
+    await call.message.edit_text(
+        _('referral_promo_code', lang),
         reply_markup=kb.as_markup()
     )
     await call.answer()
@@ -240,9 +250,31 @@ async def promo_check(message: Message, state: FSMContext):
                 promo_code
             )
             await add_time_person(person.tgid, add_days_number * CONFIG.COUNT_SECOND_DAY)
+
+            # Активируем подписку автоматически
+            from bot.misc.subscription import activate_subscription
+            try:
+                await activate_subscription(person.tgid, include_outline=True)
+            except Exception as e:
+                log.warning(f"Failed to activate subscription after promo: {e}")
+
+            # Компактное меню после активации промокода
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            from bot.misc.callbackData import MainMenuAction
+            kb = InlineKeyboardBuilder()
+            kb.button(
+                text="🔑 Подключить VPN",
+                callback_data=MainMenuAction(action='my_keys')
+            )
+            kb.button(
+                text="📋 Главное меню",
+                callback_data=MainMenuAction(action='back_to_menu')
+            )
+            kb.adjust(1)
+
             await message.answer(
                 _('promo_success_user', lang).format(amount=add_days_number),
-                reply_markup=await user_menu_inline(person, lang, message.bot)
+                reply_markup=kb.as_markup()
             )
             await state.clear()
         except InvalidRequestError:

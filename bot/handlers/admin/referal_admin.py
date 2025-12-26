@@ -1,29 +1,35 @@
+import io
 import logging
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, BufferedInputFile
 from aiogram.utils.formatting import Text, Code
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.database.methods.delete import delete_promo_code
 from bot.database.methods.get import (
     get_all_promo_code,
     get_all_application_referral,
-    get_application_referral_check_false
+    get_application_referral_check_false,
+    get_promo_code
 )
 from bot.database.methods.insert import add_promo
 from bot.database.methods.update import succes_aplication
 from bot.keyboards.inline.admin_inline import (
     promocode_menu,
     promocode_delete,
-    application_referral_menu, application_success
+    application_referral_menu, application_success,
+    admin_back_inline_menu
 )
 from bot.keyboards.reply.admin_reply import back_admin_menu, admin_menu
 from bot.misc.callbackData import (
     PromocodeDelete,
+    PromocodeAction,
     AplicationReferral,
-    ApplicationSuccess
+    ApplicationSuccess,
+    AdminMenuNav
 )
 from bot.misc.language import Localization, get_lang
 
@@ -165,21 +171,161 @@ async def callback_show_promo(call: CallbackQuery, state: FSMContext):
     lang = await get_lang(call.from_user.id, state)
     all_promo = await get_all_promo_code()
     if len(all_promo) == 0:
-        await call.message.edit_text(_('promo_not_list', lang))
+        await call.message.edit_text(
+            "❌ Нет промокодов",
+            reply_markup=await admin_back_inline_menu('promo', lang)
+        )
         await call.answer()
         return
-    await call.message.edit_text(_('promo_list_all', lang))
+
+    # Формируем компактный список промокодов
+    text = "🎟 <b>Промокоды:</b>\n\n"
     for promo in all_promo:
-        text_server = Text(Code(promo.text), f' | {promo.add_days} ')
-        await call.message.answer(
-            **text_server.as_kwargs(),
-            reply_markup=await promocode_delete(
-                promo.id,
-                call.message.message_id,
-                lang
-            )
+        usage_count = len(promo.person) if promo.person else 0
+        text += (
+            f"<code>{promo.text}</code> — "
+            f"{promo.add_days} дн. — "
+            f"исп. {usage_count} раз\n"
         )
+
+    text += "\n<i>Нажмите на промокод для деталей:</i>"
+
+    # Кнопки для перехода в детали каждого промокода
+    kb = InlineKeyboardBuilder()
+    for promo in all_promo:
+        usage_count = len(promo.person) if promo.person else 0
+        kb.button(
+            text=f"{promo.text} ({usage_count})",
+            callback_data=PromocodeAction(id_promo=promo.id, action='view')
+        )
+    kb.adjust(2)
+    kb.row()
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='promo').pack()
+    )
+
+    await call.message.edit_text(text, reply_markup=kb.as_markup())
     await call.answer()
+
+
+@referral_router.callback_query(PromocodeAction.filter())
+async def callback_promo_action(
+        call: CallbackQuery,
+        callback_data: PromocodeAction,
+        state: FSMContext
+):
+    lang = await get_lang(call.from_user.id, state)
+    promo_id = callback_data.id_promo
+    action = callback_data.action
+
+    # Получаем промокод
+    all_promos = await get_all_promo_code()
+    promo = next((p for p in all_promos if p.id == promo_id), None)
+
+    if not promo:
+        await call.answer("❌ Промокод не найден", show_alert=True)
+        return
+
+    if action == 'view':
+        # Показываем детали промокода
+        usage_count = len(promo.person) if promo.person else 0
+        text = (
+            f"🎟 <b>Промокод:</b> <code>{promo.text}</code>\n\n"
+            f"📅 Дней: <b>{promo.add_days}</b>\n"
+            f"👥 Использован: <b>{usage_count}</b> раз\n"
+        )
+
+        # Показываем кто использовал (до 10 пользователей в сообщении)
+        if promo.person:
+            text += "\n<b>Использовали:</b>\n"
+            for i, user in enumerate(promo.person[:10], 1):
+                username = f"@{user.username}" if user.username else f"ID:{user.tgid}"
+                text += f"  {i}. {username}\n"
+            if len(promo.person) > 10:
+                text += f"  <i>...и ещё {len(promo.person) - 10}</i>\n"
+
+        kb = InlineKeyboardBuilder()
+        if usage_count > 10:
+            kb.button(
+                text=f"📄 Скачать полный список ({usage_count})",
+                callback_data=PromocodeAction(id_promo=promo.id, action='stats')
+            )
+        kb.button(
+            text="🗑 Удалить",
+            callback_data=PromocodeAction(id_promo=promo.id, action='delete')
+        )
+        kb.button(
+            text="⬅️ К списку",
+            callback_data='show_promo'
+        )
+        kb.adjust(1)
+
+        await call.message.edit_text(text, reply_markup=kb.as_markup())
+        await call.answer()
+
+    elif action == 'delete':
+        # Спрашиваем подтверждение
+        text = (
+            f"❓ <b>Удалить промокод?</b>\n\n"
+            f"<code>{promo.text}</code>\n"
+            f"Дней: {promo.add_days}\n\n"
+            f"⚠️ Это действие нельзя отменить"
+        )
+
+        kb = InlineKeyboardBuilder()
+        kb.button(
+            text="✅ Да, удалить",
+            callback_data=PromocodeAction(id_promo=promo.id, action='confirm_delete')
+        )
+        kb.button(
+            text="❌ Отмена",
+            callback_data=PromocodeAction(id_promo=promo.id, action='view')
+        )
+        kb.adjust(2)
+
+        await call.message.edit_text(text, reply_markup=kb.as_markup())
+        await call.answer()
+
+    elif action == 'confirm_delete':
+        # Удаляем промокод
+        try:
+            promo_text = promo.text
+            await delete_promo_code(promo_id)
+            await call.answer(f"✅ Промокод {promo_text} удалён", show_alert=True)
+            # Возвращаемся к списку
+            await callback_show_promo(call, state)
+        except Exception as e:
+            log.error(f"Error deleting promo: {e}")
+            await call.answer("❌ Ошибка удаления", show_alert=True)
+
+    elif action == 'stats':
+        # Формируем файл со статистикой
+        if not promo.person:
+            await call.answer("❌ Нет данных об использовании", show_alert=True)
+            return
+
+        str_stats = f"Промокод: {promo.text}\n"
+        str_stats += f"Дней: {promo.add_days}\n"
+        str_stats += f"Использований: {len(promo.person)}\n"
+        str_stats += "=" * 40 + "\n\n"
+        str_stats += "Кто использовал:\n\n"
+
+        for i, user in enumerate(promo.person, 1):
+            str_stats += (
+                f"{i}. @{user.username or 'N/A'}\n"
+                f"   ID: {user.tgid}\n"
+                f"   Имя: {user.fullname or 'N/A'}\n\n"
+            )
+
+        file_stream = io.BytesIO(str_stats.encode()).getvalue()
+        input_file = BufferedInputFile(file_stream, f'promo_{promo.text}_stats.txt')
+
+        await call.message.answer_document(
+            input_file,
+            caption=f"📊 Статистика промокода <code>{promo.text}</code>"
+        )
+        await call.answer()
 
 
 @referral_router.callback_query(PromocodeDelete.filter())

@@ -138,9 +138,11 @@ async def get_all_static_user():
 
 async def get_all_promo_code():
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        statement = select(PromoCode)
+        statement = select(PromoCode).options(
+            joinedload(PromoCode.person)
+        )
         result = await db.execute(statement)
-        promo_code = result.scalars().all()
+        promo_code = result.unique().scalars().all()
         return promo_code
 
 

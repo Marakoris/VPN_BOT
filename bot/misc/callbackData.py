@@ -78,6 +78,11 @@ class PromocodeDelete(CallbackData, prefix='delete_promo'):
     mes_id: int
 
 
+class PromocodeAction(CallbackData, prefix='promo_action'):
+    id_promo: int
+    action: str  # 'view', 'stats', 'delete', 'confirm_delete'
+
+
 class AplicationReferral(CallbackData, prefix='app_referral'):
     type: bool
 

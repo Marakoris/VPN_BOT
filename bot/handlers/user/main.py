@@ -1306,19 +1306,26 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'bonus':
-        # Показываем только меню ввода промокода (без реферальной программы)
-        from bot.keyboards.inline.user_inline import promo_code_button
+        # Сразу переходим в режим ввода промокода
+        from bot.handlers.user.referral_user import ActivatePromocode
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⬅️ Назад", callback_data=MainMenuAction(action='bonuses'))
+        kb.adjust(1)
 
         try:
             await callback.message.edit_text(
                 text=_('referral_promo_code', lang),
-                reply_markup=await promo_code_button(lang)
+                reply_markup=kb.as_markup()
             )
         except:
             await callback.message.answer(
                 text=_('referral_promo_code', lang),
-                reply_markup=await promo_code_button(lang)
+                reply_markup=kb.as_markup()
             )
+        # Устанавливаем state для ввода промокода
+        await state.set_state(ActivatePromocode.input_promo)
 
     elif action == 'about':
         # Обновляем сообщение вместо отправки нового
@@ -1868,16 +1875,54 @@ async def admin_menu_nav_handler(
 
         # Выход в пользовательское меню
         elif menu == 'exit':
+            from datetime import datetime
+            import time
+
             person = await get_person(callback.from_user.id)
-            await callback.message.edit_text(
-                _('start_message', lang).format(
-                    subscription_info="",
-                    tgid=callback.from_user.id,
-                    balance=person.balance if person else 0,
-                    referral_money=person.referral_balance if person else 0
-                ),
-                reply_markup=await user_menu_inline(person, lang, callback.bot)
-            )
+            if not person:
+                await callback.answer("Ошибка", show_alert=True)
+                return
+
+            # Определяем статус подписки (как в back_to_menu)
+            if person.subscription == 0:
+                subscription_info = "🆕 Подписка не активирована"
+            elif person.subscription < int(time.time()):
+                subscription_end = datetime.utcfromtimestamp(
+                    int(person.subscription) + CONFIG.UTC_time * 3600
+                ).strftime('%d.%m.%Y %H:%M')
+                subscription_info = f"❌ Подписка истекла: {subscription_end}"
+            else:
+                subscription_end = datetime.utcfromtimestamp(
+                    int(person.subscription) + CONFIG.UTC_time * 3600
+                ).strftime('%d.%m.%Y %H:%M')
+                subscription_info = f"⏰ Подписка активна до: {subscription_end}"
+
+            # Добавляем трафик для активных подписок
+            if person.subscription and person.subscription > int(time.time()):
+                traffic_str = await get_traffic_info(person.tgid)
+                subscription_info += traffic_str
+
+            try:
+                await callback.message.edit_text(
+                    _('start_message', lang).format(
+                        subscription_info=subscription_info,
+                        tgid=callback.from_user.id,
+                        balance=person.balance,
+                        referral_money=person.referral_balance
+                    ),
+                    reply_markup=await user_menu_inline(person, lang, callback.bot)
+                )
+            except:
+                await callback.message.delete()
+                await callback.message.answer(
+                    _('start_message', lang).format(
+                        subscription_info=subscription_info,
+                        tgid=callback.from_user.id,
+                        balance=person.balance,
+                        referral_money=person.referral_balance
+                    ),
+                    reply_markup=await user_menu_inline(person, lang, callback.bot)
+                )
 
         # Меню пользователей
         elif menu == 'users':
@@ -1905,12 +1950,14 @@ async def admin_menu_nav_handler(
                 without_sub = sum(1 for u in users if (not u.subscription or u.subscription <= current_time) and not u.banned)
                 banned = sum(1 for u in users if u.banned)
                 with_autopay = sum(1 for u in users if u.payment_method_id is not None)
+                free_trial_used = sum(1 for u in users if u.free_trial_used)
 
                 text = (
                     f"👥 <b>Статистика пользователей</b>\n\n"
                     f"📊 Всего: <b>{len(users)}</b>\n"
                     f"✅ С активной подпиской: <b>{with_sub}</b>\n"
                     f"🔄 С автоподпиской: <b>{with_autopay}</b>\n"
+                    f"🎁 Активировали пробный: <b>{free_trial_used}</b>\n"
                     f"❌ Без подписки: <b>{without_sub}</b>\n"
                     f"🚫 Заблокировано: <b>{banned}</b>"
                 )
