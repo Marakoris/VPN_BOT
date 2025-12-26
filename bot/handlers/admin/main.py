@@ -38,7 +38,16 @@ from bot.keyboards.inline.admin_inline import (
     server_control,
     missing_user_menu,
     vpn_type_selection_menu,
-    server_selection_menu
+    server_selection_menu,
+    admin_main_inline_menu,
+    admin_users_inline_menu,
+    admin_servers_inline_menu,
+    admin_groups_inline_menu,
+    admin_static_users_inline_menu,
+    admin_show_users_inline_menu,
+    admin_back_inline_menu,
+    promocode_menu,
+    application_referral_menu
 )
 from bot.keyboards.reply.admin_reply import (
     admin_menu,
@@ -49,7 +58,7 @@ from bot.keyboards.reply.user_reply import user_menu
 from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
-from bot.misc.callbackData import ServerWork, ServerUserList, MissingMessage
+from bot.misc.callbackData import ServerWork, ServerUserList, MissingMessage, AdminMenuNav
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +67,7 @@ btn_text = Localization.get_reply_button
 
 admin_router = Router()
 admin_router.message.filter(IsAdmin())
+admin_router.callback_query.filter(IsAdmin())
 admin_router.include_routers(
     user_management_router,
     state_admin_router,
@@ -77,9 +87,14 @@ class StateMailing(StatesGroup):
 )
 async def admin_panel(message: Message, state: FSMContext) -> None:
     lang = await get_lang(message.from_user.id, state)
+    # Убираем reply keyboard и показываем inline меню
     await message.answer(
         _('bot_control', lang),
-        reply_markup=await admin_menu(lang)
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer(
+        "📊 Выберите раздел:",
+        reply_markup=await admin_main_inline_menu(lang)
     )
     await state.clear()
 
@@ -379,7 +394,7 @@ async def update_message_bot(
 
     # Показать меню выбора типа VPN
     if callback_data.option == 'by_vpn_type':
-        await call.message.answer(
+        await call.message.edit_text(
             '📡 Выберите тип VPN для рассылки:',
             reply_markup=await vpn_type_selection_menu(lang)
         )
@@ -390,10 +405,10 @@ async def update_message_bot(
     if callback_data.option == 'by_server':
         servers = await get_all_server()
         if not servers:
-            await call.message.answer('❌ Нет доступных серверов')
+            await call.message.edit_text('❌ Нет доступных серверов')
             await call.answer()
             return
-        await call.message.answer(
+        await call.message.edit_text(
             '🌍 Выберите сервер для рассылки:',
             reply_markup=await server_selection_menu(servers, lang)
         )
@@ -407,9 +422,10 @@ async def update_message_bot(
         vpn_type=callback_data.vpn_type
     )
 
-    await call.message.answer(
+    from bot.keyboards.inline.admin_inline import admin_back_inline_menu
+    await call.message.edit_text(
         _('input_message_or_image', lang),
-        reply_markup=await back_admin_menu(lang)
+        reply_markup=await admin_back_inline_menu('mailing', lang)
     )
     await call.answer()
     await state.set_state(StateMailing.input_text)
@@ -491,11 +507,278 @@ async def mailing_text(message: Message, state: FSMContext):
             server = await get_server_id(server_id)
             result_text += f'\n\n🌍 Фильтр: Сервер {server.name if server else server_id}'
 
+        from bot.keyboards.inline.admin_inline import admin_main_inline_menu
         await message.answer(
             result_text,
-            reply_markup=await admin_menu(lang)
+            reply_markup=await admin_main_inline_menu(lang)
         )
     except Exception as e:
         log.error(e, 'error mailing')
-        await message.answer(_('error_mailing_text', lang))
+        from bot.keyboards.inline.admin_inline import admin_main_inline_menu
+        await message.answer(
+            _('error_mailing_text', lang),
+            reply_markup=await admin_main_inline_menu(lang)
+        )
     await state.clear()
+
+
+# =====================================================
+# INLINE ADMIN MENU NAVIGATION HANDLERS
+# =====================================================
+
+@admin_router.callback_query(AdminMenuNav.filter())
+async def admin_menu_navigation(
+        call: CallbackQuery,
+        callback_data: AdminMenuNav,
+        state: FSMContext,
+        dialog_manager: DialogManager = None
+) -> None:
+    """Обработчик навигации по inline админ меню"""
+    lang = await get_lang(call.from_user.id, state)
+    menu = callback_data.menu
+    action = callback_data.action
+
+    # Главное админ меню
+    if menu == 'main':
+        await call.message.edit_text(
+            "📊 Выберите раздел:",
+            reply_markup=await admin_main_inline_menu(lang)
+        )
+
+    # Выход в пользовательское меню
+    elif menu == 'exit':
+        await call.message.delete()
+        users = await get_person_id([call.from_user.id])
+        user = users[0] if users else None
+        await call.message.answer(
+            _('main_message', lang),
+            reply_markup=await user_menu(user, lang)
+        )
+
+    # Меню пользователей
+    elif menu == 'users':
+        if action == 'edit':
+            # Редактирование пользователя - просим ввести ID
+            await call.message.edit_text(
+                _('input_user_id_admin', lang),
+                reply_markup=await admin_back_inline_menu('users', lang)
+            )
+            from bot.handlers.admin.user_management import EditUser
+            await state.set_state(EditUser.input_id)
+        else:
+            await call.message.edit_text(
+                _('users_control', lang),
+                reply_markup=await admin_users_inline_menu(lang)
+            )
+
+    # Меню статистики пользователей
+    elif menu == 'show_users':
+        if action == 'all':
+            # Показать всех пользователей
+            users = await get_all_user()
+            await call.message.edit_text(
+                f"👥 Всего пользователей: {len(users)}",
+                reply_markup=await admin_back_inline_menu('show_users', lang)
+            )
+        elif action == 'sub':
+            # Показать подписчиков
+            users = await get_all_subscription()
+            await call.message.edit_text(
+                f"✅ Пользователей с подпиской: {len(users)}",
+                reply_markup=await admin_back_inline_menu('show_users', lang)
+            )
+        elif action == 'payments':
+            # Показать историю платежей
+            from bot.database.methods.get import get_total_payments
+            try:
+                total = await get_total_payments()
+                await call.message.edit_text(
+                    f"💰 Общая сумма платежей: {total} ₽",
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
+            except:
+                await call.message.edit_text(
+                    "💰 Статистика платежей",
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
+        else:
+            await call.message.edit_text(
+                _('statistic_users', lang),
+                reply_markup=await admin_show_users_inline_menu(lang)
+            )
+
+    # Меню статических пользователей
+    elif menu == 'static_users':
+        if action == 'add':
+            await call.message.edit_text(
+                _('input_user_id_admin', lang),
+                reply_markup=await admin_back_inline_menu('static_users', lang)
+            )
+            from bot.handlers.admin.user_management import StaticUser
+            await state.set_state(StaticUser.input_id)
+        elif action == 'show':
+            # Показать статических пользователей
+            from bot.database.methods.get import get_all_static_users
+            try:
+                static_users = await get_all_static_users()
+                text = f"📌 Статических пользователей: {len(static_users)}"
+            except:
+                text = "📌 Статические пользователи"
+            await call.message.edit_text(
+                text,
+                reply_markup=await admin_back_inline_menu('static_users', lang)
+            )
+        else:
+            await call.message.edit_text(
+                _('static_users_menu', lang),
+                reply_markup=await admin_static_users_inline_menu(lang)
+            )
+
+    # Меню серверов
+    elif menu == 'servers':
+        if action == 'show':
+            # Показать все серверы
+            await call.message.delete()
+            all_server = await get_all_server()
+            if len(all_server) == 0:
+                await call.message.answer(
+                    _('servers_none', lang),
+                    reply_markup=await admin_back_inline_menu('servers', lang)
+                )
+            else:
+                await call.message.answer(_('list_all_servers', lang))
+                space = 0
+                for server in all_server:
+                    old_m = await call.message.answer(_('connect_continue', lang))
+                    try:
+                        client_server = await get_static_client(server)
+                        space = len(client_server)
+                        if not await server_space_update(server.name, space):
+                            raise Exception("Failed to update server space")
+                        connect = True
+                    except Exception as e:
+                        log.error(e, 'error connecting to server')
+                        connect = False
+                    text_server = await get_server_info(server, space, connect, lang)
+                    try:
+                        await call.message.bot.delete_message(call.message.chat.id, old_m.message_id)
+                    except:
+                        pass
+                    await call.message.answer(
+                        **text_server.as_kwargs(),
+                        reply_markup=await server_control(server.work, server.name, lang),
+                    )
+                # Добавляем кнопку назад
+                await call.message.answer(
+                    "⬅️ Вернуться в меню серверов",
+                    reply_markup=await admin_back_inline_menu('servers', lang)
+                )
+        elif action == 'add':
+            await call.message.edit_text(
+                _('input_name_server_admin', lang),
+                reply_markup=await admin_back_inline_menu('servers', lang)
+            )
+            await state.set_state(AddServer.input_name)
+        elif action == 'delete':
+            await call.message.edit_text(
+                _('input_name_server_admin', lang),
+                reply_markup=await admin_back_inline_menu('servers', lang)
+            )
+            await state.set_state(RemoveServer.input_name)
+        else:
+            await call.message.edit_text(
+                _('servers_control', lang),
+                reply_markup=await admin_servers_inline_menu(lang)
+            )
+
+    # Меню промокодов
+    elif menu == 'promo':
+        await call.message.edit_text(
+            _('promo_menu', lang),
+            reply_markup=await promocode_menu(lang)
+        )
+
+    # Реферальная система
+    elif menu == 'referral':
+        await call.message.edit_text(
+            _('referral_system', lang),
+            reply_markup=await application_referral_menu(lang)
+        )
+
+    # Рассылка
+    elif menu == 'mailing':
+        await call.message.edit_text(
+            _('who_should_i_send', lang),
+            reply_markup=await missing_user_menu(lang)
+        )
+
+    # Группы
+    elif menu == 'groups':
+        if action == 'show':
+            # Показать группы
+            from bot.database.methods.get import get_all_groups
+            try:
+                groups = await get_all_groups()
+                if groups:
+                    text = "📁 Группы:\n\n" + "\n".join([f"• {g.name}" for g in groups])
+                else:
+                    text = "📁 Нет групп"
+            except:
+                text = "📁 Группы"
+            await call.message.edit_text(
+                text,
+                reply_markup=await admin_back_inline_menu('groups', lang)
+            )
+        elif action == 'add':
+            await call.message.edit_text(
+                _('input_group_name', lang),
+                reply_markup=await admin_back_inline_menu('groups', lang)
+            )
+            from bot.handlers.admin.group_mangment import AddGroup
+            await state.set_state(AddGroup.input_name)
+        else:
+            await call.message.edit_text(
+                _('groups_menu', lang),
+                reply_markup=await admin_groups_inline_menu(lang)
+            )
+
+    # Super Offer
+    elif menu == 'super_offer':
+        await call.message.delete()
+        if dialog_manager:
+            await dialog_manager.start(SuperOfferSG.TEXT, mode=StartMode.RESET_STACK)
+
+    # Регенерация ключей
+    elif menu == 'regenerate':
+        from bot.misc.callbackData import RegenerateKeys
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import InlineKeyboardButton
+
+        kb = InlineKeyboardBuilder()
+        kb.row(
+            InlineKeyboardButton(
+                text='🚀 Начать регенерацию',
+                callback_data=RegenerateKeys(action='start').pack()
+            )
+        )
+        kb.row(
+            InlineKeyboardButton(
+                text='⬅️ Назад',
+                callback_data=AdminMenuNav(menu='main').pack()
+            )
+        )
+
+        await call.message.edit_text(
+            "🔄 Регенерация ключей VPN\n\n"
+            "Этот инструмент позволяет массово обновить VPN ключи пользователей "
+            "после изменения портов или других настроек серверов.\n\n"
+            "📋 Процесс:\n"
+            "1. Выбор серверов\n"
+            "2. Выбор протоколов (Outline/Vless/Shadowsocks)\n"
+            "3. Подтверждение\n"
+            "4. Автоматическая регенерация и отправка новых ключей\n\n"
+            "⚠️ Убедитесь, что изменения на серверах уже применены!",
+            reply_markup=kb.as_markup()
+        )
+
+    await call.answer()

@@ -1739,26 +1739,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'admin':
-        # Inline-версия админ панели
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-        builder = InlineKeyboardBuilder()
-        builder.button(text="👥 Управление пользователями", callback_data=MainMenuAction(action='admin_users'))
-        builder.button(text="🎟️ Промокоды", callback_data=MainMenuAction(action='admin_promo'))
-        builder.button(text="🖥️ Управление серверами", callback_data=MainMenuAction(action='admin_servers'))
-        builder.button(text="👨‍👩‍👧‍👦 Реферальная система", callback_data=MainMenuAction(action='admin_reff'))
-        builder.button(text="📢 Рассылка", callback_data=MainMenuAction(action='admin_mailing'))
-        builder.button(text="👥 Группы", callback_data=MainMenuAction(action='admin_groups'))
-        builder.button(text="⭐ Супер предложение", callback_data=MainMenuAction(action='admin_super_offer'))
-        builder.button(text="🔄 Регенерация ключей", callback_data=MainMenuAction(action='admin_regenerate'))
-        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
-        builder.adjust(1)
+        # Inline-версия админ панели - используем новые AdminMenuNav callbacks
+        from bot.keyboards.inline.admin_inline import admin_main_inline_menu
 
         try:
             await callback.message.edit_text(
                 text="⚙️ <b>Панель администратора</b>\n\n"
-                     "Выберите действие:",
-                reply_markup=builder.as_markup(),
+                     "Выберите раздел:",
+                reply_markup=await admin_main_inline_menu(lang),
                 parse_mode="HTML"
             )
         except:
@@ -1769,53 +1757,10 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await bot.send_message(
                 chat_id=callback.from_user.id,
                 text="⚙️ <b>Панель администратора</b>\n\n"
-                     "Выберите действие:",
-                reply_markup=builder.as_markup(),
+                     "Выберите раздел:",
+                reply_markup=await admin_main_inline_menu(lang),
                 parse_mode="HTML"
             )
-
-    # Обработчики для админских кнопок
-    elif action == 'admin_users':
-        from bot.handlers.admin.user_management import command as user_management_handler
-        await user_management_handler(callback.message, state)
-
-    elif action == 'admin_promo':
-        from bot.handlers.admin.referal_admin import promo_handler
-        await promo_handler(callback.message, state)
-
-    elif action == 'admin_servers':
-        from bot.handlers.admin.main import command as servers_handler
-        await servers_handler(callback.message, state)
-
-    elif action == 'admin_reff':
-        from bot.handlers.admin.referal_admin import referral_system_handler
-        await referral_system_handler(callback.message, state)
-
-    elif action == 'admin_mailing':
-        from bot.handlers.admin.main import out_message_bot
-        await out_message_bot(callback.message, state)
-
-    elif action == 'admin_groups':
-        from bot.handlers.admin.group_mangment import group_panel
-        await group_panel(callback.message, state)
-
-    elif action == 'admin_super_offer':
-        from bot.handlers.admin.main import start_super_offer_dialog
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-        # Super offer uses aiogram-dialog, need to get dialog manager from middleware
-        # For now, send message that this function requires dialog manager
-        await callback.message.edit_text(
-            text="⭐ Супер предложение\n\nЭта функция использует специальный dialog. Пожалуйста, используйте команду из текстового меню.",
-            reply_markup=InlineKeyboardBuilder().button(
-                text="⬅️ Назад",
-                callback_data=MainMenuAction(action='admin')
-            ).as_markup()
-        )
-        return
-
-    elif action == 'admin_regenerate':
-        from bot.handlers.admin.main import regenerate_keys_menu
-        await regenerate_keys_menu(callback.message, state)
 
     elif action == 'back_to_menu':
         # Возврат в главное меню
@@ -1877,6 +1822,259 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 text=message_text,
                 reply_markup=await user_menu_inline(person, lang, bot)
             )
+
+
+# =====================================================
+# ADMIN MENU NAVIGATION HANDLER (AdminMenuNav)
+# =====================================================
+
+from bot.misc.callbackData import AdminMenuNav
+
+@user_router.callback_query(AdminMenuNav.filter())
+async def admin_menu_nav_handler(
+        callback: CallbackQuery,
+        callback_data: AdminMenuNav,
+        state: FSMContext
+) -> None:
+    """Обработчик навигации по inline админ меню"""
+    lang = await get_lang(callback.from_user.id, state)
+    menu = callback_data.menu
+    action = callback_data.action
+
+    log.info(f"[AdminMenuNav] menu={menu}, action={action}, user={callback.from_user.id}")
+
+    from bot.keyboards.inline.admin_inline import (
+        admin_main_inline_menu,
+        admin_users_inline_menu,
+        admin_servers_inline_menu,
+        admin_groups_inline_menu,
+        admin_static_users_inline_menu,
+        admin_show_users_inline_menu,
+        admin_back_inline_menu,
+        promocode_menu,
+        application_referral_menu,
+        missing_user_menu
+    )
+    from bot.keyboards.inline.user_inline import user_menu_inline
+    from bot.database.methods.get import get_all_user, get_all_subscription, get_all_server
+
+    try:
+        # Главное админ меню
+        if menu == 'main':
+            await callback.message.edit_text(
+                "📊 Выберите раздел:",
+                reply_markup=await admin_main_inline_menu(lang)
+            )
+
+        # Выход в пользовательское меню
+        elif menu == 'exit':
+            person = await get_person(callback.from_user.id)
+            await callback.message.edit_text(
+                _('start_message', lang).format(
+                    subscription_info="",
+                    tgid=callback.from_user.id,
+                    balance=person.balance if person else 0,
+                    referral_money=person.referral_balance if person else 0
+                ),
+                reply_markup=await user_menu_inline(person, lang, callback.bot)
+            )
+
+        # Меню пользователей
+        elif menu == 'users':
+            if action == 'edit':
+                await callback.message.edit_text(
+                    "📝 Введите Telegram ID пользователя:",
+                    reply_markup=await admin_back_inline_menu('users', lang)
+                )
+                from bot.handlers.admin.user_management import EditUser
+                await state.set_state(EditUser.show_user)
+            else:
+                await callback.message.edit_text(
+                    "👥 Управление пользователями:",
+                    reply_markup=await admin_users_inline_menu(lang)
+                )
+
+        # Меню статистики пользователей
+        elif menu == 'show_users':
+            if action == 'all':
+                users = await get_all_user()
+                # Подсчёт по статусам
+                import time
+                current_time = int(time.time())
+                with_sub = sum(1 for u in users if u.subscription and u.subscription > current_time)
+                without_sub = len(users) - with_sub
+                banned = sum(1 for u in users if u.banned)
+
+                text = (
+                    f"👥 <b>Статистика пользователей</b>\n\n"
+                    f"📊 Всего: <b>{len(users)}</b>\n"
+                    f"✅ С активной подпиской: <b>{with_sub}</b>\n"
+                    f"❌ Без подписки: <b>{without_sub}</b>\n"
+                    f"🚫 Заблокировано: <b>{banned}</b>"
+                )
+                await callback.message.edit_text(
+                    text,
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
+            elif action == 'sub':
+                users = await get_all_subscription()
+                import time
+                from datetime import datetime
+                current_time = int(time.time())
+
+                # Сортируем по времени окончания подписки
+                sorted_users = sorted(users, key=lambda u: u.subscription if u.subscription else 0, reverse=True)
+
+                text = f"✅ <b>Пользователи с подпиской ({len(users)})</b>\n\n"
+
+                # Показываем первых 15 пользователей
+                for i, user in enumerate(sorted_users[:15]):
+                    if user.subscription:
+                        days_left = (user.subscription - current_time) // 86400
+                        end_date = datetime.fromtimestamp(user.subscription).strftime('%d.%m.%Y')
+                        text += f"{i+1}. ID: <code>{user.tgid}</code> — до {end_date} ({days_left}д)\n"
+
+                if len(users) > 15:
+                    text += f"\n... и ещё {len(users) - 15} пользователей"
+
+                await callback.message.edit_text(
+                    text,
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
+            elif action == 'payments':
+                from bot.database.methods.get import get_payments
+                try:
+                    payments = await get_payments()
+                    text = (
+                        f"💰 <b>Статистика платежей</b>\n\n"
+                        f"📊 Всего платежей: <b>{len(payments)}</b>"
+                    )
+                    # Показываем последние 10 платежей
+                    if payments:
+                        text += "\n\n<b>Последние платежи:</b>\n"
+                        for i, p in enumerate(payments[:10]):
+                            username = getattr(p, 'user', 'N/A')
+                            text += f"{i+1}. @{username}\n"
+                except Exception as e:
+                    log.error(f"Error getting payments: {e}")
+                    text = "💰 <b>Статистика платежей</b>\n\nДанные недоступны"
+
+                await callback.message.edit_text(
+                    text,
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
+            else:
+                await callback.message.edit_text(
+                    "📊 Статистика пользователей:",
+                    reply_markup=await admin_show_users_inline_menu(lang)
+                )
+
+        # Меню статических пользователей
+        elif menu == 'static_users':
+            if action == 'add':
+                await callback.message.edit_text(
+                    _('input_server_name', lang),
+                    reply_markup=await admin_back_inline_menu('static_users', lang)
+                )
+                from bot.handlers.admin.user_management import StaticUser
+                await state.set_state(StaticUser.static_user_server)
+            elif action == 'show':
+                await callback.message.edit_text(
+                    "📌 Статические пользователи",
+                    reply_markup=await admin_back_inline_menu('static_users', lang)
+                )
+            else:
+                await callback.message.edit_text(
+                    "📌 Статические пользователи:",
+                    reply_markup=await admin_static_users_inline_menu(lang)
+                )
+
+        # Меню серверов
+        elif menu == 'servers':
+            if action == 'show':
+                servers = await get_all_server()
+                text = f"🖥️ Всего серверов: {len(servers)}\n\n"
+                for s in servers:
+                    status = "✅" if s.work else "❌"
+                    text += f"{status} {s.name}\n"
+                await callback.message.edit_text(
+                    text,
+                    reply_markup=await admin_back_inline_menu('servers', lang)
+                )
+            elif action == 'add':
+                await callback.message.edit_text(
+                    "📝 Введите название сервера:",
+                    reply_markup=await admin_back_inline_menu('servers', lang)
+                )
+                from bot.handlers.admin.state_servers import AddServer
+                await state.set_state(AddServer.input_name)
+            elif action == 'delete':
+                await callback.message.edit_text(
+                    "📝 Введите название сервера для удаления:",
+                    reply_markup=await admin_back_inline_menu('servers', lang)
+                )
+                from bot.handlers.admin.state_servers import RemoveServer
+                await state.set_state(RemoveServer.input_name)
+            else:
+                await callback.message.edit_text(
+                    "🖥️ Управление серверами:",
+                    reply_markup=await admin_servers_inline_menu(lang)
+                )
+
+        # Меню промокодов
+        elif menu == 'promo':
+            await callback.message.edit_text(
+                "🎟️ Промокоды:",
+                reply_markup=await promocode_menu(lang)
+            )
+
+        # Реферальная система
+        elif menu == 'referral':
+            await callback.message.edit_text(
+                "👨‍👩‍👧‍👦 Реферальная система:",
+                reply_markup=await application_referral_menu(lang)
+            )
+
+        # Рассылка
+        elif menu == 'mailing':
+            await callback.message.edit_text(
+                "📢 Выберите получателей рассылки:",
+                reply_markup=await missing_user_menu(lang)
+            )
+
+        # Группы
+        elif menu == 'groups':
+            if action == 'show' or action == 'add':
+                await callback.message.edit_text(
+                    "📁 Группы",
+                    reply_markup=await admin_back_inline_menu('groups', lang)
+                )
+            else:
+                await callback.message.edit_text(
+                    "📁 Управление группами:",
+                    reply_markup=await admin_groups_inline_menu(lang)
+                )
+
+        # Super Offer
+        elif menu == 'super_offer':
+            from aiogram_dialog import DialogManager, StartMode
+            from bot.handlers.admin.super_offer_dialog import SuperOfferSG
+            # Получаем dialog_manager из middleware
+            dialog_manager: DialogManager = callback.bot.get('dialog_manager')
+            if dialog_manager:
+                await dialog_manager.start(SuperOfferSG.TEXT, mode=StartMode.RESET_STACK)
+            else:
+                # Fallback - показываем инструкцию
+                await callback.message.edit_text(
+                    "⭐ Супер предложение\n\nДля настройки используйте текстовое меню или нажмите /start",
+                    reply_markup=await admin_back_inline_menu('main', lang)
+                )
+
+        await callback.answer()
+
+    except Exception as e:
+        log.error(f"[AdminMenuNav] Error: {e}")
+        await callback.answer("Ошибка", show_alert=True)
 
 
 def create_back_to_menu_keyboard(lang):

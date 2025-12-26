@@ -105,10 +105,10 @@ async def show_application_referral(data, lang):
 @referral_router.callback_query(F.data == 'new_promo')
 async def callback_new_promo(call: CallbackQuery, state: FSMContext):
     lang = await get_lang(call.from_user.id, state)
-    await call.message.edit_text(_('create_new_promo_text', lang))
-    await call.message.answer(
-        _('input_text_promo_message', lang),
-        reply_markup=await back_admin_menu(lang)
+    from bot.keyboards.inline.admin_inline import admin_back_inline_menu
+    await call.message.edit_text(
+        f"{_('create_new_promo_text', lang)}\n\n{_('input_text_promo_message', lang)}",
+        reply_markup=await admin_back_inline_menu('promo', lang)
     )
     await state.set_state(NewPromo.input_text_promo)
     await call.answer()
@@ -117,14 +117,18 @@ async def callback_new_promo(call: CallbackQuery, state: FSMContext):
 @referral_router.message(NewPromo.input_text_promo)
 async def input_name(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
+    from bot.keyboards.inline.admin_inline import admin_back_inline_menu, admin_main_inline_menu
     try:
         await state.update_data(text_promo=message.text.strip())
-        await message.answer(_('input_amount_add_days_message', lang))
+        await message.answer(
+            _('input_amount_add_days_message', lang),
+            reply_markup=await admin_back_inline_menu('promo', lang)
+        )
         await state.set_state(NewPromo.input_price_promo)
     except Exception as e:
         await message.answer(
             _('error_not_found', lang),
-            reply_markup=await admin_menu(lang)
+            reply_markup=await admin_main_inline_menu(lang)
         )
         log.error(e, 'error input name promo')
         await state.clear()
@@ -133,6 +137,7 @@ async def input_name(message: Message, state: FSMContext):
 @referral_router.message(NewPromo.input_price_promo)
 async def input_price_promo(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
+    from bot.keyboards.inline.admin_inline import admin_main_inline_menu, promocode_menu
     try:
         try:
             promo_code = int(message.text.strip())
@@ -144,12 +149,12 @@ async def input_price_promo(message: Message, state: FSMContext):
         await add_promo(data['text_promo'], promo_code)
         await message.answer(
             _('new_promo_success', lang),
-            reply_markup=await admin_menu(lang)
+            reply_markup=await promocode_menu(lang)
         )
     except Exception as e:
         await message.answer(
             _('error_new_promo_text', lang),
-            reply_markup=await admin_menu(lang)
+            reply_markup=await promocode_menu(lang)
         )
         log.info(e, 'referal_admin.py Line 131')
     await state.clear()

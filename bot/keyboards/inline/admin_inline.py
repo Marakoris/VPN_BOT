@@ -14,7 +14,8 @@ from bot.misc.callbackData import (
     PromocodeDelete,
     AplicationReferral,
     ApplicationSuccess, MessageAdminUser, EditBalanceUser, GroupAction,
-    RegenerateKeys, RegenerateServerToggle, RegenerateProtocolToggle
+    RegenerateKeys, RegenerateServerToggle, RegenerateProtocolToggle,
+    AdminMenuNav
 )
 from bot.misc.language import Localization
 
@@ -155,6 +156,10 @@ async def missing_user_menu(lang) -> InlineKeyboardMarkup:
         text='🌍 По серверу',
         callback_data=MissingMessage(option='by_server')
     )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='main').pack()
+    )
     kb.adjust(1)
     return kb.as_markup()
 
@@ -174,6 +179,10 @@ async def vpn_type_selection_menu(lang) -> InlineKeyboardMarkup:
         text='Shadowsocks 🦈',
         callback_data=MissingMessage(option='vpn_type', vpn_type=2)
     )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='mailing').pack()
+    )
     kb.adjust(1)
     return kb.as_markup()
 
@@ -186,6 +195,10 @@ async def server_selection_menu(servers, lang) -> InlineKeyboardMarkup:
             text=f'{server.name}',
             callback_data=MissingMessage(option='server', server_id=server.id)
         )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='mailing').pack()
+    )
     kb.adjust(1)
     return kb.as_markup()
 
@@ -199,6 +212,10 @@ async def promocode_menu(lang) -> InlineKeyboardMarkup:
     kb.button(
         text=_('promo_show_all_btn', lang),
         callback_data='show_promo'
+    )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='main').pack()
     )
     kb.adjust(1)
     return kb.as_markup()
@@ -214,6 +231,10 @@ async def application_referral_menu(lang) -> InlineKeyboardMarkup:
         text=_('applications_show_active_btn', lang),
         callback_data=AplicationReferral(type=False)
     )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='main').pack()
+    )
     kb.adjust(1)
     return kb.as_markup()
 
@@ -223,6 +244,10 @@ async def promocode_delete(id_promo, mes_id, lang) -> InlineKeyboardMarkup:
     kb.button(
         text=_('delete_static_user_btn', lang),
         callback_data=PromocodeDelete(id_promo=id_promo, mes_id=mes_id)
+    )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='promo').pack()
     )
     kb.adjust(1)
     return kb.as_markup()
@@ -240,6 +265,10 @@ async def application_success(
             id_application=id_application,
             mes_id=mes_id
         )
+    )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='referral').pack()
     )
     kb.adjust(1)
     return kb.as_markup()
@@ -262,6 +291,10 @@ async def group_control(lang) -> InlineKeyboardMarkup:
     kb.button(
         text=_('admin_groups_client_delete_btn', lang),
         callback_data=GroupAction(action='delete')
+    )
+    kb.button(
+        text='⬅️ Назад',
+        callback_data=AdminMenuNav(menu='main').pack()
     )
     kb.adjust(1)
     return kb.as_markup()
@@ -387,6 +420,221 @@ async def regenerate_confirm_menu(lang) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text='❌ ОТМЕНА',
             callback_data=RegenerateKeys(action='cancel').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+# =====================================================
+# INLINE ADMIN MENUS (replacement for reply keyboards)
+# =====================================================
+
+async def admin_main_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Главное inline меню администратора (замена reply keyboard)"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_users_btn', lang),
+            callback_data=AdminMenuNav(menu='users').pack()
+        ),
+        InlineKeyboardButton(
+            text=_('admin_promo_btn', lang),
+            callback_data=AdminMenuNav(menu='promo').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_servers_btn', lang),
+            callback_data=AdminMenuNav(menu='servers').pack()
+        ),
+        InlineKeyboardButton(
+            text=_('admin_reff_system_btn', lang),
+            callback_data=AdminMenuNav(menu='referral').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_send_message_users_btn', lang),
+            callback_data=AdminMenuNav(menu='mailing').pack()
+        ),
+        InlineKeyboardButton(
+            text=_('admin_groups_btn', lang),
+            callback_data=AdminMenuNav(menu='groups').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_super_offer_btn', lang),
+            callback_data=AdminMenuNav(menu='super_offer').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('back_general_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='exit').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_users_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Inline меню управления пользователями"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_show_statistic_btn', lang),
+            callback_data=AdminMenuNav(menu='show_users').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_edit_user_btn', lang),
+            callback_data=AdminMenuNav(menu='users', action='edit').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_back_admin_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='main').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_groups_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Inline меню управления группами"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_groups_show_btn', lang),
+            callback_data=AdminMenuNav(menu='groups', action='show').pack()
+        ),
+        InlineKeyboardButton(
+            text=_('admin_groups_add_btn', lang),
+            callback_data=AdminMenuNav(menu='groups', action='add').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_back_admin_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='main').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_static_users_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Inline меню статических пользователей"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_static_add_user_btn', lang),
+            callback_data=AdminMenuNav(menu='static_users', action='add').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_static_show_users_btn', lang),
+            callback_data=AdminMenuNav(menu='static_users', action='show').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_back_users_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='users').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_show_users_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Inline меню просмотра пользователей"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_statistic_show_all_users_btn', lang),
+            callback_data=AdminMenuNav(menu='show_users', action='all').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_statistic_show_sub_users_btn', lang),
+            callback_data=AdminMenuNav(menu='show_users', action='sub').pack()
+        ),
+        InlineKeyboardButton(
+            text=_('admin_statistic_show_payments_btn', lang),
+            callback_data=AdminMenuNav(menu='show_users', action='payments').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_back_users_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='users').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_servers_inline_menu(lang) -> InlineKeyboardMarkup:
+    """Inline меню управления серверами"""
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_server_show_all_btn', lang),
+            callback_data=AdminMenuNav(menu='servers', action='show').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_server_add_btn', lang),
+            callback_data=AdminMenuNav(menu='servers', action='add').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_server_delete_btn', lang),
+            callback_data=AdminMenuNav(menu='servers', action='delete').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text=_('admin_back_admin_menu_btn', lang),
+            callback_data=AdminMenuNav(menu='main').pack()
+        )
+    )
+
+    return kb.as_markup()
+
+
+async def admin_back_inline_menu(back_to: str, lang) -> InlineKeyboardMarkup:
+    """Универсальная кнопка возврата"""
+    kb = InlineKeyboardBuilder()
+
+    if back_to == 'main':
+        text = _('admin_back_admin_menu_btn', lang)
+    elif back_to == 'users':
+        text = _('admin_back_users_menu_btn', lang)
+    elif back_to == 'servers':
+        text = _('admin_server_cancellation', lang)
+    else:
+        text = _('admin_exit_btn', lang)
+
+    kb.row(
+        InlineKeyboardButton(
+            text=text,
+            callback_data=AdminMenuNav(menu=back_to).pack()
         )
     )
 

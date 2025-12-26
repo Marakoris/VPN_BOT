@@ -1,4 +1,5 @@
 from sys import prefix
+from typing import Optional
 
 from aiogram.filters.callback_data import CallbackData
 
@@ -136,3 +137,9 @@ class ChooseOutlineServer(CallbackData, prefix='choose_outline'):
 
 class MainMenuAction(CallbackData, prefix='main_menu'):
     action: str  # 'subscription_url', 'outline', 'subscription', 'referral', 'bonus', 'about', 'language', 'help', 'admin'
+
+
+class AdminMenuNav(CallbackData, prefix='admin_nav'):
+    """Navigation for admin inline menu"""
+    menu: str  # 'main', 'users', 'servers', 'promo', 'referral', 'mailing', 'groups', 'super_offer', 'regenerate', 'static_users', 'show_users'
+    action: Optional[str] = None  # Additional action if needed
