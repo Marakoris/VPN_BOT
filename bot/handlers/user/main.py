@@ -1901,14 +1901,16 @@ async def admin_menu_nav_handler(
                 # Подсчёт по статусам
                 import time
                 current_time = int(time.time())
-                with_sub = sum(1 for u in users if u.subscription and u.subscription > current_time)
-                without_sub = len(users) - with_sub
+                with_sub = sum(1 for u in users if u.subscription and u.subscription > current_time and not u.banned)
+                without_sub = sum(1 for u in users if (not u.subscription or u.subscription <= current_time) and not u.banned)
                 banned = sum(1 for u in users if u.banned)
+                with_autopay = sum(1 for u in users if u.payment_method_id is not None)
 
                 text = (
                     f"👥 <b>Статистика пользователей</b>\n\n"
                     f"📊 Всего: <b>{len(users)}</b>\n"
                     f"✅ С активной подпиской: <b>{with_sub}</b>\n"
+                    f"🔄 С автоподпиской: <b>{with_autopay}</b>\n"
                     f"❌ Без подписки: <b>{without_sub}</b>\n"
                     f"🚫 Заблокировано: <b>{banned}</b>"
                 )
@@ -1917,57 +1919,101 @@ async def admin_menu_nav_handler(
                     reply_markup=await admin_back_inline_menu('show_users', lang)
                 )
             elif action == 'sub':
-                users = await get_all_subscription()
+                # Формируем и отправляем файл с подписчиками
+                import io
                 import time
                 from datetime import datetime
-                current_time = int(time.time())
+                from aiogram.types import BufferedInputFile
 
-                # Сортируем по времени окончания подписки
+                users = await get_all_subscription()
+                if not users:
+                    await callback.message.edit_text(
+                        "❌ Нет пользователей с активной подпиской",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
+                    await callback.answer()
+                    return
+
+                current_time = int(time.time())
                 sorted_users = sorted(users, key=lambda u: u.subscription if u.subscription else 0, reverse=True)
 
-                text = f"✅ <b>Пользователи с подпиской ({len(users)})</b>\n\n"
+                str_sub_user = f"Пользователи с подпиской: {len(users)}\n"
+                str_sub_user += "=" * 50 + "\n\n"
 
-                # Показываем первых 15 пользователей
-                for i, user in enumerate(sorted_users[:15]):
-                    if user.subscription:
-                        days_left = (user.subscription - current_time) // 86400
-                        end_date = datetime.fromtimestamp(user.subscription).strftime('%d.%m.%Y')
-                        text += f"{i+1}. ID: <code>{user.tgid}</code> — до {end_date} ({days_left}д)\n"
+                for i, user in enumerate(sorted_users, 1):
+                    days_left = (user.subscription - current_time) // 86400 if user.subscription else 0
+                    end_date = datetime.fromtimestamp(user.subscription).strftime('%d.%m.%Y') if user.subscription else 'N/A'
+                    autopay = "✅" if user.payment_method_id else "❌"
+                    str_sub_user += (
+                        f"{i}. @{user.username or 'N/A'} (ID: {user.tgid})\n"
+                        f"   До: {end_date} ({days_left} дней)\n"
+                        f"   Автоподписка: {autopay}\n\n"
+                    )
 
-                if len(users) > 15:
-                    text += f"\n... и ещё {len(users) - 15} пользователей"
+                file_stream = io.BytesIO(str_sub_user.encode()).getvalue()
+                input_file = BufferedInputFile(file_stream, 'subscription_users.txt')
 
-                await callback.message.edit_text(
-                    text,
+                await callback.message.delete()
+                await callback.message.answer_document(
+                    input_file,
+                    caption=f"✅ Пользователи с подпиской: {len(users)}",
                     reply_markup=await admin_back_inline_menu('show_users', lang)
                 )
             elif action == 'payments':
+                # Формируем и отправляем файл с платежами
+                import io
+                from aiogram.types import BufferedInputFile
                 from bot.database.methods.get import get_payments
+
                 try:
                     payments = await get_payments()
-                    text = (
-                        f"💰 <b>Статистика платежей</b>\n\n"
-                        f"📊 Всего платежей: <b>{len(payments)}</b>"
+                    if not payments:
+                        await callback.message.edit_text(
+                            "❌ Нет платежей",
+                            reply_markup=await admin_back_inline_menu('show_users', lang)
+                        )
+                        await callback.answer()
+                        return
+
+                    str_payments = f"Всего платежей: {len(payments)}\n"
+                    str_payments += "=" * 50 + "\n\n"
+
+                    for i, p in enumerate(payments, 1):
+                        str_payments += (
+                            f"{i}. @{p.user or 'N/A'} (ID: {p.payment_id.tgid if p.payment_id else 'N/A'})\n"
+                            f"   Сумма: {p.amount}₽\n"
+                            f"   Способ: {p.payment_system}\n"
+                            f"   Дата: {p.data}\n\n"
+                        )
+
+                    file_stream = io.BytesIO(str_payments.encode()).getvalue()
+                    input_file = BufferedInputFile(file_stream, 'payments.txt')
+
+                    await callback.message.delete()
+                    await callback.message.answer_document(
+                        input_file,
+                        caption=f"💰 Всего платежей: {len(payments)}",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
-                    # Показываем последние 10 платежей
-                    if payments:
-                        text += "\n\n<b>Последние платежи:</b>\n"
-                        for i, p in enumerate(payments[:10]):
-                            username = getattr(p, 'user', 'N/A')
-                            text += f"{i+1}. @{username}\n"
                 except Exception as e:
                     log.error(f"Error getting payments: {e}")
-                    text = "💰 <b>Статистика платежей</b>\n\nДанные недоступны"
-
-                await callback.message.edit_text(
-                    text,
-                    reply_markup=await admin_back_inline_menu('show_users', lang)
-                )
+                    await callback.message.edit_text(
+                        "❌ Ошибка получения платежей",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
             else:
-                await callback.message.edit_text(
-                    "📊 Статистика пользователей:",
-                    reply_markup=await admin_show_users_inline_menu(lang)
-                )
+                # Пробуем edit, если не получается (документ) - отправляем новое сообщение
+                try:
+                    await callback.message.edit_text(
+                        "📊 Статистика пользователей:",
+                        reply_markup=await admin_show_users_inline_menu(lang)
+                    )
+                except Exception:
+                    await callback.message.delete()
+                    await callback.message.answer(
+                        "📊 Статистика пользователей:",
+                        reply_markup=await admin_show_users_inline_menu(lang)
+                    )
 
         # Меню статических пользователей
         elif menu == 'static_users':
