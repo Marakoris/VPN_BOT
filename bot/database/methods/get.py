@@ -3,7 +3,7 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 import xlsxwriter
 import pandas as pd
-from sqlalchemy import and_, func
+from sqlalchemy import and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -409,3 +409,154 @@ async def export_withdrawal_statistics_to_excel(tg_id: int):
     buffer.seek(0)
     return buffer
 
+
+async def get_traffic_statistics(use_offset: bool = False):
+    """
+    Получить статистику по трафику для админки.
+
+    Args:
+        use_offset: Если True - показывает трафик с момента оплаты (total - offset)
+                   Если False - показывает весь накопленный трафик (total)
+    """
+    import time
+    current_time = int(time.time())
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Получаем всех пользователей с активной подпиской
+        stmt = select(
+            Persons.tgid,
+            Persons.username,
+            Persons.total_traffic_bytes,
+            Persons.traffic_offset_bytes
+        ).filter(
+            Persons.subscription > current_time,
+            Persons.banned == False
+        )
+
+        result = await db.execute(stmt)
+        all_rows = result.all()
+
+        users_data = []
+        total_traffic = 0
+
+        for row in all_rows:
+            raw_traffic = row[2] or 0
+            offset = row[3] or 0
+
+            # Вычисляем трафик в зависимости от режима
+            if use_offset:
+                traffic = max(0, raw_traffic - offset)  # С момента оплаты
+            else:
+                traffic = raw_traffic  # Весь накопленный
+
+            if traffic > 0:
+                users_data.append({
+                    'tgid': row[0],
+                    'username': row[1],
+                    'traffic': traffic
+                })
+                total_traffic += traffic
+
+        # Сортируем по трафику
+        users_data.sort(key=lambda x: x['traffic'], reverse=True)
+
+        users_count = len(users_data)
+        avg_traffic = total_traffic // users_count if users_count > 0 else 0
+
+        return {
+            'users_with_traffic': users_count,
+            'total_traffic': total_traffic,
+            'avg_traffic': avg_traffic,
+            'top_users': users_data[:10]  # Топ-10
+        }
+
+
+async def get_traffic_statistics_full():
+    """Получить полную статистику по трафику пользователей (разделённую на активных/неактивных)"""
+    import time
+    from datetime import datetime, timedelta
+    current_time = int(time.time())
+    now = datetime.now()
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Все пользователи с трафиком ИЛИ активной подпиской (по timestamp)
+        stmt = select(
+            Persons.id,
+            Persons.tgid,
+            Persons.username,
+            Persons.fullname,
+            Persons.total_traffic_bytes,
+            Persons.subscription,
+            Persons.banned,
+            Persons.traffic_last_change,
+            Persons.first_interaction
+        ).filter(
+            or_(
+                Persons.total_traffic_bytes > 0,
+                and_(
+                    Persons.subscription > current_time,
+                    Persons.banned == False
+                )
+            )
+        ).order_by(
+            Persons.total_traffic_bytes.desc()
+        )
+
+        result = await db.execute(stmt)
+        all_rows = result.all()
+
+        active_users = []
+        inactive_users = []
+        total_traffic_active = 0
+        total_traffic_inactive = 0
+
+        for row in all_rows:
+            traffic_last_change = row[7]
+            first_interaction = row[8]
+
+            # Определяем "дней неактивен" - сколько дней трафик не менялся
+            if traffic_last_change:
+                days_inactive = (now - traffic_last_change.replace(tzinfo=None)).days
+            else:
+                days_inactive = None  # Нет данных
+
+            user_data = {
+                'tgid': row[1],
+                'username': row[2],
+                'fullname': row[3],
+                'traffic': row[4],
+                'traffic_last_change': traffic_last_change,
+                'first_interaction': first_interaction,
+                'days_inactive': days_inactive
+            }
+            # Активный = подписка > текущего времени и не забанен
+            is_active = row[5] and row[5] > current_time and not row[6]
+            if is_active:
+                active_users.append(user_data)
+                total_traffic_active += row[4]
+            else:
+                inactive_users.append(user_data)
+                total_traffic_inactive += row[4]
+
+        total_traffic = total_traffic_active + total_traffic_inactive
+        users_count = len(active_users) + len(inactive_users)
+        avg_traffic = total_traffic // users_count if users_count > 0 else 0
+
+        return {
+            'users_with_traffic': users_count,
+            'total_traffic': total_traffic,
+            'avg_traffic': avg_traffic,
+            'active_users': active_users,
+            'inactive_users': inactive_users,
+            'total_traffic_active': total_traffic_active,
+            'total_traffic_inactive': total_traffic_inactive
+        }
+
+
+async def get_total_payments():
+    """Получить общую сумму платежей"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(func.sum(Payments.amount))
+        result = await db.execute(stmt)
+        total = result.scalar()
+        return int(total) if total else 0

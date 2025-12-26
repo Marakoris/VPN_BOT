@@ -2048,6 +2048,115 @@ async def admin_menu_nav_handler(
                         "❌ Ошибка получения платежей",
                         reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
+            elif action == 'traffic':
+                # Показать статистику трафика файлом (разделённую на активных/неактивных)
+                import io
+                from aiogram.types import BufferedInputFile
+                from bot.database.methods.get import get_traffic_statistics_full
+                try:
+                    stats = await get_traffic_statistics_full()
+
+                    def format_bytes(bytes_val):
+                        if bytes_val >= 1024**4:
+                            return f"{bytes_val / (1024**4):.2f} TB"
+                        elif bytes_val >= 1024**3:
+                            return f"{bytes_val / (1024**3):.2f} GB"
+                        elif bytes_val >= 1024**2:
+                            return f"{bytes_val / (1024**2):.2f} MB"
+                        elif bytes_val >= 1024:
+                            return f"{bytes_val / 1024:.2f} KB"
+                        return f"{bytes_val} B"
+
+                    def format_datetime(dt):
+                        if dt:
+                            return dt.strftime('%d.%m.%Y %H:%M')
+                        return "—"
+
+                    def format_user_block(user):
+                        username = f"@{user['username']}" if user['username'] else "нет username"
+                        block = (
+                            f"{user['fullname'] or 'Без имени'} ({username})\n"
+                            f"   ID: {user['tgid']}\n"
+                            f"   Трафик: {format_bytes(user['traffic'])}\n"
+                        )
+                        # Информация об активности
+                        if user.get('traffic_last_change'):
+                            block += f"   Последняя активность: {format_datetime(user.get('traffic_last_change'))}\n"
+                            days = user.get('days_inactive')
+                            if days is not None:
+                                if days == 0:
+                                    block += f"   Статус: 🟢 Активен сегодня\n"
+                                elif days <= 3:
+                                    block += f"   Статус: 🟡 Неактивен {days} дн.\n"
+                                elif days <= 7:
+                                    block += f"   Статус: 🟠 Неактивен {days} дн.\n"
+                                else:
+                                    block += f"   Статус: 🔴 Неактивен {days} дн.\n"
+                        else:
+                            block += f"   Последняя активность: нет данных\n"
+
+                        if user.get('first_interaction'):
+                            block += f"   Первое взаимодействие: {format_datetime(user.get('first_interaction'))}\n"
+                        return block + "\n"
+
+                    from aiogram.types import InputMediaDocument
+
+                    # Формируем файл активных пользователей
+                    active_content = f"✅ АКТИВНЫЕ ПОДПИСЧИКИ ({len(stats['active_users'])} чел.)\n"
+                    active_content += f"Трафик: {format_bytes(stats['total_traffic_active'])}\n"
+                    active_content += f"=" * 50 + "\n\n"
+
+                    if stats['active_users']:
+                        for i, user in enumerate(stats['active_users'], 1):
+                            active_content += f"{i}. " + format_user_block(user)
+                    else:
+                        active_content += "Нет активных пользователей с трафиком\n"
+
+                    active_file = BufferedInputFile(
+                        active_content.encode('utf-8'),
+                        filename="active_users_traffic.txt"
+                    )
+
+                    # Формируем файл неактивных пользователей
+                    inactive_content = f"❌ НЕАКТИВНЫЕ ПОЛЬЗОВАТЕЛИ ({len(stats['inactive_users'])} чел.)\n"
+                    inactive_content += f"Трафик: {format_bytes(stats['total_traffic_inactive'])}\n"
+                    inactive_content += f"=" * 50 + "\n\n"
+
+                    if stats['inactive_users']:
+                        for i, user in enumerate(stats['inactive_users'], 1):
+                            inactive_content += f"{i}. " + format_user_block(user)
+                    else:
+                        inactive_content += "Нет неактивных пользователей с трафиком\n"
+
+                    inactive_file = BufferedInputFile(
+                        inactive_content.encode('utf-8'),
+                        filename="inactive_users_traffic.txt"
+                    )
+
+                    caption = (
+                        f"📊 <b>Статистика трафика</b>\n\n"
+                        f"✅ Активных: {len(stats['active_users'])} ({format_bytes(stats['total_traffic_active'])})\n"
+                        f"❌ Неактивных: {len(stats['inactive_users'])} ({format_bytes(stats['total_traffic_inactive'])})\n"
+                        f"📈 Всего: {format_bytes(stats['total_traffic'])}"
+                    )
+
+                    # Отправляем оба файла
+                    await callback.message.answer_media_group([
+                        InputMediaDocument(media=active_file, caption=caption),
+                        InputMediaDocument(media=inactive_file)
+                    ])
+
+                    # Отправляем кнопку назад отдельно
+                    await callback.message.answer(
+                        "⬆️ Файлы выше",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
+                except Exception as e:
+                    log.error(f"Error getting traffic stats: {e}")
+                    await callback.message.edit_text(
+                        "📊 Ошибка получения статистики трафика",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
             else:
                 # Пробуем edit, если не получается (документ) - отправляем новое сообщение
                 try:

@@ -601,6 +601,54 @@ async def admin_menu_navigation(
                     "💰 Статистика платежей",
                     reply_markup=await admin_back_inline_menu('show_users', lang)
                 )
+        elif action in ('traffic_current', 'traffic_total'):
+            # Показать статистику трафика
+            from bot.database.methods.get import get_traffic_statistics
+            try:
+                # use_offset=True для текущего трафика (с момента оплаты)
+                # use_offset=False для всего накопленного трафика
+                use_offset = (action == 'traffic_current')
+                stats = await get_traffic_statistics(use_offset=use_offset)
+
+                def format_bytes(bytes_val):
+                    if bytes_val >= 1024**4:
+                        return f"{bytes_val / (1024**4):.2f} TB"
+                    elif bytes_val >= 1024**3:
+                        return f"{bytes_val / (1024**3):.2f} GB"
+                    elif bytes_val >= 1024**2:
+                        return f"{bytes_val / (1024**2):.2f} MB"
+                    elif bytes_val >= 1024:
+                        return f"{bytes_val / 1024:.2f} KB"
+                    return f"{bytes_val} B"
+
+                if use_offset:
+                    title = "📊 <b>Текущий трафик</b>\n<i>(с момента последней оплаты)</i>"
+                else:
+                    title = "📈 <b>Весь трафик</b>\n<i>(накопленный за всё время)</i>"
+
+                text = (
+                    f"{title}\n\n"
+                    f"👥 Пользователей с трафиком: {stats['users_with_traffic']}\n"
+                    f"📈 Общий трафик: {format_bytes(stats['total_traffic'])}\n"
+                    f"📊 Средний трафик: {format_bytes(stats['avg_traffic'])}\n\n"
+                    f"🏆 <b>Топ-10 по трафику:</b>\n"
+                )
+
+                for i, user in enumerate(stats['top_users'][:10], 1):
+                    username = f"@{user['username']}" if user['username'] else f"ID:{user['tgid']}"
+                    text += f"{i}. {username}: {format_bytes(user['traffic'])}\n"
+
+                await call.message.edit_text(
+                    text,
+                    reply_markup=await admin_back_inline_menu('show_users', lang),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                log.error(f"Error getting traffic stats: {e}")
+                await call.message.edit_text(
+                    "📊 Ошибка получения статистики трафика",
+                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                )
         else:
             await call.message.edit_text(
                 _('statistic_users', lang),

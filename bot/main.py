@@ -93,14 +93,15 @@ async def start_bot():
     )
 
     # Добавляем задачу для загрузки на FTP (каждое число месяца)
-    scheduler.add_job(
-        backup_and_upload_task,
-        trigger=CronTrigger(hour=14, minute=0),  # 1-го числа каждого месяца в 00:00
-        # trigger=CronTrigger(second=10),
-        args=(bot,),
-        id='backup_and_upload_task',  # Уникальный идентификатор задачи
-        replace_existing=True  # Заменяет задачу, если она уже существует
-    )
+    # ОТКЛЮЧЕНО: вызывает ошибки на тестовом сервере
+    # scheduler.add_job(
+    #     backup_and_upload_task,
+    #     trigger=CronTrigger(hour=14, minute=0),  # 1-го числа каждого месяца в 00:00
+    #     # trigger=CronTrigger(second=10),
+    #     args=(bot,),
+    #     id='backup_and_upload_task',  # Уникальный идентификатор задачи
+    #     replace_existing=True  # Заменяет задачу, если она уже существует
+    # )
 
     # Добавляем задачу мониторинга трафика (каждый час)
     async def traffic_monitor_job():

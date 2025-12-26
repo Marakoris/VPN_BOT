@@ -59,6 +59,8 @@ class Persons(Base):
     total_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик со всех серверов
     traffic_reset_date = Column(TIMESTAMP(timezone=True), nullable=True)  # Дата последнего сброса трафика
     traffic_limit_bytes = Column(BigInteger, default=536870912000)  # Лимит трафика (500GB по умолчанию)
+    previous_traffic_bytes = Column(BigInteger, default=0)  # Предыдущее значение трафика (для отслеживания активности)
+    traffic_last_change = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда последний раз менялся трафик
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),

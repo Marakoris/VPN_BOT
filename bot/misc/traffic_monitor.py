@@ -91,9 +91,11 @@ async def collect_user_traffic(telegram_id: int) -> int:
 async def update_all_users_traffic() -> Dict[str, int]:
     """
     Update traffic stats for ALL users with active subscriptions.
-    Returns statistics: {'updated': N, 'exceeded': N, 'errors': N}
+    Also tracks traffic activity (when traffic last changed).
+    Returns statistics: {'updated': N, 'exceeded': N, 'errors': N, 'active': N}
     """
-    stats = {'updated': 0, 'exceeded': 0, 'errors': 0, 'blocked': 0}
+    stats = {'updated': 0, 'exceeded': 0, 'errors': 0, 'blocked': 0, 'active': 0}
+    now = datetime.now()
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         # Get all users with active subscriptions
@@ -110,7 +112,16 @@ async def update_all_users_traffic() -> Dict[str, int]:
                 # Collect traffic from all servers
                 total_traffic = await collect_user_traffic(user.tgid)
 
-                # Update in database
+                # Check if traffic changed (user is actively using VPN)
+                previous = user.previous_traffic_bytes or 0
+                if total_traffic > previous:
+                    # Traffic increased - user is active
+                    user.traffic_last_change = now
+                    stats['active'] += 1
+                    log.debug(f"[Traffic] User {user.tgid} active: {format_bytes(previous)} -> {format_bytes(total_traffic)}")
+
+                # Save current traffic as previous for next check
+                user.previous_traffic_bytes = total_traffic
                 user.total_traffic_bytes = total_traffic
 
                 # Check if exceeded limit
