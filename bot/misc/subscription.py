@@ -3,6 +3,7 @@ Subscription management module for VPN Bot
 
 This module handles subscription activation, expiration, and token generation.
 """
+import asyncio
 import base64
 import json
 import hmac
@@ -26,6 +27,34 @@ log = logging.getLogger(__name__)
 # Load from environment variable
 import os
 SECRET_KEY = os.getenv("SUBSCRIPTION_SECRET_KEY", "vpn-bot-subscription-secret-key-change-in-production")
+
+# ==================== LOCK MANAGEMENT ====================
+
+# User-level locks to prevent race conditions when activating/expiring subscriptions
+# Key: user_id (telegram ID), Value: asyncio.Lock
+_user_locks: Dict[int, asyncio.Lock] = {}
+_user_locks_lock = asyncio.Lock()  # Lock for accessing _user_locks dict
+
+
+async def _get_user_lock(user_id: int) -> asyncio.Lock:
+    """
+    Get or create a lock for a specific user.
+    Thread-safe access to user locks dictionary.
+    """
+    async with _user_locks_lock:
+        if user_id not in _user_locks:
+            _user_locks[user_id] = asyncio.Lock()
+        return _user_locks[user_id]
+
+
+async def _cleanup_user_lock(user_id: int):
+    """
+    Remove user lock from dictionary to prevent memory leaks.
+    Called after operation completes and lock is released.
+    """
+    async with _user_locks_lock:
+        if user_id in _user_locks and not _user_locks[user_id].locked():
+            del _user_locks[user_id]
 
 # Maximum users per server (from config)
 MAX_PEOPLE_SERVER = CONFIG.max_people_server if hasattr(CONFIG, 'max_people_server') else 100
@@ -165,6 +194,9 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
     3. Sets subscription_active = true
     4. Generates/returns subscription token
 
+    Uses user-level locking to prevent race conditions when user clicks
+    activation button multiple times rapidly.
+
     Args:
         user_id: User's telegram ID (tgid)
         include_outline: If True, also activate Outline keys (default: False)
@@ -172,99 +204,110 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
     Returns:
         subscription_token or None if error
     """
-    import asyncio
+    # Get user-specific lock to prevent race conditions
+    user_lock = await _get_user_lock(user_id)
 
-    log.info(f"[Subscription] Activating for user {user_id} (include_outline={include_outline})")
+    # Try to acquire lock without waiting
+    if user_lock.locked():
+        log.warning(f"[Subscription] Activation already in progress for user {user_id}, skipping duplicate request")
+        return None
 
-    async with AsyncSession(autoflush=False, bind=engine()) as db:
+    async with user_lock:
+        log.info(f"[Subscription] Activating for user {user_id} (include_outline={include_outline})")
+
         try:
-            # 1. Get user from database
-            statement = select(Persons).filter(Persons.tgid == user_id)
-            result = await db.execute(statement)
-            user = result.scalar_one_or_none()
+            async with AsyncSession(autoflush=False, bind=engine()) as db:
+                try:
+                    # 1. Get user from database
+                    statement = select(Persons).filter(Persons.tgid == user_id)
+                    result = await db.execute(statement)
+                    user = result.scalar_one_or_none()
 
-            if not user:
-                log.error(f"[Subscription] User {user_id} not found")
-                return None
+                    if not user:
+                        log.error(f"[Subscription] User {user_id} not found")
+                        return None
 
-            # 2. Get ALL active servers (VLESS + Shadowsocks, optionally Outline)
-            # NOTE: Outline (type_vpn=0) is normally handled separately via "🔑 Outline VPN" button
-            # But admin panel can force include_outline=True to activate all protocols
-            if include_outline:
-                vpn_types = [0, 1, 2]  # Outline, VLESS and Shadowsocks
-            else:
-                vpn_types = [1, 2]  # VLESS and Shadowsocks only
-
-            statement = select(Servers).filter(
-                Servers.work == True,
-                Servers.type_vpn.in_(vpn_types),
-                Servers.space < MAX_PEOPLE_SERVER
-            ).order_by(Servers.id)
-
-            result = await db.execute(statement)
-            servers = result.scalars().all()
-
-            if not servers:
-                log.warning(f"[Subscription] No available servers found")
-                return None
-
-            log.info(f"[Subscription] Found {len(servers)} servers for user {user_id}, activating in parallel...")
-
-            # 3. Create/enable keys on ALL servers IN PARALLEL
-            tasks = [_activate_on_server(server, user_id) for server in servers]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Process results
-            success_count = 0
-            error_count = 0
-            new_keys_server_ids = []
-
-            for res in results:
-                if isinstance(res, Exception):
-                    error_count += 1
-                    log.error(f"[Subscription] Parallel task exception: {res}")
-                else:
-                    server_id, success, is_new_key = res
-                    if success:
-                        success_count += 1
-                        if is_new_key:
-                            new_keys_server_ids.append(server_id)
+                    # 2. Get ALL active servers (VLESS + Shadowsocks, optionally Outline)
+                    # NOTE: Outline (type_vpn=0) is normally handled separately via "🔑 Outline VPN" button
+                    # But admin panel can force include_outline=True to activate all protocols
+                    if include_outline:
+                        vpn_types = [0, 1, 2]  # Outline, VLESS and Shadowsocks
                     else:
-                        error_count += 1
+                        vpn_types = [1, 2]  # VLESS and Shadowsocks only
 
-            # Update server.space for servers where new keys were created
-            if new_keys_server_ids:
-                for server in servers:
-                    if server.id in new_keys_server_ids:
-                        server.space += 1
+                    statement = select(Servers).filter(
+                        Servers.work == True,
+                        Servers.type_vpn.in_(vpn_types),
+                        Servers.space < MAX_PEOPLE_SERVER
+                    ).order_by(Servers.id)
 
-            # 4. Set subscription_active = true and commit all changes
-            user.subscription_active = True
+                    result = await db.execute(statement)
+                    servers = result.scalars().all()
 
-            # 5. Create/get subscription token
-            if not user.subscription_token:
-                # Generate new token using internal user.id (not tgid!)
-                token = generate_subscription_token(user.id)
+                    if not servers:
+                        log.warning(f"[Subscription] No available servers found")
+                        return None
 
-                user.subscription_token = token
-                user.subscription_created_at = datetime.now()
-                await db.commit()
-            else:
-                token = user.subscription_token
-                user.subscription_updated_at = datetime.now()
-                await db.commit()
+                    log.info(f"[Subscription] Found {len(servers)} servers for user {user_id}, activating in parallel...")
 
-            log.info(
-                f"[Subscription] ✅ Activated for user {user_id}: "
-                f"{success_count} success, {error_count} errors (parallel)"
-            )
+                    # 3. Create/enable keys on ALL servers IN PARALLEL
+                    tasks = [_activate_on_server(server, user_id) for server in servers]
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            return token
+                    # Process results
+                    success_count = 0
+                    error_count = 0
+                    new_keys_server_ids = []
 
-        except Exception as e:
-            log.error(f"[Subscription] Failed to activate for user {user_id}: {e}")
-            await db.rollback()
-            return None
+                    for res in results:
+                        if isinstance(res, Exception):
+                            error_count += 1
+                            log.error(f"[Subscription] Parallel task exception: {res}")
+                        else:
+                            server_id, success, is_new_key = res
+                            if success:
+                                success_count += 1
+                                if is_new_key:
+                                    new_keys_server_ids.append(server_id)
+                            else:
+                                error_count += 1
+
+                    # Update server.space for servers where new keys were created
+                    if new_keys_server_ids:
+                        for server in servers:
+                            if server.id in new_keys_server_ids:
+                                server.space += 1
+
+                    # 4. Set subscription_active = true and commit all changes
+                    user.subscription_active = True
+
+                    # 5. Create/get subscription token
+                    if not user.subscription_token:
+                        # Generate new token using internal user.id (not tgid!)
+                        token = generate_subscription_token(user.id)
+
+                        user.subscription_token = token
+                        user.subscription_created_at = datetime.now()
+                        await db.commit()
+                    else:
+                        token = user.subscription_token
+                        user.subscription_updated_at = datetime.now()
+                        await db.commit()
+
+                    log.info(
+                        f"[Subscription] ✅ Activated for user {user_id}: "
+                        f"{success_count} success, {error_count} errors (parallel)"
+                    )
+
+                    return token
+
+                except Exception as e:
+                    log.error(f"[Subscription] Failed to activate for user {user_id}: {e}")
+                    await db.rollback()
+                    return None
+        finally:
+            # Cleanup lock from dictionary to prevent memory leaks
+            await _cleanup_user_lock(user_id)
 
 
 # ==================== SUBSCRIPTION SYNC ====================
@@ -351,97 +394,112 @@ async def expire_subscription(user_id: int) -> bool:
     2. Disables keys on each server (does NOT delete them)
     3. Sets subscription_active = false
 
+    Uses user-level locking to prevent race conditions.
+
     Args:
         user_id: User's telegram ID (tgid)
 
     Returns:
         True if successful, False if there were errors
     """
-    log.info(f"[Subscription] Expiring for user {user_id}")
+    # Get user-specific lock to prevent race conditions
+    user_lock = await _get_user_lock(user_id)
 
-    async with AsyncSession(autoflush=False, bind=engine()) as db:
+    # Try to acquire lock without waiting
+    if user_lock.locked():
+        log.warning(f"[Subscription] Expiration already in progress for user {user_id}, skipping duplicate request")
+        return False
+
+    async with user_lock:
+        log.info(f"[Subscription] Expiring for user {user_id}")
+
         try:
-            # 1. Get user from database
-            statement = select(Persons).filter(Persons.tgid == user_id)
-            result = await db.execute(statement)
-            user = result.scalar_one_or_none()
-
-            if not user:
-                log.error(f"[Subscription] User {user_id} not found")
-                return False
-
-            # 2. Get all active servers (we'll check which ones have keys via API)
-            # NOTE: Include Outline (type_vpn=0) here for DISABLE security
-            # Outline is NOT created during activate_subscription (on-demand only)
-            # BUT must be disabled during expire for security
-            statement = select(Servers).filter(
-                Servers.work == True,
-                Servers.type_vpn.in_([0, 1, 2])  # Outline, VLESS and Shadowsocks
-            ).order_by(Servers.id)
-
-            result = await db.execute(statement)
-            all_servers = result.scalars().all()
-
-            # Filter servers where user actually has keys
-            user_servers = []
-            for server in all_servers:
+            async with AsyncSession(autoflush=False, bind=engine()) as db:
                 try:
-                    server_manager = ServerManager(server)
-                    await server_manager.login()
-                    existing_client = await server_manager.get_user(user_id)
-                    if existing_client:
-                        user_servers.append(server)
+                    # 1. Get user from database
+                    statement = select(Persons).filter(Persons.tgid == user_id)
+                    result = await db.execute(statement)
+                    user = result.scalar_one_or_none()
+
+                    if not user:
+                        log.error(f"[Subscription] User {user_id} not found")
+                        return False
+
+                    # 2. Get all active servers (we'll check which ones have keys via API)
+                    # NOTE: Include Outline (type_vpn=0) here for DISABLE security
+                    # Outline is NOT created during activate_subscription (on-demand only)
+                    # BUT must be disabled during expire for security
+                    statement = select(Servers).filter(
+                        Servers.work == True,
+                        Servers.type_vpn.in_([0, 1, 2])  # Outline, VLESS and Shadowsocks
+                    ).order_by(Servers.id)
+
+                    result = await db.execute(statement)
+                    all_servers = result.scalars().all()
+
+                    # Filter servers where user actually has keys
+                    user_servers = []
+                    for server in all_servers:
+                        try:
+                            server_manager = ServerManager(server)
+                            await server_manager.login()
+                            existing_client = await server_manager.get_user(user_id)
+                            if existing_client:
+                                user_servers.append(server)
+                        except Exception as e:
+                            log.debug(f"[Subscription] Error checking server {server.id}: {e}")
+                            continue
+
+                    if not user_servers:
+                        log.warning(f"[Subscription] No servers found for user {user_id}")
+                        # Still set subscription_active = false
+                        user.subscription_active = False
+                        await db.commit()
+                        return True
+
+                    log.info(f"[Subscription] Found {len(user_servers)} servers with keys for user {user_id}")
+
+                    # 3. Disable keys on each server
+                    success_count = 0
+                    error_count = 0
+
+                    for server in user_servers:
+                        try:
+                            server_manager = ServerManager(server)
+                            await server_manager.login()
+
+                            result = await server_manager.disable_client(user_id)
+
+                            if result:
+                                success_count += 1
+                                log.debug(f"[Subscription] Disabled key for user {user_id} on server {server.id}")
+                            else:
+                                error_count += 1
+                                log.error(f"[Subscription] Failed to disable key on server {server.id}")
+
+                        except Exception as e:
+                            error_count += 1
+                            log.error(f"[Subscription] Error disabling on server {server.id}: {e}")
+                            continue
+
+                    # 4. Set subscription_active = false (even if there were errors)
+                    user.subscription_active = False
+                    await db.commit()
+
+                    log.info(
+                        f"[Subscription] ✅ Expired for user {user_id}: "
+                        f"{success_count} success, {error_count} errors"
+                    )
+
+                    return error_count == 0
+
                 except Exception as e:
-                    log.debug(f"[Subscription] Error checking server {server.id}: {e}")
-                    continue
-
-            if not user_servers:
-                log.warning(f"[Subscription] No servers found for user {user_id}")
-                # Still set subscription_active = false
-                user.subscription_active = False
-                await db.commit()
-                return True
-
-            log.info(f"[Subscription] Found {len(user_servers)} servers with keys for user {user_id}")
-
-            # 3. Disable keys on each server
-            success_count = 0
-            error_count = 0
-
-            for server in user_servers:
-                try:
-                    server_manager = ServerManager(server)
-                    await server_manager.login()
-
-                    result = await server_manager.disable_client(user_id)
-
-                    if result:
-                        success_count += 1
-                        log.debug(f"[Subscription] Disabled key for user {user_id} on server {server.id}")
-                    else:
-                        error_count += 1
-                        log.error(f"[Subscription] Failed to disable key on server {server.id}")
-
-                except Exception as e:
-                    error_count += 1
-                    log.error(f"[Subscription] Error disabling on server {server.id}: {e}")
-                    continue
-
-            # 4. Set subscription_active = false (even if there were errors)
-            user.subscription_active = False
-            await db.commit()
-
-            log.info(
-                f"[Subscription] ✅ Expired for user {user_id}: "
-                f"{success_count} success, {error_count} errors"
-            )
-
-            return error_count == 0
-
-        except Exception as e:
-            log.error(f"[Subscription] Failed to expire for user {user_id}: {e}")
-            await db.rollback()
-            return False
+                    log.error(f"[Subscription] Failed to expire for user {user_id}: {e}")
+                    await db.rollback()
+                    return False
+        finally:
+            # Cleanup lock from dictionary to prevent memory leaks
+            await _cleanup_user_lock(user_id)
 
 
 # ==================== UTILITY FUNCTIONS ====================
