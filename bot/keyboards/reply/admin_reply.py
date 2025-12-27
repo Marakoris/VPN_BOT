@@ -8,8 +8,9 @@ _ = Localization.text
 
 async def admin_menu(lang) -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
+    kb.row(keyBtn(text='📊 Статистика'))
     kb.row(
-        keyBtn(text=_('admin_users_btn', lang)),
+        keyBtn(text='✏️ Редактирование пользователя'),
         keyBtn(text=_('admin_promo_btn', lang))
     )
     kb.row(

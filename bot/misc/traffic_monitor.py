@@ -199,24 +199,27 @@ async def check_and_block_exceeded_users(bot) -> List[int]:
 async def reset_user_traffic(telegram_id: int) -> bool:
     """
     Reset traffic counter for a user (called after payment).
-    Also resets traffic on all VPN servers.
+    Sets offset to current total, so "current traffic" starts from 0.
     """
     try:
         async with AsyncSession(autoflush=False, bind=engine()) as db:
-            stmt = update(Persons).where(
-                Persons.tgid == telegram_id
-            ).values(
-                total_traffic_bytes=0,
-                traffic_reset_date=datetime.now()
-            )
-            await db.execute(stmt)
-            await db.commit()
+            # Сначала получаем текущий total_traffic
+            stmt = select(Persons).where(Persons.tgid == telegram_id)
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
 
-        # Also reset traffic stats on servers
-        await reset_traffic_on_servers(telegram_id)
+            if user:
+                current_total = user.total_traffic_bytes or 0
+                # Устанавливаем offset = текущий total, чтобы "текущий трафик" стал 0
+                user.traffic_offset_bytes = current_total
+                user.traffic_reset_date = datetime.now()
+                await db.commit()
 
-        log.info(f"[Traffic] Reset traffic for user {telegram_id}")
-        return True
+                log.info(f"[Traffic] Reset traffic for user {telegram_id}: offset set to {format_bytes(current_total)}")
+                return True
+            else:
+                log.warning(f"[Traffic] User {telegram_id} not found for traffic reset")
+                return False
 
     except Exception as e:
         log.error(f"[Traffic] Error resetting traffic for user {telegram_id}: {e}")

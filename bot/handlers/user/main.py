@@ -1868,10 +1868,18 @@ async def admin_menu_nav_handler(
     try:
         # Главное админ меню
         if menu == 'main':
-            await callback.message.edit_text(
-                "📊 Выберите раздел:",
-                reply_markup=await admin_main_inline_menu(lang)
-            )
+            try:
+                await callback.message.edit_text(
+                    "📊 Выберите раздел:",
+                    reply_markup=await admin_main_inline_menu(lang)
+                )
+            except Exception:
+                # Если не получается edit (например, документ) - удаляем и отправляем новое
+                await callback.message.delete()
+                await callback.message.answer(
+                    "📊 Выберите раздел:",
+                    reply_markup=await admin_main_inline_menu(lang)
+                )
 
         # Выход в пользовательское меню
         elif menu == 'exit':
@@ -1929,7 +1937,7 @@ async def admin_menu_nav_handler(
             if action == 'edit':
                 await callback.message.edit_text(
                     "📝 Введите Telegram ID пользователя:",
-                    reply_markup=await admin_back_inline_menu('users', lang)
+                    reply_markup=await admin_back_inline_menu('main', lang)
                 )
                 from bot.handlers.admin.user_management import EditUser
                 await state.set_state(EditUser.show_user)
@@ -2149,6 +2157,61 @@ async def admin_menu_nav_handler(
                     # Отправляем кнопку назад отдельно
                     await callback.message.answer(
                         "⬆️ Файлы выше",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
+                except Exception as e:
+                    log.error(f"Error getting traffic stats: {e}")
+                    await callback.message.edit_text(
+                        "📊 Ошибка получения статистики трафика",
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
+            elif action in ('traffic_current', 'traffic_total'):
+                # Выгрузить статистику трафика в TXT файл
+                from bot.database.methods.get import get_traffic_statistics
+                from aiogram.types import BufferedInputFile
+                from datetime import datetime
+                try:
+                    use_offset = (action == 'traffic_current')
+                    stats = await get_traffic_statistics(use_offset=use_offset)
+
+                    def format_bytes(bytes_val):
+                        if bytes_val >= 1024**4:
+                            return f"{bytes_val / (1024**4):.2f} TB"
+                        elif bytes_val >= 1024**3:
+                            return f"{bytes_val / (1024**3):.2f} GB"
+                        elif bytes_val >= 1024**2:
+                            return f"{bytes_val / (1024**2):.2f} MB"
+                        elif bytes_val >= 1024:
+                            return f"{bytes_val / 1024:.2f} KB"
+                        return f"{bytes_val} B"
+
+                    # Генерируем TXT файл
+                    lines = []
+                    for i, user in enumerate(stats['all_users'], 1):
+                        username = f"@{user['username']}" if user['username'] else f"ID:{user['tgid']}"
+                        lines.append(f"{i}. {username} - {format_bytes(user['traffic'])}")
+
+                    txt_content = "\n".join(lines).encode('utf-8')
+
+                    if use_offset:
+                        filename = f"traffic_current_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+                        title = "📊 Текущий трафик (с момента последней оплаты)"
+                    else:
+                        filename = f"traffic_total_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+                        title = "📈 Весь трафик (накопленный за всё время)"
+
+                    caption = (
+                        f"{title}\n\n"
+                        f"👥 Пользователей: {stats['users_with_traffic']}\n"
+                        f"📈 Общий трафик: {format_bytes(stats['total_traffic'])}\n"
+                        f"📊 Средний: {format_bytes(stats['avg_traffic'])}"
+                    )
+
+                    # Удаляем старое сообщение и отправляем документ
+                    await callback.message.delete()
+                    await callback.message.answer_document(
+                        BufferedInputFile(txt_content, filename=filename),
+                        caption=caption,
                         reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
                 except Exception as e:

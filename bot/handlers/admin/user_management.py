@@ -79,16 +79,42 @@ class StaticUser(StatesGroup):
     static_user_name = State()
 
 
-# todo: User management
-@user_management_router.message(
-    (F.text.in_(btn_text('admin_users_btn')))
-    | (F.text.in_(btn_text('admin_back_users_menu_btn')))
-)
-async def command(message: Message, state: FSMContext) -> None:
+# Handler for "📊 Статистика" button - shows inline menu with traffic options
+@user_management_router.message(F.text == '📊 Статистика')
+async def statistics_menu_handler(message: Message, state: FSMContext) -> None:
+    from bot.keyboards.inline.admin_inline import admin_show_users_inline_menu
     lang = await get_lang(message.from_user.id, state)
     await message.answer(
-        _('admin_user_manager_m', lang),
-        reply_markup=await admin_user_menu(lang)
+        "📊 <b>Статистика</b>\n\nВыберите тип статистики:",
+        reply_markup=await admin_show_users_inline_menu(lang),
+        parse_mode="HTML"
+    )
+
+
+# Handler for "✏️ Редактирование пользователя" - directly asks for user ID
+@user_management_router.message(
+    (F.text == '✏️ Редактирование пользователя')
+    | (F.text.in_(btn_text('admin_users_btn')))
+    | (F.text.in_(btn_text('admin_edit_user_btn')))
+)
+async def edit_user_direct_handler(message: Message, state: FSMContext) -> None:
+    lang = await get_lang(message.from_user.id, state)
+    await message.answer(
+        _('input_telegram_id_user_m', lang),
+        reply_markup=await back_user_menu(lang)
+    )
+    await state.set_state(EditUser.show_user)
+
+
+# Back to users menu (for backwards compatibility)
+@user_management_router.message(F.text.in_(btn_text('admin_back_users_menu_btn')))
+async def back_to_users_menu(message: Message, state: FSMContext) -> None:
+    from bot.keyboards.reply.admin_reply import admin_menu
+    lang = await get_lang(message.from_user.id, state)
+    await state.clear()
+    await message.answer(
+        "Главное меню администратора",
+        reply_markup=await admin_menu(lang)
     )
 
 
@@ -186,18 +212,6 @@ async def back_server_menu_bot(message: Message, state: FSMContext) -> None:
     except Exception as e:
         await message.answer(_('error_list_of_payments_file', lang))
         log.error(e, 'error send file payments.txt')
-
-
-@user_management_router.message(
-    F.text.in_(btn_text('admin_edit_user_btn'))
-)
-async def edit_user_handler(message: Message, state: FSMContext) -> None:
-    lang = await get_lang(message.from_user.id, state)
-    await message.answer(
-        _('input_telegram_id_user_m', lang),
-        reply_markup=await back_user_menu(lang)
-    )
-    await state.set_state(EditUser.show_user)
 
 
 @user_management_router.message(

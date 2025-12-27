@@ -434,10 +434,17 @@ async def admin_main_inline_menu(lang) -> InlineKeyboardMarkup:
     """Главное inline меню администратора (замена reply keyboard)"""
     kb = InlineKeyboardBuilder()
 
+    # Статистика - сразу открывает меню со статистикой
     kb.row(
         InlineKeyboardButton(
-            text=_('admin_users_btn', lang),
-            callback_data=AdminMenuNav(menu='users').pack()
+            text="📊 Статистика",
+            callback_data=AdminMenuNav(menu='show_users').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="✏️ Редактирование пользователя",
+            callback_data=AdminMenuNav(menu='users', action='edit').pack()
         ),
         InlineKeyboardButton(
             text=_('admin_promo_btn', lang),
@@ -588,8 +595,8 @@ async def admin_show_users_inline_menu(lang) -> InlineKeyboardMarkup:
     )
     kb.row(
         InlineKeyboardButton(
-            text=_('admin_back_users_menu_btn', lang),
-            callback_data=AdminMenuNav(menu='users').pack()
+            text="⬅️ Назад",
+            callback_data=AdminMenuNav(menu='main').pack()
         )
     )
 

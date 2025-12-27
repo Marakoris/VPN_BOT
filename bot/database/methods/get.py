@@ -467,7 +467,8 @@ async def get_traffic_statistics(use_offset: bool = False):
             'users_with_traffic': users_count,
             'total_traffic': total_traffic,
             'avg_traffic': avg_traffic,
-            'top_users': users_data[:10]  # Топ-10
+            'top_users': users_data[:10],  # Топ-10
+            'all_users': users_data  # Все пользователи для экспорта
         }
 
 

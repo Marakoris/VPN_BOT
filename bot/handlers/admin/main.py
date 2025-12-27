@@ -560,11 +560,11 @@ async def admin_menu_navigation(
         if action == 'edit':
             # Редактирование пользователя - просим ввести ID
             await call.message.edit_text(
-                _('input_user_id_admin', lang),
-                reply_markup=await admin_back_inline_menu('users', lang)
+                "✏️ Введите Telegram ID пользователя:",
+                reply_markup=await admin_back_inline_menu('main', lang)
             )
             from bot.handlers.admin.user_management import EditUser
-            await state.set_state(EditUser.input_id)
+            await state.set_state(EditUser.show_user)
         else:
             await call.message.edit_text(
                 _('users_control', lang),
@@ -578,14 +578,14 @@ async def admin_menu_navigation(
             users = await get_all_user()
             await call.message.edit_text(
                 f"👥 Всего пользователей: {len(users)}",
-                reply_markup=await admin_back_inline_menu('show_users', lang)
+                reply_markup=await admin_back_inline_menu('main', lang)
             )
         elif action == 'sub':
             # Показать подписчиков
             users = await get_all_subscription()
             await call.message.edit_text(
                 f"✅ Пользователей с подпиской: {len(users)}",
-                reply_markup=await admin_back_inline_menu('show_users', lang)
+                reply_markup=await admin_back_inline_menu('main', lang)
             )
         elif action == 'payments':
             # Показать историю платежей
@@ -594,12 +594,12 @@ async def admin_menu_navigation(
                 total = await get_total_payments()
                 await call.message.edit_text(
                     f"💰 Общая сумма платежей: {total} ₽",
-                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                    reply_markup=await admin_back_inline_menu('main', lang)
                 )
             except:
                 await call.message.edit_text(
                     "💰 Статистика платежей",
-                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                    reply_markup=await admin_back_inline_menu('main', lang)
                 )
         elif action in ('traffic_current', 'traffic_total'):
             # Показать статистику трафика
@@ -640,14 +640,14 @@ async def admin_menu_navigation(
 
                 await call.message.edit_text(
                     text,
-                    reply_markup=await admin_back_inline_menu('show_users', lang),
+                    reply_markup=await admin_back_inline_menu('main', lang),
                     parse_mode="HTML"
                 )
             except Exception as e:
                 log.error(f"Error getting traffic stats: {e}")
                 await call.message.edit_text(
                     "📊 Ошибка получения статистики трафика",
-                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                    reply_markup=await admin_back_inline_menu('main', lang)
                 )
         else:
             await call.message.edit_text(
