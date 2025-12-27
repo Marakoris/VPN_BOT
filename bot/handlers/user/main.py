@@ -2188,8 +2188,8 @@ async def admin_menu_nav_handler(
                     # Генерируем TXT файл
                     lines = []
                     for i, user in enumerate(stats['all_users'], 1):
-                        username = f"@{user['username']}" if user['username'] else f"ID:{user['tgid']}"
-                        lines.append(f"{i}. {username} - {format_bytes(user['traffic'])}")
+                        username = user['username'] if user['username'] else 'None'
+                        lines.append(f"{i}. {username} ({user['tgid']}) - {format_bytes(user['traffic'])}")
 
                     txt_content = "\n".join(lines).encode('utf-8')
 

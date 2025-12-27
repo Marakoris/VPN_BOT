@@ -124,6 +124,11 @@ async def update_all_users_traffic() -> Dict[str, int]:
                 user.previous_traffic_bytes = total_traffic
                 user.total_traffic_bytes = total_traffic
 
+                # Fix offset if it's greater than total (keys were recreated)
+                if user.traffic_offset_bytes and user.traffic_offset_bytes > total_traffic:
+                    log.warning(f"[Traffic] User {user.tgid} offset ({format_bytes(user.traffic_offset_bytes)}) > total ({format_bytes(total_traffic)}), resetting offset")
+                    user.traffic_offset_bytes = total_traffic
+
                 # Check if exceeded limit
                 limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
 
