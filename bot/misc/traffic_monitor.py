@@ -257,20 +257,24 @@ async def get_user_traffic_info(telegram_id: int) -> Dict:
             return None
 
         limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
-        used = user.total_traffic_bytes or 0
-        remaining = max(0, limit - used)
-        percent_used = (used / limit * 100) if limit > 0 else 0
+        total = user.total_traffic_bytes or 0
+        offset = user.traffic_offset_bytes or 0
+        current = max(0, total - offset)  # Трафик с момента оплаты
+        remaining = max(0, limit - current)
+        percent_used = (current / limit * 100) if limit > 0 else 0
 
         return {
-            'used_bytes': used,
-            'used_formatted': format_bytes(used),
+            'used_bytes': current,  # Текущий период
+            'used_formatted': format_bytes(current),
+            'total_bytes': total,  # Всего за всё время
+            'total_formatted': format_bytes(total),
             'limit_bytes': limit,
             'limit_formatted': format_bytes(limit),
             'remaining_bytes': remaining,
             'remaining_formatted': format_bytes(remaining),
             'percent_used': round(percent_used, 1),
             'reset_date': user.traffic_reset_date,
-            'exceeded': used >= limit
+            'exceeded': current >= limit
         }
 
 

@@ -86,13 +86,15 @@ def get_subscription_menu_text(person, lang) -> str:
 async def get_traffic_info(telegram_id: int) -> str:
     """
     Возвращает информацию о трафике для отображения в главном меню.
+    Показывает текущий трафик (с момента оплаты) и общий (за всё время).
     """
     try:
         traffic_info = await get_user_traffic_info(telegram_id)
         if traffic_info is None:
             return ""
 
-        used = traffic_info['used_formatted']
+        current = traffic_info['used_formatted']  # Текущий период
+        total = traffic_info['total_formatted']   # За всё время
         limit = traffic_info['limit_formatted']
         percent = traffic_info['percent_used']
 
@@ -104,7 +106,7 @@ async def get_traffic_info(telegram_id: int) -> str:
         else:
             emoji = "🟢"
 
-        return f"\n{emoji} Трафик: {used} / {limit} ({percent}%)"
+        return f"\n{emoji} Трафик: {current} / {limit} ({percent}%)\n📊 Всего: {total}"
     except Exception:
         return ""
 
