@@ -88,16 +88,75 @@ async def collect_user_traffic(telegram_id: int) -> int:
     return total_traffic
 
 
+async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
+    """
+    Fetch all client traffic data from a single server.
+    Returns dict: {email: total_bytes}
+    """
+    try:
+        from bot.misc.VPN.ServerManager import ServerManager
+        manager = ServerManager(server)
+        await manager.login()
+
+        if server.type_vpn == 0:  # Outline - skip for now, handled separately
+            return {}
+
+        # Get all client stats from server
+        client_stats = await manager.get_all_user()
+        if not client_stats:
+            return {}
+
+        result = {}
+        for stat in client_stats:
+            email = stat.get('email', '')
+            up = stat.get('up', 0) or 0
+            down = stat.get('down', 0) or 0
+            result[email] = up + down
+
+        log.debug(f"[Traffic] Fetched {len(result)} clients from {server.name}")
+        return result
+
+    except Exception as e:
+        log.error(f"[Traffic] Error fetching from server {server.name}: {e}")
+        return {}
+
+
 async def update_all_users_traffic() -> Dict[str, int]:
     """
     Update traffic stats for ALL users with active subscriptions.
-    Also tracks traffic activity (when traffic last changed).
+    OPTIMIZED: Fetches all data from servers first, then updates users.
     Returns statistics: {'updated': N, 'exceeded': N, 'errors': N, 'active': N}
     """
+    import asyncio
     stats = {'updated': 0, 'exceeded': 0, 'errors': 0, 'blocked': 0, 'active': 0}
     now = datetime.now()
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Get all active servers
+        stmt_servers = select(Servers).filter(
+            Servers.work == True,
+            Servers.type_vpn.in_([1, 2])  # VLESS and Shadowsocks (Outline handled separately)
+        )
+        result_servers = await db.execute(stmt_servers)
+        servers = result_servers.scalars().all()
+
+        # OPTIMIZATION: Fetch all traffic data from all servers in parallel
+        log.info(f"[Traffic] Fetching data from {len(servers)} servers...")
+        tasks = [fetch_all_traffic_from_server(server) for server in servers]
+        server_data_list = await asyncio.gather(*tasks)
+
+        # Merge all server data into one dict: {tgid: total_traffic}
+        traffic_cache = {}  # {telegram_id: total_bytes}
+        for server_data in server_data_list:
+            for email, traffic in server_data.items():
+                # Extract telegram_id from email (format: {tgid}_vless or {tgid}_ss)
+                tgid = email.split('_')[0] if '_' in email else email
+                if tgid.isdigit():
+                    tgid = int(tgid)
+                    traffic_cache[tgid] = traffic_cache.get(tgid, 0) + traffic
+
+        log.info(f"[Traffic] Cached traffic for {len(traffic_cache)} users from servers")
+
         # Get all users with active subscriptions
         stmt = select(Persons).filter(
             Persons.subscription_active == True
@@ -105,12 +164,12 @@ async def update_all_users_traffic() -> Dict[str, int]:
         result = await db.execute(stmt)
         users = result.scalars().all()
 
-        log.info(f"[Traffic] Checking traffic for {len(users)} active users")
+        log.info(f"[Traffic] Updating {len(users)} active users")
 
         for user in users:
             try:
-                # Collect traffic from all servers
-                total_traffic = await collect_user_traffic(user.tgid)
+                # OPTIMIZATION: Get traffic from cache instead of querying servers
+                total_traffic = traffic_cache.get(user.tgid, 0)
 
                 # Check if traffic changed (user is actively using VPN)
                 previous = user.previous_traffic_bytes or 0
