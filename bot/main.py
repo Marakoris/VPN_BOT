@@ -29,6 +29,7 @@ from bot.misc.loop import loop
 from bot.misc.notification_script import notify
 from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users
 from bot.misc.util import CONFIG
+from bot.misc.winback_sender import winback_autosend
 
 
 async def start_bot():
@@ -89,6 +90,15 @@ async def start_bot():
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=9, minute=0),
         args=(bot,),
         id='notify_users_renew_subscription',
+        replace_existing=True
+    )
+
+    # Win-back автоматическая рассылка промокодов (раз в день в 11:00)
+    scheduler.add_job(
+        winback_autosend,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=11, minute=0),
+        args=(bot,),
+        id='winback_autosend',
         replace_existing=True
     )
 

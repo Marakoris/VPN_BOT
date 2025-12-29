@@ -33,6 +33,7 @@ class Persons(Base):
     tgid = Column(BigInteger, unique=True)
     client_id = Column(String, nullable=True)  # Добавил поле с ClientID
     banned = Column(Boolean, default=False)
+    bot_blocked = Column(Boolean, default=False)  # Пользователь заблокировал бота
     notion_oneday = Column(Boolean, default=False)
     subscription = Column(BigInteger)
     subscription_months = Column(Integer, nullable=True)  # На сколько месяцев пользователь оформил последнюю подписку
@@ -215,6 +216,53 @@ class SubscriptionLogs(Base):
     accessed_at = Column(TIMESTAMP(timezone=True), nullable=False, default=func.now(), index=True)
 
     user = relationship("Persons", back_populates="subscription_logs")
+
+
+class WinbackPromo(Base):
+    """
+    Win-back промокоды для возврата ушедших клиентов.
+    Процентная скидка на подписку в зависимости от сегмента (дней без подписки).
+    promo_type: 'winback' - для ушедших клиентов, 'welcome' - для новых (не покупавших)
+    """
+    __tablename__ = "winback_promos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)  # Промокод (HOT10, WARM20, COLD30)
+    discount_percent = Column(Integer, nullable=False)  # Процент скидки (10, 20, 30)
+    min_days_expired = Column(Integer, nullable=False, default=0)  # Мин. дней без подписки (для winback)
+    max_days_expired = Column(Integer, nullable=False, default=365)  # Макс. дней без подписки (для winback)
+    valid_days = Column(Integer, nullable=False, default=7)  # Сколько дней действует промокод после отправки
+    is_active = Column(Boolean, default=True)  # Активен ли промокод
+    auto_send = Column(Boolean, default=False)  # Автоматическая рассылка
+    promo_type = Column(String(20), default='winback')  # 'winback' или 'welcome'
+    delay_days = Column(Integer, default=0)  # Задержка в днях после регистрации (для welcome промокодов)
+    message_template = Column(String(1000), nullable=True)  # Шаблон сообщения (опционально)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=func.now())
+
+    # Связь с использованиями
+    usages = relationship("WinbackPromoUsage", back_populates="promo", cascade="all, delete-orphan")
+
+
+class WinbackPromoUsage(Base):
+    """
+    Использование win-back промокодов пользователями.
+    Отслеживает отправку и применение промокодов.
+    """
+    __tablename__ = "winback_promo_usages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    promo_id = Column(Integer, ForeignKey("winback_promos.id", ondelete='CASCADE'), nullable=False)
+    user_tgid = Column(BigInteger, nullable=False, index=True)  # Telegram ID пользователя
+    sent_at = Column(TIMESTAMP(timezone=True), server_default=func.now())  # Когда отправлен
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)  # Когда истекает
+    used_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда использован (NULL = не использован)
+    discount_amount = Column(Integer, nullable=True)  # Сумма скидки в рублях (при использовании)
+    original_price = Column(Integer, nullable=True)  # Оригинальная цена
+    final_price = Column(Integer, nullable=True)  # Финальная цена со скидкой
+
+    # Связь с промокодом
+    promo = relationship("WinbackPromo", back_populates="usages")
 
 
 async def create_all_table():

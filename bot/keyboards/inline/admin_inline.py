@@ -475,6 +475,10 @@ async def admin_main_inline_menu(lang) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text=_('admin_super_offer_btn', lang),
             callback_data=AdminMenuNav(menu='super_offer').pack()
+        ),
+        InlineKeyboardButton(
+            text="🎁 Win-back",
+            callback_data="wb:menu"
         )
     )
     kb.row(

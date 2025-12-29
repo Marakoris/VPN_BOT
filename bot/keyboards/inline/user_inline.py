@@ -128,6 +128,8 @@ async def renew(CONFIG, lang, tg_id: int, payment_method_id) -> InlineKeyboardMa
         )
     if payment_method_id is not None:
         kb.button(text="🔕 Отключить автооплату", callback_data='turn_off_autopay')
+    # Кнопка промокода
+    kb.button(text="🏷 У меня промокод", callback_data='enter_promo_code')
     # Кнопка оферты
     if CONFIG.offer_url:
         kb.row(InlineKeyboardButton(text="📋 Договор оферты", url=CONFIG.offer_url))

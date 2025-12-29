@@ -54,6 +54,127 @@ class Email(StatesGroup):
     input_email = State()
 
 
+class PromoCodeState(StatesGroup):
+    waiting_for_code = State()
+
+
+# ============================================
+# Промокод - ввод и применение скидки
+# ============================================
+
+@callback_user.callback_query(F.data == 'enter_promo_code')
+async def enter_promo_code_start(call: CallbackQuery, state: FSMContext):
+    """Начало ввода промокода"""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    await state.set_state(PromoCodeState.waiting_for_code)
+
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_promo_input"))
+
+    await call.message.edit_text(
+        "🏷 <b>Введите промокод</b>\n\n"
+        "Если у вас есть персональный промокод на скидку, введите его ниже:",
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@callback_user.callback_query(F.data == 'cancel_promo_input')
+async def cancel_promo_input(call: CallbackQuery, state: FSMContext):
+    """Отмена ввода промокода"""
+    from bot.keyboards.inline.user_inline import renew
+    from bot.misc.callbackData import MainMenuAction
+    from aiogram.types import InlineKeyboardButton
+
+    await state.clear()
+    lang = await get_lang(call.from_user.id, state)
+    person = await get_person(call.from_user.id)
+
+    kb = await renew(CONFIG, lang, call.from_user.id, person.payment_method_id)
+    # Добавляем кнопку "Главное меню"
+    kb.inline_keyboard.append([InlineKeyboardButton(
+        text="🏠 Главное меню",
+        callback_data=MainMenuAction(action='back_to_menu').pack()
+    )])
+
+    await call.message.edit_text(
+        _('choosing_month_sub', lang),
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@callback_user.message(PromoCodeState.waiting_for_code)
+async def process_promo_code(message: Message, state: FSMContext):
+    """Обработка введённого промокода"""
+    from bot.database.methods.winback import check_promo_code, get_active_promo_for_user
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    code = message.text.strip().upper()
+    user_id = message.from_user.id
+    lang = await get_lang(user_id, state)
+
+    # Проверяем промокод
+    promo_info = await check_promo_code(user_id, code)
+
+    if not promo_info:
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="🔄 Попробовать ещё", callback_data="enter_promo_code"))
+        kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_promo_input"))
+
+        await message.answer(
+            "❌ <b>Промокод недействителен</b>\n\n"
+            "Возможные причины:\n"
+            "• Промокод не существует\n"
+            "• Промокод не был вам отправлен\n"
+            "• Срок действия промокода истёк\n"
+            "• Промокод уже использован",
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Промокод действителен - показываем цены со скидкой
+    await state.clear()
+    discount_percent = promo_info['discount_percent']
+
+    # Сохраняем промокод в state для использования при оплате
+    await state.update_data(active_promo_code=code, promo_discount=discount_percent)
+
+    # Формируем клавиатуру с ценами со скидкой
+    kb = InlineKeyboardBuilder()
+
+    months_map = {1: 0, 3: 1, 6: 2, 12: 3}
+    for month, price_idx in months_map.items():
+        original_price = int(CONFIG.month_cost[price_idx])
+        discounted_price = int(original_price * (100 - discount_percent) / 100)
+
+        kb.button(
+            text=f"{month} мес: {discounted_price}₽ (было {original_price}₽)",
+            callback_data=ChoosingMonths(
+                price=discounted_price,
+                days_count=month * 31,
+                price_on_db=original_price  # Сохраняем оригинальную цену для БД
+            )
+        )
+
+    kb.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_promo_input"))
+    kb.adjust(1)
+
+    await message.answer(
+        f"✅ <b>Промокод {code} применён!</b>\n\n"
+        f"🏷 Скидка: <b>{discount_percent}%</b>\n\n"
+        f"Выберите тариф со скидкой:",
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+
+
 @callback_user.callback_query(ChoosingMonths.filter())
 async def deposit_balance(
         call: CallbackQuery,
