@@ -27,9 +27,8 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
-from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders
 from bot.misc.util import CONFIG
-from bot.misc.winback_sender import winback_autosend
 
 
 async def start_bot():
@@ -93,15 +92,6 @@ async def start_bot():
         replace_existing=True
     )
 
-    # Win-back автоматическая рассылка промокодов (раз в день в 11:00)
-    scheduler.add_job(
-        winback_autosend,
-        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=11, minute=0),
-        args=(bot,),
-        id='winback_autosend',
-        replace_existing=True
-    )
-
     # Добавляем задачу для загрузки на FTP (каждое число месяца)
     # ОТКЛЮЧЕНО: вызывает ошибки на тестовом сервере
     # scheduler.add_job(
@@ -125,6 +115,24 @@ async def start_bot():
         replace_existing=True
     )
 
+    # Добавляем задачу ежемесячного сброса трафика (каждый день в 00:05)
+    scheduler.add_job(
+        reset_monthly_traffic,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=0, minute=5),
+        id='monthly_traffic_reset',
+        replace_existing=True
+    )
+
+    # Напоминание о настройке VPN для неактивных пользователей (каждый день в 10:00)
+    async def setup_reminder_job():
+        await send_setup_reminders(bot)
+
+    scheduler.add_job(
+        setup_reminder_job,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=10, minute=0),
+        id='setup_reminder',
+        replace_existing=True
+    )
 
     logging.getLogger('apscheduler.executors.default').setLevel(logging.WARNING)
     scheduler.start()

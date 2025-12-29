@@ -63,6 +63,8 @@ class Persons(Base):
     traffic_limit_bytes = Column(BigInteger, default=536870912000)  # Лимит трафика (500GB по умолчанию)
     previous_traffic_bytes = Column(BigInteger, default=0)  # Предыдущее значение трафика (для отслеживания активности)
     traffic_last_change = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда последний раз менялся трафик
+    traffic_warning_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90% трафика
+    setup_reminder_sent = Column(Boolean, default=False)  # Отправлено ли напоминание о настройке VPN
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),
