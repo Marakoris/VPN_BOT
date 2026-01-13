@@ -37,7 +37,7 @@ from .referral_user import referral_router, message_admin
 from .subscription_user import subscription_router
 from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
-from ...misc.yandex_metrika import YandexMetrikaAPI
+# from ...misc.yandex_metrika import YandexMetrikaAPI  # Отключено - тормозит /start
 from ...misc.traffic_monitor import get_user_traffic_info, format_bytes
 
 log = logging.getLogger(__name__)
@@ -210,20 +210,14 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         reply_markup=await user_menu_inline(person, lang, bot)
     )
 
-    person = await get_person(m.from_user.id)
-    # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
-    # Если у пользователя есть client_id, то оправляем офлайн конверсию
-    if person is not None and person.client_id is not None:
-        client_id = person.client_id
-        ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
-        # Отправка офлайн-конверсии
-        upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'CommandStart')
-        # log.info(f"Uload_id {upload_id}")
-        # Проверка статуса загрузки (если загрузка прошла успешно)
-        if upload_id:
-            log.info(ym_api.check_conversion_status(upload_id))
-    # else:
-    #     log.info("У вас нет client_id")
+    # Yandex Metrika отключена - тормозила /start
+    # person = await get_person(m.from_user.id)
+    # if person is not None and person.client_id is not None:
+    #     client_id = person.client_id
+    #     ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
+    #     upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'CommandStart')
+    #     if upload_id:
+    #         log.info(ym_api.check_conversion_status(upload_id))
 
 
 async def give_bonus_invitee(m, reference, lang):
@@ -656,19 +650,13 @@ async def info_subscription(m: Message | CallbackQuery, state: FSMContext, bot: 
         parse_mode="HTML"
     )
 
-    # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
-    # Если у пользователя есть client_id, то оправляем офлайн конверсию
-    if person is not None and person.client_id is not None:
-        client_id = person.client_id
-        ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
-        # Отправка офлайн-конверсии
-        upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonSubscription')
-        # log.info(f"Uload_id {upload_id}")
-        # Проверка статуса загрузки (если загрузка прошла успешно)
-        if upload_id:
-            log.info(ym_api.check_conversion_status(upload_id))
-    # else:
-    #     log.info("У вас нет client_id")
+    # Yandex Metrika отключена
+    # if person is not None and person.client_id is not None:
+    #     client_id = person.client_id
+    #     ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
+    #     upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonSubscription')
+    #     if upload_id:
+    #         log.info(ym_api.check_conversion_status(upload_id))
 
 
 @user_router.message(F.text.in_(btn_text('back_general_menu_btn')))

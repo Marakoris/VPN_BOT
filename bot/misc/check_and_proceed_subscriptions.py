@@ -35,17 +35,97 @@ log = logging.getLogger(__name__)
 _db_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="db_ops")
 
 
-def _run_async_in_new_loop(async_func):
-    """Запуск async функции в новом event loop в отдельном потоке.
+def _sync_increment_autopay_retry(tgid: int) -> int:
+    """Синхронная версия increment_autopay_retry для использования после YooKassa.
 
-    ВАЖНО: Передавайте функцию БЕЗ вызова (без скобок)!
-    Coroutine создаётся внутри нового loop чтобы избежать greenlet_spawn error.
+    Использует psycopg2 напрямую чтобы избежать greenlet_spawn error.
     """
-    loop = asyncio.new_event_loop()
+    import psycopg2
+    import os
+
+    conn = psycopg2.connect(
+        dbname=os.getenv('POSTGRES_DB'),
+        user=os.getenv('POSTGRES_USER'),
+        password=os.getenv('POSTGRES_PASSWORD'),
+        host='db_postgres'
+    )
     try:
-        return loop.run_until_complete(async_func())
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE users
+            SET autopay_retry_count = COALESCE(autopay_retry_count, 0) + 1,
+                autopay_last_attempt = NOW()
+            WHERE tgid = %s
+            RETURNING autopay_retry_count
+        """, (tgid,))
+        result = cur.fetchone()
+        conn.commit()
+        return result[0] if result else 1
     finally:
-        loop.close()
+        conn.close()
+
+
+def _sync_person_subscription_expired_true(tgid: int) -> bool:
+    """Синхронная версия person_subscription_expired_true."""
+    import psycopg2
+    import os
+
+    conn = psycopg2.connect(
+        dbname=os.getenv('POSTGRES_DB'),
+        user=os.getenv('POSTGRES_USER'),
+        password=os.getenv('POSTGRES_PASSWORD'),
+        host='db_postgres'
+    )
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE users
+            SET subscription_expired = true
+            WHERE tgid = %s
+        """, (tgid,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def _sync_do_success_ops(tgid: int, months: int, price: int, count_second_month: int) -> bool:
+    """Синхронная версия всех success операций после автоплатежа."""
+    import psycopg2
+    import os
+    from datetime import datetime
+
+    conn = psycopg2.connect(
+        dbname=os.getenv('POSTGRES_DB'),
+        user=os.getenv('POSTGRES_USER'),
+        password=os.getenv('POSTGRES_PASSWORD'),
+        host='db_postgres'
+    )
+    try:
+        cur = conn.cursor()
+        # Добавляем время подписки
+        cur.execute("""
+            UPDATE users
+            SET subscription = COALESCE(subscription, 0) + %s,
+                subscription_expired = false,
+                notion_oneday = true,
+                autopay_retry_count = 0,
+                autopay_last_attempt = NULL,
+                retention = COALESCE(retention, 0) + 1
+            WHERE tgid = %s
+        """, (months * count_second_month, tgid))
+
+        # Добавляем запись о платеже
+        cur.execute("""
+            INSERT INTO payments ("user", payment_system, amount, data)
+            SELECT id, 'Autopayment by YooKassa', %s, NOW()
+            FROM users WHERE tgid = %s
+        """, (price, tgid))
+
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 _ = Localization.text
 
@@ -172,33 +252,32 @@ async def process_subscriptions(bot: Bot, config):
                 loop = asyncio.get_event_loop()
 
                 if autopay_result.get('success'):
-                    # УСПЕХ! Продление подписки - ВСЕ БД операции в изолированном контексте
-                    async def _do_all_success_ops():
-                        # БД операции
-                        await add_time_person(person.tgid, person.subscription_months * CONFIG.COUNT_SECOND_MOTH)
-                        await person_subscription_expired_false(person.tgid)
-                        await person_one_day_true(person.tgid)
-                        await reset_autopay_retry(person.tgid)
-                        # Активация подписки
-                        try:
-                            await activate_subscription(person.tgid)
-                            log.info(f"[Autopay] Subscription activated for user {person.tgid}")
-                        except Exception as e:
-                            log.error(f"[Autopay] Failed to activate subscription for user {person.tgid}: {e}")
-                        # Сброс трафика
-                        try:
-                            await reset_user_traffic(person.tgid)
-                            log.info(f"[Autopay] Traffic reset for user {person.tgid}")
-                        except Exception as e:
-                            log.error(f"[Autopay] Failed to reset traffic for user {person.tgid}: {e}")
-                        # Записи в БД
-                        await add_retention_person(person.tgid, 1)
-                        await add_payment(person.tgid, current_tariff_cost, 'Autopayment by YooKassa')
+                    # УСПЕХ! Продление подписки
+                    # БД операции через sync psycopg2 (избегаем greenlet_spawn)
+                    try:
+                        await loop.run_in_executor(
+                            _db_executor,
+                            _sync_do_success_ops,
+                            person.tgid,
+                            person.subscription_months,
+                            current_tariff_cost,
+                            CONFIG.COUNT_SECOND_MOTH
+                        )
+                    except Exception as e:
+                        log.error(f"[Autopay] Error in success DB ops for user {person.tgid}: {e}")
+
+                    # Активация подписки и сброс трафика (эти используют VPN API, не только БД)
+                    try:
+                        await activate_subscription(person.tgid)
+                        log.info(f"[Autopay] Subscription activated for user {person.tgid}")
+                    except Exception as e:
+                        log.error(f"[Autopay] Failed to activate subscription for user {person.tgid}: {e}")
 
                     try:
-                        await loop.run_in_executor(_db_executor, _run_async_in_new_loop, _do_all_success_ops)
+                        await reset_user_traffic(person.tgid)
+                        log.info(f"[Autopay] Traffic reset for user {person.tgid}")
                     except Exception as e:
-                        log.error(f"[Autopay] Error in success ops for user {person.tgid}: {e}")
+                        log.error(f"[Autopay] Failed to reset traffic for user {person.tgid}: {e}")
 
                     # Уведомление пользователю
                     try:
@@ -231,13 +310,10 @@ async def process_subscriptions(bot: Bot, config):
                             log.error(f"Can't send message to admin {admin_id}: {e}")
                         await asyncio.sleep(0.01)
                 else:
-                    # НЕУДАЧА автоплатежа - DB операции в изолированном контексте
-                    async def _do_failure_increment():
-                        return await increment_autopay_retry(person.tgid)
-
+                    # НЕУДАЧА автоплатежа - sync DB операции через psycopg2
                     try:
                         new_retry_count = await loop.run_in_executor(
-                            _db_executor, _run_async_in_new_loop, _do_failure_increment)
+                            _db_executor, _sync_increment_autopay_retry, person.tgid)
                     except Exception as e:
                         log.error(f"[Autopay] Error incrementing retry for user {person.tgid}: {e}")
                         new_retry_count = 1  # Assume first failure if can't increment
@@ -249,12 +325,9 @@ async def process_subscriptions(bot: Bot, config):
                         # Все попытки исчерпаны - финальное отключение
                         log.info(f"[Autopay] All retries exhausted for user {person.tgid}, disabling keys")
 
-                        async def _do_final_failure_ops():
-                            await person_subscription_expired_true(person.tgid)
-
                         try:
                             await loop.run_in_executor(
-                                _db_executor, _run_async_in_new_loop, _do_final_failure_ops)
+                                _db_executor, _sync_person_subscription_expired_true, person.tgid)
                         except Exception as e:
                             log.error(f"[Autopay] Error in final failure ops for user {person.tgid}: {e}")
 
