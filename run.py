@@ -10,12 +10,14 @@ logging.basicConfig(
     handlers=[
         RotatingFileHandler(
             filename='logs/all.log',
-            maxBytes=1024 * 1024 * 25,
+            maxBytes=1024 * 1024 * 50,  # 50 MB per file
+            backupCount=5,  # Keep 5 backup files (total ~250 MB)
             encoding='UTF-8',
         ),
         RotatingFileHandler(
             filename='logs/errors.log',
-            maxBytes=1024 * 1024 * 25,
+            maxBytes=1024 * 1024 * 25,  # 25 MB per file
+            backupCount=3,  # Keep 3 backup files
             encoding='UTF-8',
         ),
         logging.StreamHandler(sys.stdout)

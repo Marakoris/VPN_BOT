@@ -337,13 +337,17 @@ async def command_connect(message: Message, state: FSMContext):
     kb.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
     kb.adjust(1)
 
+    menu_text = (
+        "🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+        "📡 <b>Единая подписка</b> (рекомендуем)\n"
+        "• Один URL для всех серверов\n"
+        "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
+        "🪐 <b>Outline VPN</b>\n"
+        "• Отдельный ключ для каждого сервера"
+    )
+
     await message.answer(
-        text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-             "📡 <b>Единая подписка</b> (рекомендуем)\n"
-             "• Один URL для всех серверов\n"
-             "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
-             "🪐 <b>Outline VPN</b>\n"
-             "• Отдельный ключ для каждого сервера",
+        text=menu_text,
         reply_markup=kb.as_markup(),
         parse_mode="HTML"
     )

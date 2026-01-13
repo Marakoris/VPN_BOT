@@ -561,3 +561,187 @@ async def get_total_payments():
         result = await db.execute(stmt)
         total = result.scalar()
         return int(total) if total else 0
+
+
+# Константы для автоплатежа
+MAX_AUTOPAY_RETRY = 5  # 5 попыток
+AUTOPAY_RETRY_HOURS = 4  # Интервал между попытками (часы)
+
+
+async def get_subscriptions_needing_action():
+    """
+    Оптимизированная версия - возвращает ТОЛЬКО пользователей, которым нужно действие:
+
+    1. ПРЕВЕНТИВНЫЙ АВТОПЛАТЁЖ: Подписка истекает в ближайшие 24ч, есть autopay, ещё не было попыток
+    2. RETRY АВТОПЛАТЁЖ: Подписка истекла/истекает, идёт retry (retry_count < MAX и прошло 4ч)
+    3. ИСТЕЧЕНИЕ БЕЗ AUTOPAY: Подписка истекла, нет autopay
+    4. УВЕДОМЛЕНИЕ: Подписка истекает в ближайшие 3 дня, нет автоплатежа
+
+    Схема автоплатежа:
+    - За 1 день до истечения: первая попытка
+    - Каждые 4 часа: retry до 5 попыток
+    - Всего ~20 часов на все попытки
+
+    Вместо загрузки всех 3000+ юзеров, возвращает только ~10-50 требующих действия.
+    """
+    import time
+    from datetime import datetime, timedelta
+    current_time = int(time.time())
+    one_day_later = current_time + 86400  # +1 день (превентивный автоплатёж)
+    three_days_later = current_time + (86400 * 3)  # +3 дня (уведомление)
+    moscow_tz = ZoneInfo("Europe/Moscow")
+    now = datetime.now(moscow_tz)
+    retry_interval_ago = now - timedelta(hours=AUTOPAY_RETRY_HOURS)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Получаем только тех, кому нужно действие
+        stmt = select(Persons).filter(
+            Persons.banned == False,
+            or_(
+                # 1. ПРЕВЕНТИВНЫЙ АВТОПЛАТЁЖ: За 1 день до истечения, есть autopay, ещё не было попыток
+                and_(
+                    Persons.subscription.isnot(None),
+                    Persons.subscription <= one_day_later,  # Истекает в ближайшие 24ч
+                    Persons.subscription > current_time,  # Ещё не истекла
+                    Persons.payment_method_id.isnot(None),  # Есть автоплатёж
+                    or_(
+                        Persons.autopay_retry_count.is_(None),
+                        Persons.autopay_retry_count == 0
+                    ),  # Ещё не было попыток
+                    Persons.subscription_expired == False
+                ),
+                # 2. RETRY АВТОПЛАТЁЖ: Уже были попытки, нужен retry (каждые 4 часа)
+                and_(
+                    Persons.subscription.isnot(None),
+                    Persons.subscription <= one_day_later,  # Истекает скоро или уже истекла
+                    Persons.payment_method_id.isnot(None),  # Есть автоплатёж
+                    Persons.autopay_retry_count > 0,  # Уже была минимум 1 попытка
+                    Persons.autopay_retry_count < MAX_AUTOPAY_RETRY,  # Ещё не исчерпаны
+                    or_(
+                        Persons.autopay_last_attempt.is_(None),
+                        Persons.autopay_last_attempt < retry_interval_ago  # Прошло 4 часа
+                    )
+                ),
+                # 3. ИСТЕЧЕНИЕ БЕЗ AUTOPAY: Подписка истекла, нет автоплатежа
+                and_(
+                    Persons.subscription.isnot(None),
+                    Persons.subscription > 0,  # Исключаем пользователей без реальной подписки
+                    Persons.subscription < current_time,
+                    Persons.subscription_expired == False,
+                    Persons.payment_method_id.is_(None)  # Нет автоплатежа
+                ),
+                # 4. УВЕДОМЛЕНИЕ: Подписка истекает в ближайшие 3 дня, нет автоплатежа
+                and_(
+                    Persons.subscription.isnot(None),
+                    Persons.subscription <= three_days_later,
+                    Persons.subscription > current_time,
+                    Persons.payment_method_id.is_(None),
+                    Persons.notion_oneday == True
+                )
+            )
+        )
+        result = await db.execute(stmt)
+        persons = result.scalars().all()
+        return persons
+
+
+async def get_daily_statistics_aggregated():
+    """
+    Оптимизированная версия - все подсчёты в одном SQL запросе.
+    Возвращает dict с агрегированной статистикой.
+    """
+    import time
+    from datetime import date
+    from sqlalchemy import case, cast, Date
+
+    current_time = int(time.time())
+    today = date.today()
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Один запрос для всей статистики
+        stmt = select(
+            # Активные пользователи сегодня
+            func.count(
+                case(
+                    (func.date(Persons.last_interaction) == today, Persons.id),
+                    else_=None
+                )
+            ).label('today_active_persons_count'),
+            # Активные подписки
+            func.count(
+                case(
+                    (and_(
+                        Persons.subscription > current_time,
+                        Persons.banned == False
+                    ), Persons.id),
+                    else_=None
+                )
+            ).label('active_subscriptions_count'),
+            # Сумма активных подписок
+            func.coalesce(
+                func.sum(
+                    case(
+                        (and_(
+                            Persons.subscription > current_time,
+                            Persons.banned == False,
+                            Persons.subscription_price.isnot(None)
+                        ), Persons.subscription_price),
+                        else_=0
+                    )
+                ), 0
+            ).label('active_subscriptions_sum'),
+            # Активные подписки с автоплатежом
+            func.count(
+                case(
+                    (and_(
+                        Persons.subscription > current_time,
+                        Persons.banned == False,
+                        Persons.payment_method_id.isnot(None)
+                    ), Persons.id),
+                    else_=None
+                )
+            ).label('active_autopay_subscriptions_count'),
+            # Сумма подписок с автоплатежом
+            func.coalesce(
+                func.sum(
+                    case(
+                        (and_(
+                            Persons.subscription > current_time,
+                            Persons.banned == False,
+                            Persons.payment_method_id.isnot(None),
+                            Persons.subscription_price.isnot(None)
+                        ), Persons.subscription_price),
+                        else_=0
+                    )
+                ), 0
+            ).label('active_autopay_subscriptions_sum'),
+            # Пользователи с реферальным балансом
+            func.count(
+                case(
+                    (Persons.referral_balance > 0, Persons.id),
+                    else_=None
+                )
+            ).label('referral_balance_persons_count'),
+            # Сумма реферальных балансов
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Persons.referral_balance > 0, Persons.referral_balance),
+                        else_=0
+                    )
+                ), 0
+            ).label('referral_balance_sum')
+        )
+
+        result = await db.execute(stmt)
+        row = result.one()
+
+        return {
+            'today_active_persons_count': row[0] or 0,
+            'active_subscriptions_count': row[1] or 0,
+            'active_subscriptions_sum': int(row[2] or 0),
+            'active_autopay_subscriptions_count': row[3] or 0,
+            'active_autopay_subscriptions_sum': int(row[4] or 0),
+            'referral_balance_persons_count': row[5] or 0,
+            'referral_balance_sum': int(row[6] or 0)
+        }

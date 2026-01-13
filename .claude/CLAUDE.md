@@ -10,8 +10,9 @@
 
 ```
 Сервер: 193.124.182.161
+Порт SSH: 2222
 Путь: /root/VPNHubBot/
-Доступ: sshpass -f /root/.ssh/.prod_password ssh root@193.124.182.161
+Доступ: sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161
 ```
 
 ### ⚠️ ПЕРЕД КОПИРОВАНИЕМ ФАЙЛОВ НА ПРОД:
@@ -22,10 +23,10 @@
 
 ```bash
 # Проверить статус на проде
-sshpass -f /root/.ssh/.prod_password ssh root@193.124.182.161 "cd /root/VPNHubBot && git status"
+sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161 "cd /root/VPNHubBot && git status"
 
 # Сделать бэкап
-sshpass -f /root/.ssh/.prod_password ssh root@193.124.182.161 "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
+sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161 "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
 ```
 
 **Подробнее**: `/root/claude-docs/knowledge/repository-locations.md`

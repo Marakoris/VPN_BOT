@@ -372,3 +372,32 @@ async def set_free_trial_used(tgid: int, used: bool = True):
             await db.commit()
             return True
         return False
+
+
+async def increment_autopay_retry(tgid: int) -> int:
+    """
+    Увеличить счётчик попыток автооплаты и установить время последней попытки.
+    Возвращает новое значение счётчика.
+    """
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.autopay_retry_count = (person.autopay_retry_count or 0) + 1
+            person.autopay_last_attempt = datetime.now(ZoneInfo("Europe/Moscow"))
+            await db.commit()
+            return person.autopay_retry_count
+        return 0
+
+
+async def reset_autopay_retry(tgid: int):
+    """
+    Сбросить счётчик попыток автооплаты (при успешной оплате или отмене автооплаты).
+    """
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.autopay_retry_count = 0
+            person.autopay_last_attempt = None
+            await db.commit()
+            return True
+        return False

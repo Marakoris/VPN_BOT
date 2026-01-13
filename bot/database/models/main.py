@@ -56,6 +56,9 @@ class Persons(Base):
     subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен
     free_trial_used = Column(Boolean, default=False)  # Использовал ли пользователь бесплатный пробный период
     subscription_expired = Column(Boolean, default=False)  # Истекла ли подписка (мягкое ограничение, не бан)
+    # Autopay retry fields
+    autopay_retry_count = Column(Integer, default=0)  # Количество неудачных попыток автооплаты
+    autopay_last_attempt = Column(TIMESTAMP(timezone=True), nullable=True)  # Время последней попытки автооплаты
     # Traffic monitoring fields
     total_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик со всех серверов
     traffic_offset_bytes = Column(BigInteger, default=0)  # Offset для сброса трафика (при оплате)
