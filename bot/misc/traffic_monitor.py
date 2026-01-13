@@ -1447,6 +1447,31 @@ async def check_server_available(server) -> bool:
         return False
 
 
+async def check_server_with_retries(server, max_retries: int = 3, retry_delay: int = 10) -> bool:
+    """
+    Check server availability with retries to avoid false positives.
+    Only returns False if ALL retry attempts fail.
+    """
+    server_name = server.name if hasattr(server, 'name') else server.get('name', 'unknown')
+    
+    for attempt in range(max_retries):
+        is_available = await check_server_available(server)
+        
+        if is_available:
+            if attempt > 0:
+                log.info(f"[HealthCheck] Server {server_name} responded on attempt {attempt + 1}")
+            return True
+        
+        # If not last attempt, wait and retry
+        if attempt < max_retries - 1:
+            log.info(f"[HealthCheck] Server {server_name} not responding, retry {attempt + 2}/{max_retries} in {retry_delay}s")
+            await asyncio.sleep(retry_delay)
+    
+    # All retries failed
+    log.warning(f"[HealthCheck] Server {server_name} failed all {max_retries} checks")
+    return False
+
+
 async def check_servers_health(bot) -> Dict[str, any]:
     """
     Check health of all VPN servers and send alerts on status changes.
@@ -1489,7 +1514,7 @@ async def check_servers_health(bot) -> Dict[str, any]:
         server = srv_info["server"]
 
         # Check availability
-        is_available = await check_server_available(server)
+        is_available = await check_server_with_retries(server)
 
         # Get previous status (default to True = was online)
         prev_status = _server_status.get(server_id, True)
