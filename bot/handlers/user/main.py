@@ -2159,6 +2159,85 @@ async def admin_menu_nav_handler(
                         "📊 Ошибка получения статистики трафика",
                         reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
+            elif action == 'traffic_bypass':
+                # Показать статистику трафика bypass сервера
+                import aiohttp
+                log.info(f"[traffic_bypass] Starting handler")
+                try:
+                    BYPASS_URL = 'http://84.201.128.231:2053'
+                    BYPASS_LOGIN = 'admin'
+                    BYPASS_PASSWORD = 'AdminPass123'
+
+                    jar = aiohttp.CookieJar()
+                    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+                        login_data = {'username': BYPASS_LOGIN, 'password': BYPASS_PASSWORD}
+                        async with session.post(f'{BYPASS_URL}/login', data=login_data) as resp:
+                            login_result = await resp.json()
+                            if not login_result.get('success'):
+                                raise Exception('Login failed')
+
+                        async with session.get(f'{BYPASS_URL}/panel/api/inbounds/list') as resp:
+                            data = await resp.json()
+
+                    if not data.get('success'):
+                        raise Exception(f"API error: {data}")
+
+                    total_up = 0
+                    total_down = 0
+                    users_with_traffic = 0
+                    top_users = []
+
+                    for inbound in data.get('obj', []):
+                        for client in inbound.get('clientStats', []):
+                            up = client.get('up', 0)
+                            down = client.get('down', 0)
+                            total = up + down
+                            total_up += up
+                            total_down += down
+                            if total > 0:
+                                users_with_traffic += 1
+                                top_users.append({'email': client.get('email', ''), 'traffic': total})
+
+                    top_users.sort(key=lambda x: x['traffic'], reverse=True)
+
+                    def fmt_bytes(bytes_val):
+                        if bytes_val >= 1024**4:
+                            return f'{bytes_val / (1024**4):.2f} TB'
+                        elif bytes_val >= 1024**3:
+                            return f'{bytes_val / (1024**3):.2f} GB'
+                        elif bytes_val >= 1024**2:
+                            return f'{bytes_val / (1024**2):.2f} MB'
+                        elif bytes_val >= 1024:
+                            return f'{bytes_val / 1024:.2f} KB'
+                        return f'{bytes_val} B'
+
+                    text = "🗽 <b>Трафик Bypass сервера (БС)</b>\n"
+                    text += "<i>Обход белых списков</i>\n\n"
+                    text += f"👥 Пользователей с трафиком: {users_with_traffic}\n"
+                    text += f"📤 Исходящий: {fmt_bytes(total_up)}\n"
+                    text += f"📥 Входящий: {fmt_bytes(total_down)}\n"
+                    text += f"📈 Общий: {fmt_bytes(total_up + total_down)}\n\n"
+                    text += "🏆 <b>Топ-10 по трафику:</b>\n"
+
+                    for i, user in enumerate(top_users[:10], 1):
+                        tg_id = user['email'].replace('_vless', '')
+                        text += f"{i}. ID:{tg_id}: {fmt_bytes(user['traffic'])}\n"
+
+                    log.info(f"[traffic_bypass] Sending message, text length: {len(text)}")
+                    await callback.message.edit_text(
+                        text,
+                        reply_markup=await admin_back_inline_menu('show_users', lang),
+                        parse_mode='HTML'
+                    )
+                    log.info("[traffic_bypass] Message sent successfully")
+                except Exception as e:
+                    import traceback
+                    log.error(f'Error getting bypass traffic stats: {e}')
+                    log.error(traceback.format_exc())
+                    await callback.message.edit_text(
+                        '🗽 Ошибка получения статистики bypass',
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
             elif action in ('traffic_current', 'traffic_total'):
                 # Выгрузить статистику трафика в TXT файл
                 from bot.database.methods.get import get_traffic_statistics
