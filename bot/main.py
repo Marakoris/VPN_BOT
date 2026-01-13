@@ -27,7 +27,7 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
-from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, check_servers_health
 from bot.misc.util import CONFIG
 
 
@@ -131,6 +131,17 @@ async def start_bot():
         setup_reminder_job,
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=10, minute=0),
         id='setup_reminder',
+        replace_existing=True
+    )
+
+    # Health check серверов (каждые 5 минут)
+    async def server_health_check_job():
+        await check_servers_health(bot)
+
+    scheduler.add_job(
+        server_health_check_job,
+        trigger=IntervalTrigger(minutes=5),
+        id='server_health_check',
         replace_existing=True
     )
 

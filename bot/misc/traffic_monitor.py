@@ -1375,3 +1375,201 @@ async def get_bypass_traffic(telegram_id: int) -> Dict:
     except Exception as e:
         log.error(f"[bypass_traffic] Error for user {telegram_id}: {type(e).__name__}: {e}")
         return None
+
+
+# ==================== SERVER HEALTH MONITORING ====================
+
+# Global dict to track server status (to detect changes)
+_server_status: Dict[str, bool] = {}
+
+# Bypass server config
+BYPASS_SERVER = {
+    "name": "🗽 Bypass (Yandex Cloud)",
+    "url": "http://84.201.128.231:2053",
+    "type": "x-ui"
+}
+
+
+async def check_server_available(server) -> bool:
+    """
+    Check if a VPN server is reachable.
+    Returns True if available, False otherwise.
+    """
+    import aiohttp
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+
+        if hasattr(server, 'type_vpn'):
+            # Database server object
+            if server.type_vpn == 0:  # Outline
+                # Outline uses different API structure
+                url = f"https://{server.ip}"
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url, ssl=False) as resp:
+                        return resp.status in [200, 401, 403, 404]  # Any response = server is up
+            else:
+                # VLESS/Shadowsocks - check x-ui panel
+                # Extract IP without port if present
+                ip = server.ip.split(':')[0] if ':' in server.ip else server.ip
+                port = server.ip.split(':')[1] if ':' in server.ip else '2053'
+                url = f"http://{ip}:{port}"
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as resp:
+                        return resp.status == 200
+        else:
+            # Dict-based server (bypass)
+            url = server.get("url", "")
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    return resp.status == 200
+
+    except asyncio.TimeoutError:
+        log.warning(f"[HealthCheck] Timeout checking server: {getattr(server, 'name', server.get('name', 'unknown'))}")
+        return False
+    except Exception as e:
+        log.warning(f"[HealthCheck] Error checking server {getattr(server, 'name', server.get('name', 'unknown'))}: {e}")
+        return False
+
+
+async def check_servers_health(bot) -> Dict[str, any]:
+    """
+    Check health of all VPN servers and send alerts on status changes.
+    Returns statistics: {'checked': N, 'online': N, 'offline': N, 'alerts_sent': N}
+    """
+    global _server_status
+
+    stats = {'checked': 0, 'online': 0, 'offline': 0, 'alerts_sent': 0}
+    from bot.misc.util import CONFIG
+
+    servers_to_check = []
+
+    # Get all servers from database
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Servers).filter(Servers.work == True).order_by(Servers.id)
+        result = await db.execute(stmt)
+        db_servers = result.scalars().all()
+
+        for srv in db_servers:
+            servers_to_check.append({
+                "id": f"db_{srv.id}",
+                "name": srv.name,
+                "server": srv,
+                "type": "database"
+            })
+
+    # Add bypass server
+    servers_to_check.append({
+        "id": "bypass",
+        "name": BYPASS_SERVER["name"],
+        "server": BYPASS_SERVER,
+        "type": "bypass"
+    })
+
+    # Check each server
+    for srv_info in servers_to_check:
+        stats['checked'] += 1
+        server_id = srv_info["id"]
+        server_name = srv_info["name"]
+        server = srv_info["server"]
+
+        # Check availability
+        is_available = await check_server_available(server)
+
+        # Get previous status (default to True = was online)
+        prev_status = _server_status.get(server_id, True)
+
+        # Update current status
+        _server_status[server_id] = is_available
+
+        if is_available:
+            stats['online'] += 1
+
+            # Server came back online
+            if not prev_status:
+                log.info(f"[HealthCheck] ✅ Server {server_name} is back ONLINE")
+                # Send recovery alert
+                for admin_id in CONFIG.admins_ids:
+                    try:
+                        await bot.send_message(
+                            admin_id,
+                            f"✅ <b>Сервер снова онлайн!</b>\n\n"
+                            f"🖥 {server_name}\n"
+                            f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}"
+                        )
+                        stats['alerts_sent'] += 1
+                    except Exception as e:
+                        log.error(f"[HealthCheck] Failed to send recovery alert to {admin_id}: {e}")
+        else:
+            stats['offline'] += 1
+
+            # Server went down
+            if prev_status:
+                log.warning(f"[HealthCheck] 🚨 Server {server_name} is DOWN!")
+                # Send alert
+                for admin_id in CONFIG.admins_ids:
+                    try:
+                        await bot.send_message(
+                            admin_id,
+                            f"🚨 <b>СЕРВЕР НЕДОСТУПЕН!</b>\n\n"
+                            f"🖥 {server_name}\n"
+                            f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n\n"
+                            f"⚠️ Проверьте сервер!"
+                        )
+                        stats['alerts_sent'] += 1
+                    except Exception as e:
+                        log.error(f"[HealthCheck] Failed to send alert to {admin_id}: {e}")
+            else:
+                # Still offline, log but don't spam
+                log.debug(f"[HealthCheck] Server {server_name} still offline")
+
+    log.info(f"[HealthCheck] Complete: {stats}")
+    return stats
+
+
+async def get_servers_status() -> List[Dict]:
+    """
+    Get current status of all servers (for admin panel).
+    Returns list of server status dicts.
+    """
+    global _server_status
+
+    result = []
+
+    # Get all servers from database
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Servers).filter(Servers.work == True).order_by(Servers.id)
+        db_result = await db.execute(stmt)
+        db_servers = db_result.scalars().all()
+
+        for srv in db_servers:
+            server_id = f"db_{srv.id}"
+            is_online = _server_status.get(server_id, None)
+
+            # Determine server type emoji
+            if srv.type_vpn == 0:
+                type_emoji = "🪐"  # Outline
+            elif srv.type_vpn == 1:
+                type_emoji = "🐊"  # VLESS
+            else:
+                type_emoji = "🦈"  # Shadowsocks
+
+            result.append({
+                "id": server_id,
+                "name": srv.name,
+                "type": type_emoji,
+                "online": is_online,
+                "status": "✅" if is_online else ("❌" if is_online is False else "❓")
+            })
+
+    # Add bypass server
+    bypass_online = _server_status.get("bypass", None)
+    result.append({
+        "id": "bypass",
+        "name": BYPASS_SERVER["name"],
+        "type": "🗽",
+        "online": bypass_online,
+        "status": "✅" if bypass_online else ("❌" if bypass_online is False else "❓")
+    })
+
+    return result
