@@ -4,6 +4,7 @@ from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.payload import decode_payload
@@ -29,7 +30,7 @@ from bot.keyboards.reply.user_reply import (
     user_menu
 )
 from bot.misc.VPN.ServerManager import ServerManager
-from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn, DownloadClient, DownloadHiddify, MainMenuAction
+from bot.misc.callbackData import ChooseServer, ChoosingLang, ChooseTypeVpn, DownloadClient, DownloadHiddify, MainMenuAction, TrafficSourceSurvey
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from .payment_user import callback_user
@@ -37,10 +38,15 @@ from .referral_user import referral_router, message_admin
 from .subscription_user import subscription_router
 from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
-# from ...misc.yandex_metrika import YandexMetrikaAPI  # Отключено - тормозит /start
-from ...misc.traffic_monitor import get_user_traffic_info, format_bytes
+# from ...misc.yandex_metrika import YandexMetrikaAPI  # Disabled - slow
+from ...misc.traffic_monitor import get_user_traffic_info, format_bytes, get_bypass_traffic
 
 log = logging.getLogger(__name__)
+
+class TrafficSourceState(StatesGroup):
+    waiting_custom_source = State()
+
+
 
 _ = Localization.text
 btn_text = Localization.get_reply_button
@@ -83,6 +89,54 @@ def get_subscription_menu_text(person, lang) -> str:
     return base_text + get_autopay_info(person)
 
 
+async def notify_admins_trial_activated(bot: Bot, user_id: int, username: str, fullname: str):
+    """
+    Отправляет уведомление админам об активации пробного периода.
+    """
+    import asyncio
+    from bot.database.methods.get import get_person
+
+    # Получаем информацию о пользователе для UTM и источника
+    person = await get_person(user_id)
+    source_info = ""
+
+    if person:
+        # UTM метка (если есть)
+        if person.client_id:
+            source_info = f"\n📊 UTM: {person.client_id}"
+        # Источник из опроса (если есть)
+        elif person.traffic_source:
+            source_names = {
+                'telegram_search': '🔍 Поиск в TG',
+                'friend': '👥 От друга',
+                'forum': '📱 Форум',
+                'website': '🌐 Сайт',
+                'ads': '📢 Реклама',
+                'other': '🤷 Не помню'
+            }
+            src = person.traffic_source
+            if src.startswith('custom:'):
+                source_info = f"\n📊 Источник: ✏️ {src[7:]}"
+            else:
+                source_info = f"\n📊 Источник: {source_names.get(src, src)}"
+
+    admin_text = (
+        f"🎁 <b>Новый пробный период!</b>\n\n"
+        f"👤 Пользователь: {fullname}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"📱 Username: @{username if username else 'нет'}\n"
+        f"⏱ Период: 3 дня"
+        f"{source_info}"
+    )
+
+    for admin_id in CONFIG.admins_ids:
+        try:
+            await bot.send_message(admin_id, admin_text, parse_mode="HTML")
+        except Exception as e:
+            log.error(f"Can't notify admin {admin_id} about trial activation: {e}")
+        await asyncio.sleep(0.01)
+
+
 async def get_traffic_info(telegram_id: int) -> str:
     """
     Возвращает информацию о трафике для отображения в главном меню.
@@ -97,6 +151,7 @@ async def get_traffic_info(telegram_id: int) -> str:
         total = traffic_info['total_formatted']   # За всё время
         limit = traffic_info['limit_formatted']
         percent = traffic_info['percent_used']
+        days_until_reset = traffic_info.get('days_until_reset', 0)
 
         # Выбираем emoji в зависимости от процента использования
         if percent >= 90:
@@ -106,7 +161,32 @@ async def get_traffic_info(telegram_id: int) -> str:
         else:
             emoji = "🟢"
 
-        return f"\n{emoji} Трафик: {current} / {limit} ({percent}%)\n📊 Всего: {total}"
+        # Формируем сообщение о сбросе
+        if days_until_reset > 0:
+            reset_msg = f"\n🔄 До сброса лимита: {days_until_reset} дн."
+        else:
+            reset_msg = "\n🔄 Лимит сбросится сегодня"
+
+        result = f"\n{emoji} Трафик: {current} / {limit} ({percent}%)\n📊 Всего: {total}{reset_msg}"
+
+        # Добавляем информацию о bypass сервере
+        bypass_info = await get_bypass_traffic(telegram_id)
+        if bypass_info:
+            bypass_total = bypass_info["total_formatted"]
+            bypass_limit = bypass_info["limit_formatted"]
+            bypass_percent = round(bypass_info["total"] / bypass_info["limit"] * 100, 1) if bypass_info["limit"] > 0 else 0
+            if bypass_percent >= 90:
+                bypass_emoji = "🔴"
+            elif bypass_percent >= 70:
+                bypass_emoji = "🟡"
+            else:
+                bypass_emoji = "🟢"
+            result += f"\n\n🗽 Обход БС: {bypass_emoji} {bypass_total} / {bypass_limit} ({bypass_percent}%)"
+
+        # Добавляем подсказку
+        result += "\n💡 Лимит также сбрасывается при оплате"
+
+        return result
     except Exception:
         return ""
 
@@ -210,14 +290,20 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         reply_markup=await user_menu_inline(person, lang, bot)
     )
 
-    # Yandex Metrika отключена - тормозила /start
-    # person = await get_person(m.from_user.id)
-    # if person is not None and person.client_id is not None:
-    #     client_id = person.client_id
-    #     ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
-    #     upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'CommandStart')
-    #     if upload_id:
-    #         log.info(ym_api.check_conversion_status(upload_id))
+    person = await get_person(m.from_user.id)
+    # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
+    # Если у пользователя есть client_id, то оправляем офлайн конверсию
+#     if person is not None and person.client_id is not None:
+#         client_id = person.client_id
+#         ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
+#         # Отправка офлайн-конверсии
+#         upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'CommandStart')
+#         # log.info(f"Uload_id {upload_id}")
+#         # Проверка статуса загрузки (если загрузка прошла успешно)
+#         if upload_id:
+#             log.info(ym_api.check_conversion_status(upload_id))
+#     # else:
+    #     log.info("У вас нет client_id")
 
 
 async def give_bonus_invitee(m, reference, lang):
@@ -331,17 +417,13 @@ async def command_connect(message: Message, state: FSMContext):
     kb.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
     kb.adjust(1)
 
-    menu_text = (
-        "🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-        "📡 <b>Единая подписка</b> (рекомендуем)\n"
-        "• Один URL для всех серверов\n"
-        "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
-        "🪐 <b>Outline VPN</b>\n"
-        "• Отдельный ключ для каждого сервера"
-    )
-
     await message.answer(
-        text=menu_text,
+        text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
+             "📡 <b>Единая подписка</b> (рекомендуем)\n"
+             "• Один URL для всех серверов\n"
+             "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
+             "🪐 <b>Outline VPN</b>\n"
+             "• Отдельный ключ для каждого сервера",
         reply_markup=kb.as_markup(),
         parse_mode="HTML"
     )
@@ -650,13 +732,51 @@ async def info_subscription(m: Message | CallbackQuery, state: FSMContext, bot: 
         parse_mode="HTML"
     )
 
-    # Yandex Metrika отключена
-    # if person is not None and person.client_id is not None:
-    #     client_id = person.client_id
-    #     ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
-    #     upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonSubscription')
-    #     if upload_id:
-    #         log.info(ym_api.check_conversion_status(upload_id))
+    # log.info(f"Был получен пользователь по {self.user_id} его данные {person}")
+    # Если у пользователя есть client_id, то оправляем офлайн конверсию
+#     if person is not None and person.client_id is not None:
+#         client_id = person.client_id
+#         ym_api = YandexMetrikaAPI(counter_id=CONFIG.ym_counter, oauth_token=CONFIG.ym_oauth_token)
+#         # Отправка офлайн-конверсии
+#         upload_id = ym_api.send_offline_conversion_action(client_id, datetime.now().astimezone(), 'ButtonSubscription')
+#         # log.info(f"Uload_id {upload_id}")
+#         # Проверка статуса загрузки (если загрузка прошла успешно)
+#         if upload_id:
+#             log.info(ym_api.check_conversion_status(upload_id))
+#     # else:
+#     #     log.info("У вас нет client_id")
+
+
+@user_router.callback_query(F.data == 'buy_subscription_no_image')
+async def info_subscription_no_image(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Меню оплаты без картинки (для уведомлений об автооплате)"""
+    await callback.answer()
+
+    user_id = callback.from_user.id
+    lang = await get_lang(user_id, state)
+    person = await get_person(user_id)
+
+    # Получаем стандартную клавиатуру оплаты
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    renew_kb = await renew(CONFIG, lang, user_id, person.payment_method_id)
+
+    # Добавляем кнопку "Главное меню"
+    kb = InlineKeyboardBuilder()
+    for row in renew_kb.inline_keyboard:
+        kb.row(*row)
+    kb.row(InlineKeyboardButton(
+        text="🏠 Главное меню",
+        callback_data=MainMenuAction(action='back_to_menu').pack()
+    ))
+
+    await bot.send_message(
+        chat_id=user_id,
+        text=get_subscription_menu_text(person, lang),
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
 
 
 @user_router.message(F.text.in_(btn_text('back_general_menu_btn')))
@@ -855,6 +975,180 @@ async def download_hiddify_handler(callback: CallbackQuery, callback_data: Downl
         await callback.message.answer(
             "❌ Не удалось отправить ссылку. Попробуйте позже.",
             reply_markup=get_back_to_menu_keyboard()
+        )
+
+
+@user_router.message(TrafficSourceState.waiting_custom_source)
+async def handle_custom_traffic_source(message: Message, state: FSMContext, bot: Bot):
+    """Обработка пользовательского ввода источника и активация триала"""
+    from bot.database.methods.update import add_time_person, set_free_trial_used, set_traffic_source
+    from bot.misc.util import CONFIG
+    from datetime import datetime
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user_id = message.from_user.id
+    custom_source = message.text[:100]  # Ограничиваем длину
+
+    # Очищаем состояние
+    await state.clear()
+
+    # Сохраняем источник трафика
+    await set_traffic_source(user_id, f"custom:{custom_source}")
+
+    person = await get_person(user_id)
+
+    if person is None:
+        await message.answer("Ошибка: пользователь не найден")
+        return
+
+    if person.banned:
+        await message.answer("⛔ Доступ заблокирован")
+        return
+
+    if person.free_trial_used:
+        await message.answer("⚠️ Вы уже использовали пробный период")
+        return
+
+    # Показываем сообщение о загрузке
+    loading_msg = await message.answer(
+        "⏳ <b>Активируем пробный период...</b>\n\n"
+        "Подождите, идёт настройка VPN серверов.",
+        parse_mode="HTML"
+    )
+
+    # Добавляем 3 дня
+    trial_seconds = 3 * CONFIG.COUNT_SECOND_DAY
+    await add_time_person(person.tgid, trial_seconds)
+
+    # Устанавливаем флаг
+    await set_free_trial_used(person.tgid)
+
+    # Уведомляем админов
+    await notify_admins_trial_activated(
+        bot,
+        person.tgid,
+        person.username.replace('@', '') if person.username else None,
+        person.fullname or "Неизвестно"
+    )
+
+    # Обновляем person
+    person = await get_person(user_id)
+    end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
+
+    # Показываем итоговое сообщение
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔑 Подключить VPN",
+        callback_data=MainMenuAction(action='my_keys')
+    )
+    builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
+    builder.adjust(1)
+
+    success_text = (
+        f"🎉 <b>Пробный период активирован!</b>\n\n"
+        f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
+        f"📅 Действует до: <b>{end_date}</b>"
+    )
+
+    await loading_msg.edit_text(
+        success_text,
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
+
+
+@user_router.callback_query(TrafficSourceSurvey.filter())
+async def handle_traffic_source_survey(callback: CallbackQuery, callback_data: TrafficSourceSurvey, bot: Bot, state: FSMContext):
+    """Обработка ответа на опрос и активация триала"""
+    from bot.database.methods.update import add_time_person, set_free_trial_used, set_traffic_source
+    from bot.misc.util import CONFIG
+    from datetime import datetime
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    source = callback_data.source
+    user_id = callback.from_user.id
+
+    # Если выбрано "Другое" - запрашиваем текст
+    if source == "custom":
+        await callback.answer()
+        await state.set_state(TrafficSourceState.waiting_custom_source)
+        await callback.message.edit_text(
+            "✏️ <b>Напишите, откуда вы узнали о нас:</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Сохраняем источник трафика
+    await set_traffic_source(user_id, source)
+
+    person = await get_person(user_id)
+
+    if person is None:
+        await callback.answer("Ошибка: пользователь не найден", show_alert=True)
+        return
+
+    if person.banned:
+        await callback.answer("⛔ Доступ заблокирован", show_alert=True)
+        return
+
+    if person.free_trial_used:
+        await callback.answer("⚠️ Вы уже использовали пробный период", show_alert=True)
+        return
+
+    # Показываем сообщение о загрузке
+    await callback.answer()
+    await callback.message.edit_text(
+        "⏳ <b>Активируем пробный период...</b>\n\n"
+        "Подождите, идёт настройка VPN серверов.",
+        parse_mode="HTML"
+    )
+
+    # Добавляем 3 дня
+    trial_seconds = 3 * CONFIG.COUNT_SECOND_DAY
+    await add_time_person(person.tgid, trial_seconds)
+
+    # Устанавливаем флаг
+    await set_free_trial_used(person.tgid)
+
+    # Уведомляем админов
+    await notify_admins_trial_activated(
+        bot,
+        person.tgid,
+        person.username.replace('@', '') if person.username else None,
+        person.fullname or "Неизвестно"
+    )
+
+    # Обновляем person
+    person = await get_person(user_id)
+    end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
+
+    # Показываем итоговое сообщение
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔑 Подключить VPN",
+        callback_data=MainMenuAction(action='my_keys')
+    )
+    builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
+    builder.adjust(1)
+
+    success_text = (
+        f"🎉 <b>Пробный период активирован!</b>\n\n"
+        f"✅ Вам добавлено <b>3 дня</b> бесплатного VPN\n\n"
+        f"📅 Действует до: <b>{end_date}</b>"
+    )
+
+    try:
+        await callback.message.edit_text(
+            success_text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        log.error(f"[TrafficSourceSurvey] edit_text failed: {e}")
+        await callback.message.answer(
+            success_text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
         )
 
 
@@ -1382,6 +1676,27 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             await callback.answer("⚠️ Вы уже использовали пробный период", show_alert=True)
             return
 
+        # Проверяем, прошёл ли пользователь опрос (если нет UTM)
+        if person.client_id is None and person.traffic_source is None:
+            # Показываем опрос перед активацией триала
+            await callback.answer()
+            survey_kb = InlineKeyboardBuilder()
+            survey_kb.button(text="🔍 Поиск в Telegram", callback_data=TrafficSourceSurvey(source="telegram_search"))
+            survey_kb.button(text="👥 Друг посоветовал", callback_data=TrafficSourceSurvey(source="friend"))
+            survey_kb.button(text="📱 Форум", callback_data=TrafficSourceSurvey(source="forum"))
+            survey_kb.button(text="🌐 Сайт", callback_data=TrafficSourceSurvey(source="website"))
+            survey_kb.button(text="📢 Реклама", callback_data=TrafficSourceSurvey(source="ads"))
+            survey_kb.button(text="🤷 Не помню", callback_data=TrafficSourceSurvey(source="other"))
+            survey_kb.button(text="✏️ Другое (написать)", callback_data=TrafficSourceSurvey(source="custom"))
+            survey_kb.adjust(1)
+            await callback.message.edit_text(
+                "👋 <b>Один вопрос перед началом!</b>\n\n"
+                "Откуда вы узнали о нашем VPN?",
+                reply_markup=survey_kb.as_markup(),
+                parse_mode="HTML"
+            )
+            return
+
         # Сразу отвечаем на callback и показываем сообщение о загрузке
         await callback.answer()
         await callback.message.edit_text(
@@ -1396,6 +1711,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         # Устанавливаем флаг
         await set_free_trial_used(person.tgid)
+
+        # Уведомляем админов
+        await notify_admins_trial_activated(
+            bot,
+            person.tgid,
+            person.username.replace('@', '') if person.username else None,
+            person.fullname or "Неизвестно"
+        )
 
         # Обновляем person
         person = await get_person(callback.from_user.id)
@@ -1464,6 +1787,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         from bot.database.methods.update import set_free_trial_used
         await set_free_trial_used(person.tgid)
 
+        # Уведомляем админов
+        await notify_admins_trial_activated(
+            bot,
+            person.tgid,
+            person.username.replace('@', '') if person.username else None,
+            person.fullname or "Неизвестно"
+        )
+
         # Перенаправляем на subscription_url
         # Обновляем person после добавления времени
         person = await get_person(callback.from_user.id)
@@ -1525,6 +1856,14 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         # Устанавливаем флаг что пробный период использован
         from bot.database.methods.update import set_free_trial_used
         await set_free_trial_used(person.tgid)
+
+        # Уведомляем админов
+        await notify_admins_trial_activated(
+            bot,
+            person.tgid,
+            person.username.replace('@', '') if person.username else None,
+            person.fullname or "Неизвестно"
+        )
 
         # Обновляем person после добавления времени
         person = await get_person(callback.from_user.id)
@@ -1945,27 +2284,67 @@ async def admin_menu_nav_handler(
         elif menu == 'show_users':
             if action == 'all':
                 users = await get_all_user()
-                # Подсчёт по статусам
                 import time
                 current_time = int(time.time())
-                with_sub = sum(1 for u in users if u.subscription and u.subscription > current_time and not u.banned)
-                without_sub = sum(1 for u in users if (not u.subscription or u.subscription <= current_time) and not u.banned)
-                banned = sum(1 for u in users if u.banned)
-                with_autopay = sum(1 for u in users if u.payment_method_id is not None)
-                free_trial_used = sum(1 for u in users if u.free_trial_used)
+                time_30_days_ago = current_time - (30 * 86400)
+
+                # === АКТИВНЫЕ (подписка действует) ===
+                active_users = [u for u in users if u.subscription and u.subscription > current_time and not u.banned]
+                active_total = len(active_users)
+                active_with_autopay = sum(1 for u in active_users if u.payment_method_id is not None)
+                active_without_autopay = active_total - active_with_autopay
+
+                # === ПОТЕНЦИАЛ ВОЗВРАТА (платили ранее, сейчас неактивны) ===
+                # Пользователи которые платили (retention > 0) но сейчас без активной подписки
+                inactive_paid = [u for u in users if (u.retention or 0) > 0 and (not u.subscription or u.subscription <= current_time)]
+                inactive_paid_total = len(inactive_paid)
+                # Из них истекло < 30 дней (горячие лиды)
+                inactive_paid_recent = sum(1 for u in inactive_paid if u.subscription and u.subscription > time_30_days_ago)
+                # Из них истекло > 30 дней
+                inactive_paid_old = inactive_paid_total - inactive_paid_recent
+
+                # === ПРОБНЫЙ ПЕРИОД ===
+                trial_users = [u for u in users if u.free_trial_used]
+                trial_total = len(trial_users)
+                # Конвертировались (использовали trial И платили)
+                trial_converted = sum(1 for u in trial_users if (u.retention or 0) > 0)
+                # Не купили (только trial)
+                trial_not_converted = trial_total - trial_converted
+
+                # === ТОЛЬКО РЕГИСТРАЦИЯ ===
+                # Никогда не платили, не использовали trial
+                just_registered = sum(1 for u in users if (u.retention or 0) == 0 and not u.free_trial_used)
+
+                # === ЗАБЛОКИРОВАНЫ ===
+                banned_count = sum(1 for u in users if u.banned)
 
                 text = (
                     f"👥 <b>Статистика пользователей</b>\n\n"
-                    f"📊 Всего: <b>{len(users)}</b>\n"
-                    f"✅ С активной подпиской: <b>{with_sub}</b>\n"
-                    f"🔄 С автоподпиской: <b>{with_autopay}</b>\n"
-                    f"🎁 Активировали пробный: <b>{free_trial_used}</b>\n"
-                    f"❌ Без подписки: <b>{without_sub}</b>\n"
-                    f"🚫 Заблокировано: <b>{banned}</b>"
+                    f"📊 Всего в базе: <b>{len(users)}</b>\n\n"
+
+                    f"━━━ <b>АКТИВНЫЕ</b> ━━━\n"
+                    f"✅ С подпиской: <b>{active_total}</b>\n"
+                    f"   ├ 💳 С автооплатой: <b>{active_with_autopay}</b>\n"
+                    f"   └ 🔓 Без автооплаты: <b>{active_without_autopay}</b>\n\n"
+
+                    f"━━━ <b>ПОТЕНЦИАЛ ВОЗВРАТА</b> ━━━\n"
+                    f"💰 Платили, сейчас неактивны: <b>{inactive_paid_total}</b>\n"
+                    f"   ├ 🔥 Истекло &lt;30 дней: <b>{inactive_paid_recent}</b>\n"
+                    f"   └ 📅 Истекло &gt;30 дней: <b>{inactive_paid_old}</b>\n\n"
+
+                    f"━━━ <b>ПРОБНЫЙ ПЕРИОД</b> ━━━\n"
+                    f"🎁 Активировали: <b>{trial_total}</b>\n"
+                    f"   ├ ✅ Купили подписку: <b>{trial_converted}</b>\n"
+                    f"   └ ❌ Не купили: <b>{trial_not_converted}</b>\n\n"
+
+                    f"━━━ <b>ДРУГИЕ</b> ━━━\n"
+                    f"📝 Только регистрация: <b>{just_registered}</b>\n"
+                    f"🚫 Заблокировано: <b>{banned_count}</b>"
                 )
                 await callback.message.edit_text(
                     text,
-                    reply_markup=await admin_back_inline_menu('show_users', lang)
+                    reply_markup=await admin_back_inline_menu('show_users', lang),
+                    parse_mode="HTML"
                 )
             elif action == 'sub':
                 # Формируем и отправляем файл с подписчиками
@@ -2160,16 +2539,19 @@ async def admin_menu_nav_handler(
                         reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
             elif action == 'traffic_bypass':
-                # Показать статистику трафика bypass сервера
+                # Выгрузить статистику трафика bypass в TXT файл
                 import aiohttp
+                from aiogram.types import BufferedInputFile
+                from datetime import datetime
                 log.info(f"[traffic_bypass] Starting handler")
                 try:
                     BYPASS_URL = 'http://84.201.128.231:2053'
                     BYPASS_LOGIN = 'admin'
                     BYPASS_PASSWORD = 'AdminPass123'
 
-                    jar = aiohttp.CookieJar()
-                    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+                    jar = aiohttp.CookieJar(unsafe=True)
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with aiohttp.ClientSession(cookie_jar=jar, timeout=timeout) as session:
                         login_data = {'username': BYPASS_LOGIN, 'password': BYPASS_PASSWORD}
                         async with session.post(f'{BYPASS_URL}/login', data=login_data) as resp:
                             login_result = await resp.json()
@@ -2185,7 +2567,7 @@ async def admin_menu_nav_handler(
                     total_up = 0
                     total_down = 0
                     users_with_traffic = 0
-                    top_users = []
+                    all_users = []
 
                     for inbound in data.get('obj', []):
                         for client in inbound.get('clientStats', []):
@@ -2194,11 +2576,12 @@ async def admin_menu_nav_handler(
                             total = up + down
                             total_up += up
                             total_down += down
+                            tg_id = client.get('email', ''').replace('_vless', ''')
+                            all_users.append({'tgid': tg_id, 'traffic': total})
                             if total > 0:
                                 users_with_traffic += 1
-                                top_users.append({'email': client.get('email', ''), 'traffic': total})
 
-                    top_users.sort(key=lambda x: x['traffic'], reverse=True)
+                    all_users.sort(key=lambda x: x['traffic'], reverse=True)
 
                     def fmt_bytes(bytes_val):
                         if bytes_val >= 1024**4:
@@ -2211,31 +2594,36 @@ async def admin_menu_nav_handler(
                             return f'{bytes_val / 1024:.2f} KB'
                         return f'{bytes_val} B'
 
-                    text = "🗽 <b>Трафик Bypass сервера (БС)</b>\n"
-                    text += "<i>Обход белых списков</i>\n\n"
-                    text += f"👥 Пользователей с трафиком: {users_with_traffic}\n"
-                    text += f"📤 Исходящий: {fmt_bytes(total_up)}\n"
-                    text += f"📥 Входящий: {fmt_bytes(total_down)}\n"
-                    text += f"📈 Общий: {fmt_bytes(total_up + total_down)}\n\n"
-                    text += "🏆 <b>Топ-10 по трафику:</b>\n"
+                    # Генерируем TXT файл
+                    lines = []
+                    for i, user in enumerate(all_users, 1):
+                        lines.append(f"{i}. ID:{user['tgid']} - {fmt_bytes(user['traffic'])}")
 
-                    for i, user in enumerate(top_users[:10], 1):
-                        tg_id = user['email'].replace('_vless', '')
-                        text += f"{i}. ID:{tg_id}: {fmt_bytes(user['traffic'])}\n"
+                    txt_content = "\n".join(lines).encode('utf-8')
+                    filename = f"traffic_bypass_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
 
-                    log.info(f"[traffic_bypass] Sending message, text length: {len(text)}")
-                    await callback.message.edit_text(
-                        text,
-                        reply_markup=await admin_back_inline_menu('show_users', lang),
-                        parse_mode='HTML'
+                    caption = (
+                        f"\U0001f5fd Трафик Bypass сервера (БС)\n"
+                        f"Обход белых списков\n\n"
+                        f"\U0001f465 Пользователей с трафиком: {users_with_traffic}\n"
+                        f"\U0001f4e4 Исходящий: {fmt_bytes(total_up)}\n"
+                        f"\U0001f4e5 Входящий: {fmt_bytes(total_down)}\n"
+                        f"\U0001f4c8 Общий: {fmt_bytes(total_up + total_down)}"
                     )
-                    log.info("[traffic_bypass] Message sent successfully")
+
+                    await callback.message.delete()
+                    await callback.message.answer_document(
+                        BufferedInputFile(txt_content, filename=filename),
+                        caption=caption,
+                        reply_markup=await admin_back_inline_menu('show_users', lang)
+                    )
+                    log.info(f"[traffic_bypass] File sent, users: {users_with_traffic}")
                 except Exception as e:
                     import traceback
                     log.error(f'Error getting bypass traffic stats: {e}')
                     log.error(traceback.format_exc())
                     await callback.message.edit_text(
-                        '🗽 Ошибка получения статистики bypass',
+                        '\U0001f5fd Ошибка получения статистики bypass',
                         reply_markup=await admin_back_inline_menu('show_users', lang)
                     )
             elif action in ('traffic_current', 'traffic_total'):
