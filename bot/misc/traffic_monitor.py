@@ -1403,11 +1403,24 @@ async def check_server_available(server) -> bool:
         if hasattr(server, 'type_vpn'):
             # Database server object
             if server.type_vpn == 0:  # Outline
-                # Outline uses different API structure
-                url = f"https://{server.ip}"
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(url, ssl=False) as resp:
-                        return resp.status in [200, 401, 403, 404]  # Any response = server is up
+                # Parse outline_link JSON to get apiUrl
+                import json
+                try:
+                    if not server.outline_link:
+                        log.warning(f"[HealthCheck] No outline_link for {server.name}")
+                        return False
+                    outline_config = json.loads(server.outline_link)
+                    url = outline_config.get('apiUrl', '')
+                    if not url:
+                        log.warning(f"[HealthCheck] No apiUrl in outline_link for {server.name}")
+                        return False
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.get(url, ssl=False) as resp:
+                            # Any response means server is up
+                            return resp.status in [200, 401, 403, 404, 500]
+                except json.JSONDecodeError:
+                    log.warning(f"[HealthCheck] Invalid outline_link JSON for {server.name}")
+                    return False
             else:
                 # VLESS/Shadowsocks - check x-ui panel
                 # Extract IP without port if present
@@ -1425,10 +1438,12 @@ async def check_server_available(server) -> bool:
                     return resp.status == 200
 
     except asyncio.TimeoutError:
-        log.warning(f"[HealthCheck] Timeout checking server: {getattr(server, 'name', server.get('name', 'unknown'))}")
+        server_name = server.name if hasattr(server, 'name') else server.get('name', 'unknown')
+        log.warning(f"[HealthCheck] Timeout checking server: {server_name}")
         return False
     except Exception as e:
-        log.warning(f"[HealthCheck] Error checking server {getattr(server, 'name', server.get('name', 'unknown'))}: {e}")
+        server_name = server.name if hasattr(server, 'name') else (server.get('name', 'unknown') if isinstance(server, dict) else 'unknown')
+        log.warning(f"[HealthCheck] Error checking server {server_name}: {e}")
         return False
 
 
