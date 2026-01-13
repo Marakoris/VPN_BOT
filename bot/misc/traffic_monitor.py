@@ -947,10 +947,11 @@ async def send_daily_stats(bot) -> None:
         "netherlands2": "NL Нидерланды-2",
         "netherlands3": "NL Нидерланды-3",
         "spain": "ES Испания",
+        "usa": "US США",
         "bypass_yc": "🇷🇺 RU-bypass (→NL)"
     }
 
-    for server_key in ["germany", "netherlands", "netherlands2", "netherlands3", "bypass_yc"]:
+    for server_key in ["germany", "netherlands", "netherlands2", "netherlands3", "spain", "usa", "bypass_yc"]:
         if server_key in speed_results.get("servers", {}):
             data = speed_results["servers"][server_key]
             download = data.get("download", 0)
