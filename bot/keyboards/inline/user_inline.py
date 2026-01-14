@@ -349,7 +349,7 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
             share_text = "🔒 Лучший VPN для обхода блокировок! Попробуй:"
             share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
             kb.button(
-                text="👥 Пригласить друга",
+                text="💸 Делись — получай 50%",
                 url=share_url
             )
         except Exception:
