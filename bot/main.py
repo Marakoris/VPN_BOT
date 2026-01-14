@@ -27,7 +27,7 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
-from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, check_servers_health
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, check_and_notify_bypass_traffic, reset_monthly_bypass_traffic
 from bot.misc.util import CONFIG
 
 
@@ -71,8 +71,8 @@ async def start_bot():
         'default': SQLAlchemyJobStore(url=database_url)
     }
 
-    # Добавляем задачу для обработки подписок
-    scheduler.add_job(process_subscriptions, "interval", seconds=15, args=(bot, CONFIG,))
+    # Добавляем задачу для обработки подписок (увеличен интервал с 15с до 60с для снижения нагрузки)
+    scheduler.add_job(process_subscriptions, "interval", seconds=60, args=(bot, CONFIG,))
 
     # Добавляем задачу для бэкапов
     # scheduler.add_job(
@@ -92,16 +92,14 @@ async def start_bot():
         replace_existing=True
     )
 
-    # Добавляем задачу для загрузки на FTP (каждое число месяца)
-    # ОТКЛЮЧЕНО: вызывает ошибки на тестовом сервере
-    # scheduler.add_job(
-    #     backup_and_upload_task,
-    #     trigger=CronTrigger(hour=14, minute=0),  # 1-го числа каждого месяца в 00:00
-    #     # trigger=CronTrigger(second=10),
-    #     args=(bot,),
-    #     id='backup_and_upload_task',  # Уникальный идентификатор задачи
-    #     replace_existing=True  # Заменяет задачу, если она уже существует
-    # )
+    # Добавляем задачу для бэкапа БД + загрузки на SFTP (ежедневно в 14:00 MSK)
+    scheduler.add_job(
+        backup_and_upload_task,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=14, minute=0),
+        args=(bot,),
+        id='backup_and_upload_task',
+        replace_existing=True
+    )
 
     # Добавляем задачу мониторинга трафика (каждый час)
     async def traffic_monitor_job():
@@ -123,6 +121,26 @@ async def start_bot():
         replace_existing=True
     )
 
+    # Проверка bypass трафика и уведомления (каждый час в :30)
+    async def bypass_traffic_check_job():
+        await check_and_notify_bypass_traffic(bot)
+
+    scheduler.add_job(
+        bypass_traffic_check_job,
+        trigger=CronTrigger(minute=30),  # Каждый час в :30
+        id='bypass_traffic_check',
+        replace_existing=True
+    )
+
+    # Ежемесячный сброс bypass трафика (каждый день в 00:10)
+    scheduler.add_job(
+        reset_monthly_bypass_traffic,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=0, minute=10),
+        id='monthly_bypass_traffic_reset',
+        replace_existing=True
+    )
+
+
     # Напоминание о настройке VPN для неактивных пользователей (каждый день в 10:00)
     async def setup_reminder_job():
         await send_setup_reminders(bot)
@@ -131,6 +149,36 @@ async def start_bot():
         setup_reminder_job,
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=10, minute=0),
         id='setup_reminder',
+        replace_existing=True
+    )
+
+    # Re-engagement напоминания (каждый день в 11:00)
+    async def reengagement_job():
+        await send_reengagement_reminders(bot)
+
+    scheduler.add_job(
+        reengagement_job,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=11, minute=0),
+        id='reengagement_reminder',
+        replace_existing=True
+    )
+
+    # Ежедневная статистика для админов (каждый день в 09:00)
+    async def daily_stats_job():
+        await send_daily_stats(bot)
+
+    scheduler.add_job(
+        daily_stats_job,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=9, minute=0),
+        id='daily_stats',
+        replace_existing=True
+    )
+
+    # Ежедневный snapshot трафика (в полночь)
+    scheduler.add_job(
+        snapshot_daily_traffic,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=0, minute=1),
+        id="traffic_snapshot",
         replace_existing=True
     )
 

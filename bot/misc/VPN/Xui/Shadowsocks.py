@@ -42,7 +42,7 @@ class Shadowsocks(XuiBase):
                 inbound_id=self.inbound_id,
                 email=email,
                 limit_ip=CONFIG.limit_ip,
-                total_gb=CONFIG.limit_GB * 1073741824
+                total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
             )
             print(f"[SS] add_client response: {response}")
 
@@ -56,7 +56,7 @@ class Shadowsocks(XuiBase):
                         inbound_id=self.inbound_id,
                         email=email,
                         limit_ip=CONFIG.limit_ip,
-                        total_gb=CONFIG.limit_GB * 1073741824
+                        total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
                     )
                     print(f"[SS] Second add_client response: {response}")
                 except Exception as del_error:

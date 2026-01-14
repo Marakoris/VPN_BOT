@@ -28,6 +28,7 @@ class XuiBase(BaseVpn, ABC):
         self.inbound_id = int(server.inbound_id)
         self.login_user = server.login
         self.password = server.password
+        self.traffic_limit = getattr(server, "traffic_limit", None)
 
     async def login(self):
         await self.xui.login(username=self.login_user, password=self.password)

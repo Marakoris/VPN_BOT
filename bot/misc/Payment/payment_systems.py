@@ -20,7 +20,7 @@ from bot.database.methods.update import (
 from bot.keyboards.reply.user_reply import balance_menu, back_menu
 from bot.misc.language import Localization, get_lang
 from bot.misc.loop import check_auto_renewal
-from bot.misc.traffic_monitor import reset_user_traffic
+from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
 from bot.misc.util import CONFIG
 from bot.misc.yandex_metrika import YandexMetrikaAPI
 
@@ -78,24 +78,9 @@ class PaymentSystem:
 
         # Сброс счётчика трафика при оплате
         await reset_user_traffic(self.user_id)
+        await reset_bypass_traffic(self.user_id)
 
         await add_retention_person(self.user_id, 1)
-
-        # Проверяем и отмечаем использование win-back промокода
-        try:
-            from bot.database.methods.winback import get_active_promo_for_user, apply_promo_discount
-            active_promo = await get_active_promo_for_user(self.user_id)
-            if active_promo:
-                # Если оплата со скидкой (цена меньше базовой), отмечаем промокод как использованный
-                if self.price_on_db and int(total_amount) < int(self.price_on_db):
-                    await apply_promo_discount(
-                        self.user_id,
-                        active_promo['code'],
-                        int(self.price_on_db)  # original price
-                    )
-                    log.info(f"Win-back promo {active_promo['code']} applied for user {self.user_id}")
-        except Exception as e:
-            log.warning(f"Error applying win-back promo: {e}")
 
         log.info(
             f"Adding payment with fields user_id {self.user_id}, total_amount {total_amount}, name_payment {name_payment}")
@@ -172,16 +157,21 @@ class PaymentSystem:
         await person_one_day_true(self.user_id)
 
         for admin_id in CONFIG.admins_ids:
-            text = Text(
-                _(
-                    'success_payment_exist_admin',
-                    await get_lang(admin_id)
-                ).format(
-                    full_name=self.user_full_name,
-                    user_id=self.user_id,
-                    count_m=self.days_count
-                )
-            )
+            # Формируем сообщение с UTM-меткой
+            utm_info = ""
+            if person and person.client_id:
+                utm_info = f"\n📊 UTM: {person.client_id}"
+
+            admin_message = _(
+                'success_payment_exist_admin',
+                await get_lang(admin_id)
+            ).format(
+                full_name=self.user_full_name,
+                user_id=self.user_id,
+                count_m=self.days_count
+            ) + utm_info
+
+            text = Text(admin_message)
             try:
                 await self.message.bot.send_message(
                     admin_id,

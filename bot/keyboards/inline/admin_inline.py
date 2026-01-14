@@ -599,6 +599,12 @@ async def admin_show_users_inline_menu(lang) -> InlineKeyboardMarkup:
     )
     kb.row(
         InlineKeyboardButton(
+            text="🗽 Трафик БС",
+            callback_data=AdminMenuNav(menu='show_users', action='traffic_bypass').pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
             text="⬅️ Назад",
             callback_data=AdminMenuNav(menu='main').pack()
         )

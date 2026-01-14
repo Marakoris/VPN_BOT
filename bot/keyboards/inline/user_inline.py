@@ -339,7 +339,7 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
     # 5. Помощь
     kb.button(
         text="❓ Помощь и поддержка",
-        callback_data=MainMenuAction(action='help')
+        url="https://t.me/VPN_YouSupport_bot"
     )
 
     # 6. Пригласить друга (реферальная ссылка)

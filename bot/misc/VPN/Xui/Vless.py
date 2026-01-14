@@ -33,7 +33,7 @@ class Vless(XuiBase):
                 email=email,
                 uuid=str(uuid.uuid4()),
                 limit_ip=CONFIG.limit_ip,
-                total_gb=CONFIG.limit_GB * 1073741824,
+                total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824,
                 flow="xtls-rprx-vision"  # Добавлено для защиты от DPI
             )
             # Логируем ответ для отладки

@@ -12,7 +12,7 @@ from bot.database.methods.get import (
     get_person
 )
 from bot.database.methods.update import (
-    person_banned_true,
+    person_subscription_expired_true,
     person_one_day_true,
     person_two_days_true,
     person_three_days_true,
@@ -21,7 +21,7 @@ from bot.database.methods.update import (
 )
 from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.subscription import activate_subscription
-from bot.misc.traffic_monitor import reset_user_traffic
+from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
 from bot.misc.language import Localization, get_lang
 from bot.misc.util import CONFIG
 from bot.keyboards.inline.user_inline import renew
@@ -73,7 +73,7 @@ async def check_date(person, bot: Bot):
                 if last_notification == 0 and person.server is not None:
                     await delete_key(person)
 
-                await person_banned_true(person.tgid)
+                await person_subscription_expired_true(person.tgid)
 
                 # Build full payment keyboard (with super offer + prices + oferta)
                 kb = await renew(CONFIG, person.lang, person.tgid, person.payment_method_id)
@@ -190,6 +190,7 @@ async def check_auto_renewal(person, bot, text):
                     # Сброс счётчика трафика при продлении через баланс
                     try:
                         await reset_user_traffic(person.tgid)
+                        await reset_bypass_traffic(person.tgid)
                         log.info(f"[Balance Autopay] Traffic reset for user {person.tgid}")
                     except Exception as e:
                         log.error(f"[Balance Autopay] Failed to reset traffic for user {person.tgid}: {e}")

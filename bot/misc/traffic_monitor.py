@@ -1378,17 +1378,282 @@ async def get_bypass_traffic(telegram_id: int) -> Dict:
         return None
 
 
+
+
+# Bypass server constants (module level for notifications)
+BYPASS_URL = "http://84.201.128.231:2053"
+BYPASS_LOGIN = "admin"
+BYPASS_PASSWORD = "AdminPass123"
+BYPASS_LIMIT_GB = 10  # 10 GB limit
+BYPASS_LIMIT_BYTES = BYPASS_LIMIT_GB * 1024 * 1024 * 1024  # 10737418240 bytes
+BYPASS_RESET_DAYS = 30  # Reset every 30 days
+
+
+async def get_all_bypass_traffic() -> Dict[int, int]:
+    """
+    Get traffic for ALL users from bypass server.
+    Returns: {telegram_id: total_bytes}
+    """
+    import aiohttp
+
+    result = {}
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        jar = aiohttp.CookieJar(unsafe=True)
+        async with aiohttp.ClientSession(timeout=timeout, cookie_jar=jar) as session:
+            # Login
+            login_data = {"username": BYPASS_LOGIN, "password": BYPASS_PASSWORD}
+            async with session.post(f"{BYPASS_URL}/login", data=login_data) as resp:
+                if resp.status != 200:
+                    log.warning(f"[bypass_traffic] Login failed, status: {resp.status}")
+                    return result
+
+            # Get inbounds
+            async with session.get(f"{BYPASS_URL}/panel/api/inbounds/list") as resp:
+                if resp.status != 200:
+                    log.warning(f"[bypass_traffic] Inbounds request failed, status: {resp.status}")
+                    return result
+                data = await resp.json()
+
+            if not data.get("success"):
+                log.warning(f"[bypass_traffic] API returned success=false")
+                return result
+
+            # Collect all users traffic
+            for inbound in data.get("obj", []):
+                for client in inbound.get("clientStats", []):
+                    email = client.get("email", "")
+                    if email.endswith("_vless"):
+                        try:
+                            tgid = int(email.replace("_vless", ""))
+                            up = client.get("up", 0) or 0
+                            down = client.get("down", 0) or 0
+                            result[tgid] = up + down
+                        except ValueError:
+                            pass
+
+            log.info(f"[bypass_traffic] Fetched traffic for {len(result)} users")
+            return result
+
+    except Exception as e:
+        log.error(f"[bypass_traffic] Error fetching all traffic: {e}")
+        return result
+
+
+async def check_and_notify_bypass_traffic(bot) -> Dict[str, int]:
+    """
+    Check bypass traffic for all users and send notifications at 50%, 70%, 90%, 100%.
+    Called by scheduler every hour.
+    Returns statistics.
+    """
+    from bot.misc.util import CONFIG
+
+    stats = {'checked': 0, 'notified_50': 0, 'notified_70': 0, 'notified_90': 0, 'blocked': 0, 'errors': 0}
+    now = datetime.utcnow()
+
+    # Get all bypass traffic at once
+    bypass_traffic = await get_all_bypass_traffic()
+
+    if not bypass_traffic:
+        log.info("[bypass_traffic] No bypass traffic data or no users")
+        return stats
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Get all active users
+        stmt = select(Persons).filter(
+            Persons.subscription_active == True,
+            Persons.tgid.in_(bypass_traffic.keys())
+        )
+        result = await db.execute(stmt)
+        users = result.scalars().all()
+
+        for user in users:
+            stats['checked'] += 1
+
+            try:
+                total = bypass_traffic.get(user.tgid, 0)
+                offset = user.bypass_offset_bytes or 0
+                current = max(0, total - offset)
+                percent = (current / BYPASS_LIMIT_BYTES * 100) if BYPASS_LIMIT_BYTES > 0 else 0
+
+                # Update traffic in DB
+                user.bypass_traffic_bytes = total
+
+                # Calculate days until reset
+                days_until_reset = BYPASS_RESET_DAYS
+                if user.bypass_reset_date:
+                    reset_date = user.bypass_reset_date
+                    if reset_date.tzinfo is not None:
+                        reset_date = reset_date.replace(tzinfo=None)
+                    next_reset = reset_date + timedelta(days=BYPASS_RESET_DAYS)
+                    delta = next_reset - now
+                    days_until_reset = max(0, delta.days)
+
+                remaining = max(0, BYPASS_LIMIT_BYTES - current)
+
+                # Check thresholds and send notifications
+                # 100% - block
+                if percent >= 100:
+                    if not getattr(user, '_bypass_blocked_notified', False):
+                        log.warning(f"[bypass_traffic] User {user.tgid} exceeded 100%: {format_bytes(current)}")
+                        try:
+                            await bot.send_message(
+                                user.tgid,
+                                f"🚫 <b>Лимит трафика на сервере Обхода исчерпан!</b>\n\n"
+                                f"Использовано: {format_bytes(current)} / {format_bytes(BYPASS_LIMIT_BYTES)} (100%)\n\n"
+                                f"Доступ к серверу Обхода отключён.\n\n"
+                                f"✅ <b>Основные VPN серверы (Германия, Нидерланды) — продолжают работать!</b>\n\n"
+                                f"💡 Оплатите подписку чтобы сбросить лимит и восстановить доступ."
+                            )
+                            stats['blocked'] += 1
+                        except Exception as e:
+                            log.error(f"[bypass_traffic] Failed to notify user {user.tgid} about 100%: {e}")
+
+                # 90% warning
+                elif percent >= 90 and not user.bypass_warning_90_sent:
+                    log.info(f"[bypass_traffic] Sending 90% warning to user {user.tgid}")
+                    try:
+                        await bot.send_message(
+                            user.tgid,
+                            f"🚨 <b>Критично! Лимит почти исчерпан</b>\n\n"
+                            f"Использовано: {format_bytes(current)} / {format_bytes(BYPASS_LIMIT_BYTES)} (90%)\n"
+                            f"Осталось: {format_bytes(remaining)}\n\n"
+                            f"При исчерпании лимита сервер Обхода будет отключён.\n\n"
+                            f"💡 Оплатите подписку чтобы сбросить лимит.\n"
+                            f"Или подождите {days_until_reset} дней до автоматического сброса."
+                        )
+                        user.bypass_warning_90_sent = True
+                        stats['notified_90'] += 1
+                    except Exception as e:
+                        log.error(f"[bypass_traffic] Failed to send 90% warning to {user.tgid}: {e}")
+
+                # 70% warning
+                elif percent >= 70 and not user.bypass_warning_70_sent:
+                    log.info(f"[bypass_traffic] Sending 70% warning to user {user.tgid}")
+                    try:
+                        await bot.send_message(
+                            user.tgid,
+                            f"⚠️ <b>Внимание! Лимит почти израсходован</b>\n\n"
+                            f"Использовано: {format_bytes(current)} / {format_bytes(BYPASS_LIMIT_BYTES)} (70%)\n"
+                            f"Осталось: {format_bytes(remaining)}\n\n"
+                            f"ℹ️ Это лимит сервера Обхода (для белых списков РФ).\n"
+                            f"При исчерпании — сервер Обхода будет недоступен.\n"
+                            f"Основные VPN серверы продолжат работать без ограничений.\n\n"
+                            f"Сброс через {days_until_reset} дней или при оплате подписки."
+                        )
+                        user.bypass_warning_70_sent = True
+                        stats['notified_70'] += 1
+                    except Exception as e:
+                        log.error(f"[bypass_traffic] Failed to send 70% warning to {user.tgid}: {e}")
+
+                # 50% warning
+                elif percent >= 50 and not user.bypass_warning_50_sent:
+                    log.info(f"[bypass_traffic] Sending 50% warning to user {user.tgid}")
+                    try:
+                        await bot.send_message(
+                            user.tgid,
+                            f"📊 <b>Лимит трафика на сервере Обхода</b>\n\n"
+                            f"Использовано: {format_bytes(current)} / {format_bytes(BYPASS_LIMIT_BYTES)} (50%)\n\n"
+                            f"ℹ️ Это лимит для сервера, который работает внутри России.\n"
+                            f"Основные серверы VPN (Германия, Нидерланды) — без ограничений.\n\n"
+                            f"Лимит сбрасывается через {days_until_reset} дней или при оплате подписки."
+                        )
+                        user.bypass_warning_50_sent = True
+                        stats['notified_50'] += 1
+                    except Exception as e:
+                        log.error(f"[bypass_traffic] Failed to send 50% warning to {user.tgid}: {e}")
+
+            except Exception as e:
+                log.error(f"[bypass_traffic] Error processing user {user.tgid}: {e}")
+                stats['errors'] += 1
+
+        await db.commit()
+
+    log.info(f"[bypass_traffic] Check complete: {stats}")
+    return stats
+
+
+async def reset_bypass_traffic(telegram_id: int) -> bool:
+    """
+    Reset bypass traffic counter for a user (called after payment).
+    Sets offset to current total, so "current traffic" starts from 0.
+    """
+    try:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            stmt = select(Persons).where(Persons.tgid == telegram_id)
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
+
+            if user:
+                current_total = user.bypass_traffic_bytes or 0
+                user.bypass_offset_bytes = current_total
+                user.bypass_reset_date = datetime.now(timezone.utc)
+                # Reset warning flags
+                user.bypass_warning_50_sent = False
+                user.bypass_warning_70_sent = False
+                user.bypass_warning_90_sent = False
+                await db.commit()
+
+                log.info(f"[bypass_traffic] Reset for user {telegram_id}: offset set to {format_bytes(current_total)}")
+                return True
+            else:
+                log.warning(f"[bypass_traffic] User {telegram_id} not found for reset")
+                return False
+
+    except Exception as e:
+        log.error(f"[bypass_traffic] Error resetting for user {telegram_id}: {e}")
+        return False
+
+
+async def reset_monthly_bypass_traffic() -> Dict[str, int]:
+    """
+    Reset bypass traffic for users whose last reset was more than 30 days ago.
+    Called daily by scheduler.
+    """
+    stats = {'checked': 0, 'reset': 0, 'errors': 0}
+    now = datetime.utcnow()
+    reset_threshold = now - timedelta(days=BYPASS_RESET_DAYS)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Get all users with active subscriptions and bypass traffic
+        stmt = select(Persons).filter(
+            Persons.subscription_active == True,
+            Persons.bypass_traffic_bytes > 0
+        )
+        result = await db.execute(stmt)
+        users = result.scalars().all()
+
+        for user in users:
+            stats['checked'] += 1
+            try:
+                last_reset = user.bypass_reset_date
+
+                # Reset if: no reset date OR reset was more than 30 days ago
+                if last_reset is None or (last_reset.replace(tzinfo=None) if last_reset.tzinfo else last_reset) < reset_threshold:
+                    current_total = user.bypass_traffic_bytes or 0
+                    user.bypass_offset_bytes = current_total
+                    user.bypass_reset_date = now
+                    # Reset warning flags
+                    user.bypass_warning_50_sent = False
+                    user.bypass_warning_70_sent = False
+                    user.bypass_warning_90_sent = False
+                    stats['reset'] += 1
+                    log.info(f"[bypass_traffic] Monthly reset for user {user.tgid}: offset set to {format_bytes(current_total)}")
+
+            except Exception as e:
+                log.error(f"[bypass_traffic] Error in monthly reset for user {user.tgid}: {e}")
+                stats['errors'] += 1
+
+        await db.commit()
+
+    log.info(f"[bypass_traffic] Monthly reset complete: {stats}")
+    return stats
+
 # ==================== SERVER HEALTH MONITORING ====================
 
 # Global dict to track server status (to detect changes)
 _server_status: Dict[str, bool] = {}
-
-# Bypass server config
-BYPASS_SERVER = {
-    "name": "🗽 Bypass (Yandex Cloud)",
-    "url": "http://84.201.128.231:2053",
-    "type": "x-ui"
-}
 
 
 async def check_server_available(server) -> bool:
@@ -1476,6 +1741,7 @@ async def check_server_with_retries(server, max_retries: int = 3, retry_delay: i
 async def check_servers_health(bot) -> Dict[str, any]:
     """
     Check health of all VPN servers and send alerts on status changes.
+    Groups servers by IP - one notification per physical server.
     Returns statistics: {'checked': N, 'online': N, 'offline': N, 'alerts_sent': N}
     """
     global _server_status
@@ -1483,39 +1749,37 @@ async def check_servers_health(bot) -> Dict[str, any]:
     stats = {'checked': 0, 'online': 0, 'offline': 0, 'alerts_sent': 0}
     from bot.misc.util import CONFIG
 
-    servers_to_check = []
-
     # Get all servers from database
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Servers).filter(Servers.work == True).order_by(Servers.id)
         result = await db.execute(stmt)
         db_servers = result.scalars().all()
 
-        for srv in db_servers:
-            servers_to_check.append({
-                "id": f"db_{srv.id}",
-                "name": srv.name,
-                "server": srv,
-                "type": "database"
-            })
+    # Group servers by base IP (without port)
+    servers_by_ip = {}
+    for srv in db_servers:
+        # Extract base IP (remove port if present)
+        base_ip = srv.ip.split(':')[0] if srv.ip else "unknown"
+        if base_ip not in servers_by_ip:
+            servers_by_ip[base_ip] = []
+        servers_by_ip[base_ip].append(srv)
 
-    # Add bypass server
-    servers_to_check.append({
-        "id": "bypass",
-        "name": BYPASS_SERVER["name"],
-        "server": BYPASS_SERVER,
-        "type": "bypass"
-    })
-
-    # Check each server
-    for srv_info in servers_to_check:
+    # Check each physical server (by IP)
+    for base_ip, servers in servers_by_ip.items():
         stats['checked'] += 1
-        server_id = srv_info["id"]
-        server_name = srv_info["name"]
-        server = srv_info["server"]
 
-        # Check availability
-        is_available = await check_server_with_retries(server)
+        # Check if ANY server on this IP is available
+        is_available = False
+        server_names = []
+
+        for srv in servers:
+            server_names.append(srv.name)
+            if await check_server_with_retries(srv):
+                is_available = True
+                break  # One successful check is enough
+
+        # Use IP as unique identifier for status tracking
+        server_id = f"ip_{base_ip}"
 
         # Get previous status (default to True = was online)
         prev_status = _server_status.get(server_id, True)
@@ -1523,19 +1787,29 @@ async def check_servers_health(bot) -> Dict[str, any]:
         # Update current status
         _server_status[server_id] = is_available
 
+        # Format server names for notification
+        if len(server_names) == 1:
+            display_name = server_names[0]
+        else:
+            display_name = server_names[0]  # Main name
+            # Add note about other services
+            other_count = len(server_names) - 1
+            display_name += f" (+{other_count} сервис{'а' if other_count < 5 else 'ов'})"
+
         if is_available:
             stats['online'] += 1
 
             # Server came back online
             if not prev_status:
-                log.info(f"[HealthCheck] ✅ Server {server_name} is back ONLINE")
+                log.info(f"[HealthCheck] ✅ Server {base_ip} is back ONLINE")
                 # Send recovery alert
                 for admin_id in CONFIG.admins_ids:
                     try:
                         await bot.send_message(
                             admin_id,
                             f"✅ <b>Сервер снова онлайн!</b>\n\n"
-                            f"🖥 {server_name}\n"
+                            f"🖥 {display_name}\n"
+                            f"🌐 {base_ip}\n"
                             f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}"
                         )
                         stats['alerts_sent'] += 1
@@ -1546,14 +1820,15 @@ async def check_servers_health(bot) -> Dict[str, any]:
 
             # Server went down
             if prev_status:
-                log.warning(f"[HealthCheck] 🚨 Server {server_name} is DOWN!")
+                log.warning(f"[HealthCheck] 🚨 Server {base_ip} is DOWN!")
                 # Send alert
                 for admin_id in CONFIG.admins_ids:
                     try:
                         await bot.send_message(
                             admin_id,
                             f"🚨 <b>СЕРВЕР НЕДОСТУПЕН!</b>\n\n"
-                            f"🖥 {server_name}\n"
+                            f"🖥 {display_name}\n"
+                            f"🌐 {base_ip}\n"
                             f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n\n"
                             f"⚠️ Проверьте сервер!"
                         )
@@ -1562,12 +1837,10 @@ async def check_servers_health(bot) -> Dict[str, any]:
                         log.error(f"[HealthCheck] Failed to send alert to {admin_id}: {e}")
             else:
                 # Still offline, log but don't spam
-                log.debug(f"[HealthCheck] Server {server_name} still offline")
+                log.debug(f"[HealthCheck] Server {base_ip} still offline")
 
     log.info(f"[HealthCheck] Complete: {stats}")
     return stats
-
-
 async def get_servers_status() -> List[Dict]:
     """
     Get current status of all servers (for admin panel).
@@ -1602,15 +1875,5 @@ async def get_servers_status() -> List[Dict]:
                 "online": is_online,
                 "status": "✅" if is_online else ("❌" if is_online is False else "❓")
             })
-
-    # Add bypass server
-    bypass_online = _server_status.get("bypass", None)
-    result.append({
-        "id": "bypass",
-        "name": BYPASS_SERVER["name"],
-        "type": "🗽",
-        "online": bypass_online,
-        "status": "✅" if bypass_online else ("❌" if bypass_online is False else "❓")
-    })
 
     return result

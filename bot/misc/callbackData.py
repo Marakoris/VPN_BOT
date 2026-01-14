@@ -148,3 +148,7 @@ class AdminMenuNav(CallbackData, prefix='admin_nav'):
     """Navigation for admin inline menu"""
     menu: str  # 'main', 'users', 'servers', 'promo', 'referral', 'mailing', 'groups', 'super_offer', 'regenerate', 'static_users', 'show_users'
     action: Optional[str] = None  # Additional action if needed
+
+
+class TrafficSourceSurvey(CallbackData, prefix='traffic_src'):
+    source: str  # telegram_search, friend, forum, ads, other

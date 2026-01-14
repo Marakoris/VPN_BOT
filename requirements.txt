@@ -7,7 +7,7 @@ annotated-types==0.6.0
 APScheduler==3.10.4
 async-timeout==4.0.3
 outline-vpn-api-async==0.1.1
-pyxui-async==1.0.0
+pyxui-async==1.0.4
 SQLAlchemy==2.0.23
 aiolavapy==0.1.2
 yookassa-async==0.1.5
@@ -24,3 +24,4 @@ docker~=7.1.0
 asyncssh~=2.19.0
 pandas~=2.2.3
 XlsxWriter~=3.2.2
+psycopg2-binary

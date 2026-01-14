@@ -242,8 +242,8 @@ async def get_subscription(token: str, request: Request):
                 return ""
 
             # 5. Check which servers have keys for this user (PARALLEL with early return)
-            SERVER_TIMEOUT = 1.5  # seconds per server (reduced for Happ compatibility)
-            TOTAL_TIMEOUT = 3     # max total time for all servers
+            SERVER_TIMEOUT = 3  # seconds per server (reduced for Happ compatibility)
+            TOTAL_TIMEOUT = 8     # max total time for all servers
 
             async def check_server(server):
                 """Check if user has key on server and generate config"""
@@ -305,6 +305,10 @@ async def get_subscription(token: str, request: Request):
 
             # Use results directly (already filtered)
             config_lines = results
+            # Reality bypass for Beeline whitelist user
+            if user.tgid in [870499087, 464180877]:
+                # Bypass servers with tunnel.vk-apps.com SNI (Beeline whitelist)
+                log.info(f"[Subscription API] Added 3 Reality bypass servers for user {user.tgid}")
 
             if not config_lines:
                 log.warning(f"[Subscription API] No keys found for user {user.tgid}")

@@ -20,7 +20,7 @@ from bot.database.methods.update import (
     person_subscription_expired_false, increment_autopay_retry, reset_autopay_retry
 )
 from bot.misc.subscription import activate_subscription
-from bot.misc.traffic_monitor import reset_user_traffic
+from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
 from bot.database.models.main import Persons
 from bot.keyboards.reply.user_reply import user_menu
 from bot.misc.Payment.KassaSmart import KassaSmart
@@ -275,6 +275,7 @@ async def process_subscriptions(bot: Bot, config):
 
                     try:
                         await reset_user_traffic(person.tgid)
+                        await reset_bypass_traffic(person.tgid)
                         log.info(f"[Autopay] Traffic reset for user {person.tgid}")
                     except Exception as e:
                         log.error(f"[Autopay] Failed to reset traffic for user {person.tgid}: {e}")

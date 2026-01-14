@@ -144,6 +144,53 @@ def verify_subscription_token(token: str) -> Optional[int]:
         return None
 
 
+# ==================== ACTIVATION ALERTS ====================
+
+async def _send_activation_alert(user_id: int, username: str, success_count: int, error_count: int, servers, results):
+    """Send alert to admins when subscription activation has errors."""
+    try:
+        from aiogram import Bot
+        from bot.misc.util import CONFIG
+        
+        # Build error details
+        failed_servers = []
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                failed_servers.append(f"❌ {servers[i].name}: {str(res)[:50]}")
+            elif not res[1]:  # success = False
+                srv = next((s for s in servers if s.id == res[0]), None)
+                if srv:
+                    failed_servers.append(f"❌ {srv.name}: Failed")
+        
+        username_str = f"@{username}" if username else "без username"
+        
+        message = f"""⚠️ Ошибка создания ключей
+
+👤 Пользователь: {username_str}
+🆔 ID: {user_id}
+
+📊 Результат: {success_count} ✅ / {error_count} ❌
+
+Проблемные серверы:
+""" + "\n".join(failed_servers[:10])
+        
+        if len(failed_servers) > 10:
+            message += f"\n... и ещё {len(failed_servers) - 10}"
+        
+        bot = Bot(token=CONFIG.tg_token)
+        try:
+            for admin_id in CONFIG.admins_ids:
+                try:
+                    await bot.send_message(admin_id, message)
+                except Exception as e:
+                    log.error(f"[Subscription Alert] Failed to send to admin {admin_id}: {e}")
+        finally:
+            await bot.session.close()
+            
+    except Exception as e:
+        log.error(f"[Subscription Alert] Error sending alert: {e}")
+
+
 # ==================== SUBSCRIPTION ACTIVATION ====================
 
 async def _activate_on_server(server, user_id: int) -> tuple:
@@ -155,7 +202,18 @@ async def _activate_on_server(server, user_id: int) -> tuple:
         server_manager = ServerManager(server)
         await server_manager.login()
 
-        # Check if key already exists on server
+        # Try to delete old key (without suffix) if exists
+        # This cleans up legacy keys from old system
+        try:
+            await server_manager.client.xui.delete_client(
+                inbound_id=server_manager.client.inbound_id,
+                email=str(user_id)  # Old format without suffix
+            )
+            log.debug(f"[Subscription] Deleted old key for user {user_id} on server {server.id}")
+        except Exception:
+            pass  # Old key doesn't exist, that's fine
+
+        # Check if key already exists on server (new format with suffix)
         existing_client = await server_manager.get_user(user_id)
 
         if not existing_client:
@@ -298,6 +356,17 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                         f"[Subscription] ✅ Activated for user {user_id}: "
                         f"{success_count} success, {error_count} errors (parallel)"
                     )
+
+                    # Send alert to admins if there were errors
+                    if error_count > 0:
+                        await _send_activation_alert(
+                            user_id=user_id,
+                            username=user.username,
+                            success_count=success_count,
+                            error_count=error_count,
+                            servers=servers,
+                            results=results
+                        )
 
                     return token
 
