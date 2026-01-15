@@ -195,6 +195,21 @@ class DailyStatistics(Base):
     referral_balance_sum = Column(BigInteger, nullable=False, default=0)
 
 
+class DailyTrafficLog(Base):
+    """Лог ежедневной активности по трафику VPN.
+    Записывается в полночь для всех, кто использовал VPN за день.
+    """
+    __tablename__ = "daily_traffic_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False, index=True)  # tgid пользователя
+    date = Column(Date, nullable=False, index=True)  # Дата активности
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'date', name='uq_user_date'),
+    )
+
+
 class AffiliateStatistics(Base):
     __tablename__ = "affiliate_statistics"
 

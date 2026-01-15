@@ -768,36 +768,34 @@ async def send_daily_stats(bot) -> None:
         new_not_used = new_trial - new_used_vpn
 
         # === NEW: Activity stats ===
-        now_ts = int(datetime.utcnow().timestamp())
-        today_start_ts = int(today_start.timestamp())
-        week_ago = today_start - timedelta(days=7)
-        week_ago_ts = int(week_ago.timestamp())
+        from bot.database.models.main import DailyTrafficLog
 
-        # Active subscribers total
+        now_ts = int(datetime.utcnow().timestamp())
+        week_ago = today_start - timedelta(days=7)
+
+        # Сегодня: по traffic_last_change (накопительное за текущий день)
         active_with_traffic_today = await db.execute(
             select(func.count()).select_from(Persons).filter(
-                Persons.subscription > now_ts,
                 Persons.traffic_last_change >= today_start,
                 (Persons.banned == False) | (Persons.banned == None)
             )
         )
         active_with_traffic_today = active_with_traffic_today.scalar() or 0
 
+        # Вчера: из таблицы daily_traffic_log (записано в полночь)
+        yesterday_date = (today_start - timedelta(days=1)).date()
         active_with_traffic_yesterday = await db.execute(
-            select(func.count()).select_from(Persons).filter(
-                Persons.subscription > now_ts,
-                Persons.traffic_last_change >= yesterday_start,
-                Persons.traffic_last_change < today_start,
-                (Persons.banned == False) | (Persons.banned == None)
+            select(func.count()).select_from(DailyTrafficLog).filter(
+                DailyTrafficLog.date == yesterday_date
             )
         )
         active_with_traffic_yesterday = active_with_traffic_yesterday.scalar() or 0
 
+        # За неделю: уникальные пользователи из daily_traffic_log за 7 дней
+        week_ago_date = (today_start - timedelta(days=7)).date()
         active_with_traffic_week = await db.execute(
-            select(func.count()).select_from(Persons).filter(
-                Persons.subscription > now_ts,
-                Persons.traffic_last_change >= week_ago,
-                (Persons.banned == False) | (Persons.banned == None)
+            select(func.count(func.distinct(DailyTrafficLog.user_id))).filter(
+                DailyTrafficLog.date >= week_ago_date
             )
         )
         active_with_traffic_week = active_with_traffic_week.scalar() or 0
@@ -830,18 +828,23 @@ async def send_daily_stats(bot) -> None:
         utm_data = utm_stats.all()
 
         # === Traffic source from survey (for users without UTM) ===
-        traffic_source_stats = await db.execute(
-            select(
-                Persons.traffic_source,
-                func.count()
-            ).filter(
-                Persons.first_interaction >= yesterday_start,
-                Persons.first_interaction < yesterday_end,
-                Persons.traffic_source != None,
-                (Persons.banned == False) | (Persons.banned == None)
-            ).group_by(Persons.traffic_source).order_by(func.count().desc())
-        )
-        traffic_source_data = traffic_source_stats.all()
+        # Note: traffic_source field may not exist in older DB schemas
+        try:
+            traffic_source_stats = await db.execute(
+                select(
+                    Persons.traffic_source,
+                    func.count()
+                ).filter(
+                    Persons.first_interaction >= yesterday_start,
+                    Persons.first_interaction < yesterday_end,
+                    Persons.traffic_source != None,
+                    (Persons.banned == False) | (Persons.banned == None)
+                ).group_by(Persons.traffic_source).order_by(func.count().desc())
+            )
+            traffic_source_data = traffic_source_stats.all()
+        except Exception as e:
+            log.warning(f"[DailyStats] traffic_source query failed (field may not exist): {e}")
+            traffic_source_data = []
 
         # Active subscriptions
         active_subs = await db.execute(
@@ -893,17 +896,34 @@ async def send_daily_stats(bot) -> None:
         without_traffic = active_subs - with_traffic
 
         # Traffic stats: total and daily
-        traffic_result = await db.execute(
-            select(
-                func.sum(Persons.total_traffic_bytes - Persons.traffic_offset_bytes),
-                func.sum(Persons.total_traffic_bytes - Persons.daily_traffic_start_bytes)
-            ).filter(
-                Persons.subscription_active == True
+        # Note: daily_traffic_start_bytes may not exist in older DB schemas
+        try:
+            traffic_result = await db.execute(
+                select(
+                    func.sum(Persons.total_traffic_bytes - Persons.traffic_offset_bytes),
+                    func.sum(Persons.total_traffic_bytes - Persons.daily_traffic_start_bytes)
+                ).filter(
+                    Persons.subscription_active == True
+                )
             )
-        )
-        traffic_row = traffic_result.one()
-        total_active_traffic = int(max(0, traffic_row[0] or 0))
-        daily_traffic_bytes = int(max(0, traffic_row[1] or 0))
+            traffic_row = traffic_result.one()
+            total_active_traffic = int(max(0, traffic_row[0] or 0))
+            daily_traffic_bytes = int(max(0, traffic_row[1] or 0))
+        except Exception as e:
+            log.warning(f"[DailyStats] Traffic stats query failed: {e}")
+            # Fallback: just get total traffic
+            try:
+                traffic_result = await db.execute(
+                    select(
+                        func.sum(Persons.total_traffic_bytes - Persons.traffic_offset_bytes)
+                    ).filter(
+                        Persons.subscription_active == True
+                    )
+                )
+                total_active_traffic = int(max(0, traffic_result.scalar() or 0))
+            except:
+                total_active_traffic = 0
+            daily_traffic_bytes = 0
 
     # Check subscription keys health
     keys_health = await check_subscription_keys_health()
@@ -1078,21 +1098,43 @@ async def send_daily_stats(bot) -> None:
 
 async def snapshot_daily_traffic():
     """
-    Save current traffic as daily_traffic_start_bytes for all users.
-    Should run at midnight to capture traffic at the start of each day.
+    Save daily traffic activity log for all users who used VPN today.
+    Should run at midnight to capture activity at the end of each day.
     """
-    from sqlalchemy import text
+    from datetime import date, datetime, timedelta
+    from bot.database.models.main import DailyTrafficLog
+
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Найти всех пользователей, у которых traffic_last_change был сегодня
         result = await db.execute(
-            text("""
-                UPDATE users 
-                SET daily_traffic_start_bytes = COALESCE(total_traffic_bytes, 0)
-                WHERE subscription_active = true
-            """)
+            select(Persons.tgid).filter(
+                Persons.traffic_last_change >= today_start,
+                (Persons.banned == False) | (Persons.banned == None)
+            )
         )
+        active_users = [row[0] for row in result.fetchall()]
+
+        # Записать в лог активности (INSERT ON CONFLICT DO NOTHING для PostgreSQL)
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        inserted = 0
+        for tgid in active_users:
+            try:
+                stmt = pg_insert(DailyTrafficLog).values(
+                    user_id=tgid,
+                    date=today
+                ).on_conflict_do_nothing(index_elements=['user_id', 'date'])
+                await db.execute(stmt)
+                inserted += 1
+            except Exception:
+                pass  # Ошибка вставки
+
         await db.commit()
-        log.info(f"[Traffic] Daily snapshot saved for {result.rowcount} users")
-        return result.rowcount
+        log.info(f"[Traffic] Daily activity log: {inserted} users recorded for {today}")
+        return inserted
 
 
 async def check_subscription_keys_health():
