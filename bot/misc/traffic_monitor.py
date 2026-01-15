@@ -943,14 +943,12 @@ async def send_daily_stats(bot) -> None:
     
     keys_section = "\n".join([
         format_keys_status("VLESS", keys_health["vless"]),
-        format_keys_status("SS", keys_health["ss"]),
         format_keys_status("Outline", keys_health["outline"])
     ])
-    
+
     # Check if there are problems
     keys_has_problems = (
-        keys_health["vless"]["missing"] > 0 or 
-        keys_health["ss"]["missing"] > 0 or 
+        keys_health["vless"]["missing"] > 0 or
         keys_health["outline"]["missing"] > 0
     )
     keys_header = "⚠️ Ключи подписки:" if keys_has_problems else "🔑 Ключи подписки:"
@@ -1317,7 +1315,6 @@ async def check_subscription_keys_health():
     
     result = {
         "vless": {"total": 0, "ok": 0, "missing": 0, "servers": 0},
-        "ss": {"total": 0, "ok": 0, "missing": 0, "servers": 0},
         "outline": {"total": 0, "ok": 0, "missing": 0, "servers": 0},
     }
     
@@ -1343,16 +1340,13 @@ async def check_subscription_keys_health():
             )
             servers = list(servers_result.scalars().all())
             
-            # Group servers by type
+            # Group servers by type (SS disabled)
             vless_servers = [s for s in servers if s.type_vpn == 1]
-            ss_servers = [s for s in servers if s.type_vpn == 2]
             outline_servers = [s for s in servers if s.type_vpn == 0]
-            
+
             result["vless"]["servers"] = len(vless_servers)
-            result["ss"]["servers"] = len(ss_servers)
             result["outline"]["servers"] = len(outline_servers)
             result["vless"]["total"] = len(active_tgids)
-            result["ss"]["total"] = len(active_tgids)
             result["outline"]["total"] = len(active_tgids)
             
             # Check VLESS
@@ -1374,27 +1368,7 @@ async def check_subscription_keys_health():
                     pass
             result["vless"]["ok"] = len(active_tgids & vless_clients)
             result["vless"]["missing"] = len(active_tgids - vless_clients)
-            
-            # Check SS
-            ss_clients = set()
-            for srv in ss_servers:
-                try:
-                    sm = ServerManager(srv)
-                    await sm.login()
-                    clients = await sm.get_all_user()
-                    if clients:
-                        for c in clients:
-                            email = c.get("email", "")
-                            if email.endswith("_ss"):
-                                try:
-                                    ss_clients.add(int(email[:-3]))
-                                except:
-                                    pass
-                except:
-                    pass
-            result["ss"]["ok"] = len(active_tgids & ss_clients)
-            result["ss"]["missing"] = len(active_tgids - ss_clients)
-            
+
             # Check Outline
             outline_clients = set()
             for srv in outline_servers:
