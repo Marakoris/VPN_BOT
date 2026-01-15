@@ -1006,10 +1006,26 @@ async def send_daily_stats(bot) -> None:
                 else:
                     speed_lines.append(f"  {status} {name}: {download:.0f} Mbps")
             else:
-                speed_lines.append(f"  ❓ {name}: нет данных")
+                # No iperf3 data, but check if local data exists
+                if local_download > 0:
+                    status = "✅" if local_download >= speed_threshold else "⚠️"
+                    if local_download < speed_threshold:
+                        speed_has_problems = True
+                    speed_lines.append(f"  {status} {name}: — / {local_download:.0f} Mbps")
+                else:
+                    speed_lines.append(f"  ❓ {name}: нет данных")
         else:
+            # No iperf3 data - check if local data exists
             name = server_names.get(server_key, server_key)
-            speed_lines.append(f"  ❓ {name}: нет данных")
+            local_key = f"{server_key}_local"
+            local_download = speed_results.get("servers", {}).get(local_key, {}).get("download", 0)
+            if local_download > 0:
+                status = "✅" if local_download >= speed_threshold else "⚠️"
+                if local_download < speed_threshold:
+                    speed_has_problems = True
+                speed_lines.append(f"  {status} {name}: — / {local_download:.0f} Mbps")
+            else:
+                speed_lines.append(f"  ❓ {name}: нет данных")
 
     speed_section = "\n".join(speed_lines) if speed_lines else "  нет данных"
     speed_header = "⚠️ Скорость (→RU / интернет):" if speed_has_problems else "🚀 Скорость (→RU / интернет):"
