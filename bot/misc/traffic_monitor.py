@@ -1098,43 +1098,202 @@ async def send_daily_stats(bot) -> None:
 
 async def snapshot_daily_traffic():
     """
-    Save daily traffic activity log for all users who used VPN today.
-    Should run at midnight to capture activity at the end of each day.
+    Save daily traffic log for all users, broken down by server.
+    Should run at midnight to capture traffic at the end of each day.
+    Records absolute traffic value per server - delta can be calculated from previous day.
     """
-    from datetime import date, datetime, timedelta
+    from datetime import date, datetime
     from bot.database.models.main import DailyTrafficLog
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     today = date.today()
-    today_start = datetime.combine(today, datetime.min.time())
+    stats = {'servers': 0, 'records': 0, 'users': set()}
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        # Найти всех пользователей, у которых traffic_last_change был сегодня
-        result = await db.execute(
-            select(Persons.tgid).filter(
-                Persons.traffic_last_change >= today_start,
-                (Persons.banned == False) | (Persons.banned == None)
-            )
+        # Get all active servers
+        stmt_servers = select(Servers).filter(
+            Servers.work == True,
+            Servers.type_vpn.in_([0, 1, 2])  # Outline, VLESS and Shadowsocks
         )
-        active_users = [row[0] for row in result.fetchall()]
+        result_servers = await db.execute(stmt_servers)
+        servers = result_servers.scalars().all()
 
-        # Записать в лог активности (INSERT ON CONFLICT DO NOTHING для PostgreSQL)
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-        inserted = 0
-        for tgid in active_users:
+        # Fetch traffic from each server
+        for server in servers:
+            stats['servers'] += 1
             try:
-                stmt = pg_insert(DailyTrafficLog).values(
-                    user_id=tgid,
-                    date=today
-                ).on_conflict_do_nothing(index_elements=['user_id', 'date'])
-                await db.execute(stmt)
-                inserted += 1
-            except Exception:
-                pass  # Ошибка вставки
+                server_traffic = await fetch_all_traffic_from_server(server)
+
+                if not server_traffic:
+                    continue
+
+                # Record traffic for each user on this server
+                for email, traffic_bytes in server_traffic.items():
+                    # Extract telegram_id from email (format: {tgid}_outline, {tgid}_vless or {tgid}_ss)
+                    tgid_str = email.split('_')[0] if '_' in email else email
+                    if not tgid_str.isdigit():
+                        continue
+
+                    tgid = int(tgid_str)
+
+                    if traffic_bytes <= 0:
+                        continue  # Skip users with no traffic
+
+                    try:
+                        # UPSERT: insert or update if exists
+                        stmt = pg_insert(DailyTrafficLog).values(
+                            user_id=tgid,
+                            date=today,
+                            server_id=server.id,
+                            traffic_bytes=traffic_bytes
+                        ).on_conflict_do_update(
+                            constraint='uq_user_date_server',
+                            set_={'traffic_bytes': traffic_bytes}
+                        )
+                        await db.execute(stmt)
+                        stats['records'] += 1
+                        stats['users'].add(tgid)
+                    except Exception as e:
+                        log.debug(f"[Traffic] Error recording for user {tgid} on server {server.name}: {e}")
+
+            except Exception as e:
+                log.warning(f"[Traffic] Error fetching from server {server.name}: {e}")
 
         await db.commit()
-        log.info(f"[Traffic] Daily activity log: {inserted} users recorded for {today}")
-        return inserted
+
+    log.info(f"[Traffic] Daily traffic log: {stats['records']} records for {len(stats['users'])} users across {stats['servers']} servers for {today}")
+    return stats['records']
+
+
+async def get_user_traffic_history(telegram_id: int, days: int = 7) -> Dict:
+    """
+    Get traffic history for a user broken down by server and protocol.
+
+    Returns:
+    {
+        'total': 12345678,  # Total bytes for period
+        'by_date': {
+            '2026-01-14': {'total': 1234, 'servers': {...}},
+            '2026-01-13': {'total': 5678, 'servers': {...}},
+        },
+        'by_server': {
+            'Germany VLESS': {'total': 1000, 'type': 1},
+            'Russia SS': {'total': 500, 'type': 2},
+        },
+        'by_protocol': {
+            'VLESS': 5000,
+            'Shadowsocks': 3000,
+            'Outline': 2000,
+        }
+    }
+    """
+    from datetime import date, timedelta
+    from bot.database.models.main import DailyTrafficLog
+
+    result = {
+        'total': 0,
+        'by_date': {},
+        'by_server': {},
+        'by_protocol': {'VLESS': 0, 'Shadowsocks': 0, 'Outline': 0}
+    }
+
+    start_date = date.today() - timedelta(days=days)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Get traffic logs with server info
+        stmt = select(
+            DailyTrafficLog.date,
+            DailyTrafficLog.server_id,
+            DailyTrafficLog.traffic_bytes,
+            Servers.name,
+            Servers.type_vpn
+        ).join(
+            Servers, DailyTrafficLog.server_id == Servers.id
+        ).filter(
+            DailyTrafficLog.user_id == telegram_id,
+            DailyTrafficLog.date >= start_date
+        ).order_by(DailyTrafficLog.date.desc())
+
+        rows = await db.execute(stmt)
+        data = rows.all()
+
+        # Also get previous day's data to calculate daily delta
+        prev_date = start_date - timedelta(days=1)
+        prev_stmt = select(
+            DailyTrafficLog.server_id,
+            DailyTrafficLog.traffic_bytes
+        ).filter(
+            DailyTrafficLog.user_id == telegram_id,
+            DailyTrafficLog.date == prev_date
+        )
+        prev_rows = await db.execute(prev_stmt)
+        prev_data = {row[0]: row[1] for row in prev_rows.all()}
+
+        # Process data
+        dates_seen = {}  # {(date, server_id): traffic}
+
+        for row in data:
+            log_date, server_id, traffic, server_name, type_vpn = row
+            date_str = log_date.strftime('%Y-%m-%d')
+
+            # Determine protocol name
+            if type_vpn == 0:
+                protocol = 'Outline'
+            elif type_vpn == 1:
+                protocol = 'VLESS'
+            else:
+                protocol = 'Shadowsocks'
+
+            # By date
+            if date_str not in result['by_date']:
+                result['by_date'][date_str] = {'total': 0, 'servers': {}}
+
+            # Calculate daily delta (current - previous day)
+            # For now, store absolute values - delta calculation needs consecutive days
+            result['by_date'][date_str]['servers'][server_name] = traffic
+            dates_seen[(log_date, server_id)] = traffic
+
+            # By server (cumulative)
+            if server_name not in result['by_server']:
+                result['by_server'][server_name] = {'total': 0, 'type': type_vpn}
+
+        # Calculate totals and deltas
+        # Sort dates to process in order
+        sorted_dates = sorted(result['by_date'].keys(), reverse=True)
+
+        for i, date_str in enumerate(sorted_dates):
+            day_data = result['by_date'][date_str]
+            day_total = 0
+
+            for server_name, traffic in day_data['servers'].items():
+                # For now, just use the absolute traffic value
+                # Daily delta would need yesterday's data for that server
+                day_total += traffic
+
+                # Update server total (use latest/max value)
+                if server_name in result['by_server']:
+                    result['by_server'][server_name]['total'] = max(
+                        result['by_server'][server_name]['total'],
+                        traffic
+                    )
+
+            day_data['total'] = day_total
+
+        # Calculate totals by protocol
+        for server_name, server_data in result['by_server'].items():
+            type_vpn = server_data['type']
+            traffic = server_data['total']
+
+            if type_vpn == 0:
+                result['by_protocol']['Outline'] += traffic
+            elif type_vpn == 1:
+                result['by_protocol']['VLESS'] += traffic
+            else:
+                result['by_protocol']['Shadowsocks'] += traffic
+
+        result['total'] = sum(result['by_protocol'].values())
+
+    return result
 
 
 async def check_subscription_keys_health():

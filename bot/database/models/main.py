@@ -196,17 +196,21 @@ class DailyStatistics(Base):
 
 
 class DailyTrafficLog(Base):
-    """Лог ежедневной активности по трафику VPN.
-    Записывается в полночь для всех, кто использовал VPN за день.
+    """Лог ежедневного трафика VPN по серверам.
+    Записывается в полночь для каждого сервера, где был трафик за день.
     """
     __tablename__ = "daily_traffic_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=False, index=True)  # tgid пользователя
     date = Column(Date, nullable=False, index=True)  # Дата активности
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete='CASCADE'), nullable=True, index=True)  # Сервер (NULL = старые записи)
+    traffic_bytes = Column(BigInteger, nullable=False, default=0)  # Трафик за день в байтах
+
+    server = relationship("Servers")
 
     __table_args__ = (
-        UniqueConstraint('user_id', 'date', name='uq_user_date'),
+        UniqueConstraint('user_id', 'date', 'server_id', name='uq_user_date_server'),
     )
 
 
