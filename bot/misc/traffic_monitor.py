@@ -1101,15 +1101,25 @@ async def snapshot_daily_traffic():
     Save daily traffic log for all users, broken down by server.
     Should run at midnight to capture traffic at the end of each day.
     Records absolute traffic value per server - delta can be calculated from previous day.
+    Also resets daily_traffic_start_bytes for daily stats calculation.
     """
     from datetime import date, datetime
     from bot.database.models.main import DailyTrafficLog
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     today = date.today()
-    stats = {'servers': 0, 'records': 0, 'users': set()}
+    stats = {'servers': 0, 'records': 0, 'users': set(), 'daily_reset': 0}
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Reset daily_traffic_start_bytes for all users (for daily stats)
+        reset_stmt = update(Persons).values(
+            daily_traffic_start_bytes=Persons.total_traffic_bytes
+        ).where(
+            Persons.subscription_active == True
+        )
+        result = await db.execute(reset_stmt)
+        stats['daily_reset'] = result.rowcount
+        log.info(f"[Traffic] Reset daily_traffic_start_bytes for {stats['daily_reset']} users")
         # Get all active servers
         stmt_servers = select(Servers).filter(
             Servers.work == True,
