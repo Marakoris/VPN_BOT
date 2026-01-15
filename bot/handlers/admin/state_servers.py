@@ -14,14 +14,15 @@ from bot.database.models.main import Servers
 from bot.handlers.admin.group_mangment import groups_obj_list
 from bot.keyboards.inline.admin_inline import (
     choosing_connection,
-    choosing_panel, choosing_vpn
+    choosing_panel, choosing_vpn, choosing_bypass
 )
 from bot.keyboards.reply.admin_reply import server_menu
 from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.callbackData import (
     ChoosingConnectionMethod,
     ChoosingPanel,
-    ChoosingVPN
+    ChoosingVPN,
+    ChoosingBypass
 )
 from bot.misc.language import Localization, get_lang
 
@@ -43,6 +44,7 @@ class AddServer(StatesGroup):
     input_password_vds = State()
     input_group_name = State()
     input_type_vpn = State()
+    input_is_bypass = State()  # Новое состояние для bypass
     input_connect = State()
     input_panel = State()
     input_login = State()
@@ -130,22 +132,48 @@ async def input_type_connect(
     lang = await get_lang(call.from_user.id, state)
     await state.update_data(type_vpn=callback_data.type)
     if callback_data.type == 0:
+        # Outline не поддерживает bypass
+        await state.update_data(is_bypass=False)
         await call.message.answer(
             _('server_input_url_cert_text', lang),
         )
         await state.set_state(AddServer.input_url_cert)
     elif callback_data.type == 1 or callback_data.type == 2:
+        # Для VLESS/Shadowsocks спрашиваем про bypass
         await call.message.answer(
-            _('server_input_choosing_type_connect_text', lang),
-            reply_markup=await choosing_connection()
+            "🗽 Это bypass сервер для обхода белых списков?\n\n"
+            "Bypass серверы используются для обхода блокировок операторов связи. "
+            "У них отдельный лимит трафика (10 ГБ/мес).",
+            reply_markup=await choosing_bypass()
         )
-        await state.set_state(AddServer.input_connect)
+        await state.set_state(AddServer.input_is_bypass)
     else:
         await call.message.answer(
             _('server_error_choosing_type_connect_text', lang),
             reply_markup=await server_menu(lang)
         )
         await state.clear()
+    await call.answer()
+
+
+@state_admin_router.callback_query(
+    ChoosingBypass.filter(),
+    AddServer.input_is_bypass
+)
+async def input_bypass_choice(
+        call: CallbackQuery,
+        state: FSMContext,
+        callback_data: ChoosingBypass):
+    """Обработчик выбора bypass"""
+    lang = await get_lang(call.from_user.id, state)
+    await state.update_data(is_bypass=callback_data.is_bypass)
+
+    # Продолжаем к выбору типа подключения
+    await call.message.answer(
+        _('server_input_choosing_type_connect_text', lang),
+        reply_markup=await choosing_connection()
+    )
+    await state.set_state(AddServer.input_connect)
     await call.answer()
 
 

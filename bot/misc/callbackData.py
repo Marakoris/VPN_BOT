@@ -44,6 +44,10 @@ class ChoosingPanel(CallbackData, prefix='panel'):
     panel: str
 
 
+class ChoosingBypass(CallbackData, prefix='bypass'):
+    is_bypass: bool
+
+
 class ServerWork(CallbackData, prefix='server_work'):
     work: bool
     name_server: str

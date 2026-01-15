@@ -115,6 +115,7 @@ class Servers(Base):
     work = Column(Boolean, default=True)
     space = Column(Integer, default=0)
     traffic_limit = Column(Integer, nullable=True)  # Лимит трафика в ГБ для этого сервера (None = безлимит)
+    is_bypass = Column(Boolean, default=False)  # Сервер для обхода белых списков
     group = Column(
         String,
         ForeignKey("groups.name", ondelete='SET NULL'),

@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, InlineKeyboardButton
 from bot.misc.callbackData import (
     ChoosingConnectionMethod,
     ChoosingPanel,
+    ChoosingBypass,
     ServerWork,
     ServerUserList,
     EditUserPanel,
@@ -65,6 +66,21 @@ async def choosing_panel() -> InlineKeyboardMarkup:
         callback_data=ChoosingPanel(panel='alireza')
     )
     kb.adjust(2)
+    return kb.as_markup()
+
+
+async def choosing_bypass() -> InlineKeyboardMarkup:
+    """Меню выбора bypass сервера (для обхода белых списков)"""
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text='🗽 Да (bypass сервер)',
+        callback_data=ChoosingBypass(is_bypass=True)
+    )
+    kb.button(
+        text='📡 Нет (обычный сервер)',
+        callback_data=ChoosingBypass(is_bypass=False)
+    )
+    kb.adjust(1)
     return kb.as_markup()
 
 

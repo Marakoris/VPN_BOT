@@ -39,7 +39,7 @@ from .subscription_user import subscription_router
 from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
 # from ...misc.yandex_metrika import YandexMetrikaAPI  # Disabled - slow
-from ...misc.traffic_monitor import get_user_traffic_info, format_bytes, get_bypass_traffic
+from ...misc.traffic_monitor import get_user_traffic_info, format_bytes, get_user_bypass_info
 
 log = logging.getLogger(__name__)
 
@@ -169,12 +169,12 @@ async def get_traffic_info(telegram_id: int) -> str:
 
         result = f"\n{emoji} Трафик: {current} / {limit} ({percent}%)\n📊 Всего: {total}{reset_msg}"
 
-        # Добавляем информацию о bypass сервере
-        bypass_info = await get_bypass_traffic(telegram_id)
-        if bypass_info:
+        # Добавляем информацию о bypass сервере (из БД, не realtime)
+        bypass_info = await get_user_bypass_info(telegram_id)
+        if bypass_info and bypass_info["total"] > 0:
             bypass_total = bypass_info["total_formatted"]
             bypass_limit = bypass_info["limit_formatted"]
-            bypass_percent = round(bypass_info["total"] / bypass_info["limit"] * 100, 1) if bypass_info["limit"] > 0 else 0
+            bypass_percent = bypass_info["percent"]
             if bypass_percent >= 90:
                 bypass_emoji = "🔴"
             elif bypass_percent >= 70:
