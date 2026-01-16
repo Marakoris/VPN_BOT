@@ -357,16 +357,16 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                         f"{success_count} success, {error_count} errors (parallel)"
                     )
 
-                    # Send alert to admins if there were errors
+                    # Fire-and-forget alert to admins (don't block return)
                     if error_count > 0:
-                        await _send_activation_alert(
+                        asyncio.create_task(_send_activation_alert(
                             user_id=user_id,
                             username=user.username,
                             success_count=success_count,
                             error_count=error_count,
-                            servers=servers,
-                            results=results
-                        )
+                            servers=list(servers),  # copy to avoid session issues
+                            results=list(results)
+                        ))
 
                     return token
 

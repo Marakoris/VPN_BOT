@@ -374,6 +374,17 @@ async def set_free_trial_used(tgid: int, used: bool = True):
         return False
 
 
+async def set_traffic_source(tgid: int, source: str):
+    """Set traffic_source for user (where user came from)"""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person(db, tgid)
+        if person is not None:
+            person.traffic_source = source
+            await db.commit()
+            return True
+        return False
+
+
 async def increment_autopay_retry(tgid: int) -> int:
     """
     Увеличить счётчик попыток автооплаты и установить время последней попытки.

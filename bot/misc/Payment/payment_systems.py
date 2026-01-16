@@ -115,11 +115,20 @@ class PaymentSystem:
             # Подсказка что ничего делать не нужно
             success_message += "\n\nℹ️ Если VPN уже настроен — ничего делать не нужно, всё работает"
 
-            # Кнопка перехода к VPN подключению
+            # Кнопка перехода к VPN подключению - сразу на лендинг
             from aiogram.utils.keyboard import InlineKeyboardBuilder
-            from bot.misc.callbackData import MainMenuAction
+            from aiogram.types import InlineKeyboardButton
+            from urllib.parse import quote
             kb = InlineKeyboardBuilder()
-            kb.button(text="🔑 Подключиться к VPN", callback_data=MainMenuAction(action='my_keys'))
+
+            # Если есть токен - сразу URL на лендинг
+            if person_after_payment.subscription_token:
+                add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person_after_payment.subscription_token, safe='')}"
+                kb.row(InlineKeyboardButton(text="🔑 Подключиться к VPN", url=add_link_url))
+            else:
+                # Fallback на callback если токена нет
+                from bot.misc.callbackData import MainMenuAction
+                kb.button(text="🔑 Подключиться к VPN", callback_data=MainMenuAction(action='my_keys'))
             kb.adjust(1)
 
             await self.message.answer(

@@ -410,20 +410,37 @@ async def command_connect(message: Message, state: FSMContext):
         )
         return
 
-    # Подписка активна - показываем меню подключения
+    # Подписка активна - сразу показываем ссылку на лендинг
+    # Получаем или создаём токен подписки
+    from bot.misc.subscription import get_user_subscription_status, activate_subscription
+    import urllib.parse
+
+    status = await get_user_subscription_status(person.tgid)
+
+    if not status or not status.get('token'):
+        # Токен отсутствует - активируем подписку
+        token = await activate_subscription(person.tgid, include_outline=False)
+        if not token:
+            await message.answer(
+                "❌ Ошибка активации подписки. Попробуйте позже или напишите в поддержку.",
+                reply_markup=get_back_to_menu_keyboard()
+            )
+            return
+        encoded_token = urllib.parse.quote(token, safe='')
+    else:
+        encoded_token = urllib.parse.quote(status['token'], safe='')
+
+    # Формируем URL лендинга
+    add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+
     kb = InlineKeyboardBuilder()
-    kb.button(text="📡 Единая подписка (рекомендуем)", callback_data=MainMenuAction(action='subscription_url'))
-    kb.button(text="🪐 Outline VPN", callback_data=MainMenuAction(action='outline'))
-    kb.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
-    kb.adjust(1)
+    kb.row(InlineKeyboardButton(text="🔌 Подключиться", url=add_link_url))
+    kb.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu').pack()))
 
     await message.answer(
-        text="🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-             "📡 <b>Единая подписка</b> (рекомендуем)\n"
-             "• Один URL для всех серверов\n"
-             "• Протоколы: VLESS Reality + Shadowsocks 2022\n\n"
-             "🪐 <b>Outline VPN</b>\n"
-             "• Отдельный ключ для каждого сервера",
+        text="🔑 <b>Подключение VPN</b>\n\n"
+             "Нажмите кнопку ниже — откроется страница с инструкцией "
+             "и ссылками для скачивания приложения.",
         reply_markup=kb.as_markup(),
         parse_mode="HTML"
     )
@@ -1036,11 +1053,16 @@ async def handle_custom_traffic_source(message: Message, state: FSMContext, bot:
     end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
 
     # Показываем итоговое сообщение
+    from urllib.parse import quote
+    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🔑 Подключить VPN",
-        callback_data=MainMenuAction(action='my_keys')
-    )
+
+    # Если есть токен - сразу URL на лендинг
+    if person.subscription_token:
+        add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+        builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
+    else:
+        builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
     builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
     builder.adjust(1)
 
@@ -1123,11 +1145,16 @@ async def handle_traffic_source_survey(callback: CallbackQuery, callback_data: T
     end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
 
     # Показываем итоговое сообщение
+    from urllib.parse import quote
+    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🔑 Подключить VPN",
-        callback_data=MainMenuAction(action='my_keys')
-    )
+
+    # Если есть токен - сразу URL на лендинг
+    if person.subscription_token:
+        add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+        builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
+    else:
+        builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
     builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
     builder.adjust(1)
 
@@ -1725,11 +1752,17 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         end_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y в %H:%M')
 
         # Показываем итоговое сообщение с кнопкой подключения
+        from aiogram.types import InlineKeyboardButton
+        from urllib.parse import quote
         builder = InlineKeyboardBuilder()
-        builder.button(
-            text="🔑 Подключить VPN",
-            callback_data=MainMenuAction(action='my_keys')
-        )
+
+        # Если есть токен - сразу URL на лендинг
+        if person.subscription_token:
+            add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+            builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
+        else:
+            builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
+
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
@@ -1985,43 +2018,46 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 )
             return
 
-        # Подписка активна - показываем меню выбора протоколов
+        # Подписка активна - сразу показываем кнопку на лендинг (минимум текста)
+        from bot.misc.subscription import get_user_subscription_status, activate_subscription
         from aiogram.utils.keyboard import InlineKeyboardBuilder
+        import urllib.parse
 
-        builder = InlineKeyboardBuilder()
-        builder.button(
-            text="📡 Единая подписка (рекомендуем)",
-            callback_data=MainMenuAction(action='subscription_url')
-        )
-        builder.button(
-            text="🪐 Outline VPN",
-            callback_data=MainMenuAction(action='outline')
-        )
-        builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
-        builder.adjust(1)
+        status = await get_user_subscription_status(person.tgid)
 
-        menu_text = ("🔑 <b>Выберите способ подключения к VPN:</b>\n\n"
-                     "📡 <b>Единая подписка</b> (рекомендуем)\n"
-                     "• Один URL для всех серверов\n"
-                     "• Протоколы: VLESS Reality + Shadowsocks 2022\n"
-                     "• Автоматическое обновление списка серверов\n"
-                     "• Проще в использовании\n\n"
-                     "🪐 <b>Outline VPN</b>\n"
-                     "• Классический вариант\n"
-                     "• Отдельный ключ для каждого сервера\n"
-                     "• Протокол: Shadowsocks (Outline)")
+        # Если токена нет или подписка не активирована - активируем
+        if not status or not status.get('token') or not status.get('active'):
+            token = await activate_subscription(person.tgid, include_outline=False)
+            if not token:
+                await callback.message.answer(
+                    "❌ Ошибка активации подписки. Попробуйте позже или напишите в поддержку.",
+                    reply_markup=get_back_to_menu_keyboard()
+                )
+                return
+            encoded_token = urllib.parse.quote(token, safe='')
+        else:
+            encoded_token = urllib.parse.quote(status['token'], safe='')
+
+        # Формируем URL лендинга
+        add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="🔌 Открыть страницу подключения", url=add_link_url))
+        kb.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu').pack()))
+
+        message_text = "👇 Нажмите кнопку ниже для подключения к VPN:"
 
         try:
             await callback.message.edit_text(
-                text=menu_text,
-                reply_markup=builder.as_markup(),
+                text=message_text,
+                reply_markup=kb.as_markup(),
                 parse_mode="HTML"
             )
         except Exception as e:
             log.info(f"[my_keys] edit_text failed: {e}, sending new message")
             await callback.message.answer(
-                text=menu_text,
-                reply_markup=builder.as_markup(),
+                text=message_text,
+                reply_markup=kb.as_markup(),
                 parse_mode="HTML"
             )
 

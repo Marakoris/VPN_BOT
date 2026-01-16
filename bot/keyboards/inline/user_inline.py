@@ -325,10 +325,18 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
     )
 
     # 3. Подключить VPN
-    kb.button(
-        text="🔑 Подключить VPN",
-        callback_data=MainMenuAction(action='my_keys')
-    )
+    # Если подписка активна и есть токен - сразу URL на лендинг
+    if person.subscription and person.subscription > time_now and person.subscription_token:
+        add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+        kb.button(
+            text="🔑 Подключить VPN",
+            url=add_link_url
+        )
+    else:
+        kb.button(
+            text="🔑 Подключить VPN",
+            callback_data=MainMenuAction(action='my_keys')
+        )
 
     # 4. Бонусы и друзья (объединили referral + bonus)
     kb.button(
