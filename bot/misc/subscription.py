@@ -147,20 +147,25 @@ def verify_subscription_token(token: str) -> Optional[int]:
 # ==================== ACTIVATION ALERTS ====================
 
 async def _send_activation_alert(user_id: int, username: str, success_count: int, error_count: int, servers, results):
-    """Send alert to admins when subscription activation has errors."""
+    """Send alert to admins when subscription activation has errors.
+
+    Args:
+        servers: List of dicts with 'id' and 'name' keys (NOT SQLAlchemy objects!)
+    """
     try:
         from aiogram import Bot
         from bot.misc.util import CONFIG
-        
+
         # Build error details
         failed_servers = []
         for i, res in enumerate(results):
             if isinstance(res, Exception):
-                failed_servers.append(f"❌ {servers[i].name}: {str(res)[:50]}")
+                server_name = servers[i]['name'] if i < len(servers) else f"Server #{i}"
+                failed_servers.append(f"❌ {server_name}: {str(res)[:50]}")
             elif not res[1]:  # success = False
-                srv = next((s for s in servers if s.id == res[0]), None)
+                srv = next((s for s in servers if s['id'] == res[0]), None)
                 if srv:
-                    failed_servers.append(f"❌ {srv.name}: Failed")
+                    failed_servers.append(f"❌ {srv['name']}: Failed")
         
         username_str = f"@{username}" if username else "без username"
         
@@ -357,16 +362,24 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                         f"{success_count} success, {error_count} errors (parallel)"
                     )
 
-                    # Fire-and-forget alert to admins (don't block return)
+                    # Copy data for alert BEFORE leaving session context
+                    alert_data = None
                     if error_count > 0:
-                        asyncio.create_task(_send_activation_alert(
-                            user_id=user_id,
-                            username=user.username,
-                            success_count=success_count,
-                            error_count=error_count,
-                            servers=list(servers),  # copy to avoid session issues
-                            results=list(results)
-                        ))
+                        alert_data = {
+                            'user_id': user_id,
+                            'username': str(user.username) if user.username else None,
+                            'success_count': success_count,
+                            'error_count': error_count,
+                            'servers': [{'id': s.id, 'name': s.name} for s in servers],
+                            'results': list(results)
+                        }
+
+                    # Commit and close session before creating background task
+                    await db.commit()
+
+                    # Fire-and-forget alert AFTER session is closed
+                    if alert_data:
+                        asyncio.create_task(_send_activation_alert(**alert_data))
 
                     return token
 
