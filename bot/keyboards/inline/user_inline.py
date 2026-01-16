@@ -29,7 +29,7 @@ async def choosing_payment_option_keyboard(config, lang, price: int, days_count:
                                           price_on_db=price_on_db))
     if config.yookassa_shop_id != "" and config.yookassa_secret_key != "":
         kb.button(
-            text='🇷🇺 Юкасса                            ',
+            text='💳 Карта, СБП                         ',
             callback_data=ChoosingPayment(payment='KassaSmart', price=price, days_count=days_count,
                                           price_on_db=price_on_db))
     if config.cryptomus_key != "" and config.cryptomus_uuid != "":
