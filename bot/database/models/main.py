@@ -55,6 +55,7 @@ class Persons(Base):
     subscription_created_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда создан токен
     subscription_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда обновлен токен
     free_trial_used = Column(Boolean, default=False)  # Использовал ли пользователь бесплатный пробный период
+    traffic_source = Column(String, nullable=True)  # Источник трафика (откуда узнал о боте)
     subscription_expired = Column(Boolean, default=False)  # Истекла ли подписка (мягкое ограничение, не бан)
     # Autopay retry fields
     autopay_retry_count = Column(Integer, default=0)  # Количество неудачных попыток автооплаты
@@ -69,6 +70,13 @@ class Persons(Base):
     traffic_last_change = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда последний раз менялся трафик
     traffic_warning_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90% трафика
     setup_reminder_sent = Column(Boolean, default=False)  # Отправлено ли напоминание о настройке VPN
+    # Bypass server traffic monitoring fields
+    bypass_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик bypass серверов
+    bypass_offset_bytes = Column(BigInteger, default=0)  # Offset для сброса bypass трафика
+    bypass_reset_date = Column(TIMESTAMP(timezone=True), nullable=True)  # Дата сброса bypass трафика
+    bypass_warning_50_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 50%
+    bypass_warning_70_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 70%
+    bypass_warning_90_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90%
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),
@@ -107,6 +115,8 @@ class Servers(Base):
     login = Column(String)
     work = Column(Boolean, default=True)
     space = Column(Integer, default=0)
+    traffic_limit = Column(Integer, nullable=True)  # Лимит трафика в ГБ для этого сервера (None = безлимит)
+    is_bypass = Column(Boolean, default=False)  # Сервер для обхода белых списков
     group = Column(
         String,
         ForeignKey("groups.name", ondelete='SET NULL'),

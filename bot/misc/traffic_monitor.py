@@ -150,46 +150,59 @@ async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
         return {}
 
 
-async def update_all_users_traffic() -> Dict[str, int]:
+async def update_all_users_traffic(bot=None) -> Dict[str, int]:
     """
-    Update traffic stats for ALL users with active subscriptions.
-    OPTIMIZED: Fetches all data from servers first, then updates users.
-    Returns statistics: {'updated': N, 'exceeded': N, 'errors': N, 'active': N}
+    UNIFIED traffic update for ALL users with active subscriptions.
+    Fetches data from ALL servers (main + bypass), updates both traffic types,
+    and sends bypass notifications if thresholds are reached.
+
+    Returns statistics: {
+        'updated': N, 'exceeded': N, 'errors': N, 'active': N,
+        'bypass_notified_50': N, 'bypass_notified_70': N, 'bypass_notified_90': N, 'bypass_blocked': N
+    }
     """
     import asyncio
-    stats = {'updated': 0, 'exceeded': 0, 'errors': 0, 'blocked': 0, 'active': 0}
-    now = datetime.utcnow()  # Use naive UTC datetime to match DB
+    stats = {
+        'updated': 0, 'exceeded': 0, 'errors': 0, 'blocked': 0, 'active': 0,
+        'bypass_notified_50': 0, 'bypass_notified_70': 0, 'bypass_notified_90': 0, 'bypass_blocked': 0
+    }
+    now = datetime.utcnow()
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         # Get all active servers
         stmt_servers = select(Servers).filter(
             Servers.work == True,
-            Servers.type_vpn.in_([0, 1, 2])  # Outline, VLESS and Shadowsocks
+            Servers.type_vpn.in_([0, 1, 2])
         )
         result_servers = await db.execute(stmt_servers)
         servers = result_servers.scalars().all()
 
-        # OPTIMIZATION: Fetch all traffic data from all servers in parallel
-        log.info(f"[Traffic] Fetching data from {len(servers)} servers...")
-        tasks = [fetch_all_traffic_from_server(server) for server in servers]
-        server_data_list = await asyncio.gather(*tasks)
+        # Separate main and bypass servers
+        main_servers = [s for s in servers if not s.is_bypass]
+        bypass_servers = [s for s in servers if s.is_bypass]
 
-        # Merge all server data into one dict: {tgid: total_traffic}
-        traffic_cache = {}  # {telegram_id: total_bytes}
-        for server_data in server_data_list:
+        log.info(f"[Traffic] Fetching from {len(main_servers)} main + {len(bypass_servers)} bypass servers...")
+
+        # Fetch all traffic data in parallel
+        all_tasks = [fetch_all_traffic_from_server(server) for server in servers]
+        server_data_list = await asyncio.gather(*all_tasks)
+
+        # Build separate caches for main and bypass traffic
+        main_cache = {}  # {tgid: bytes}
+        bypass_cache = {}  # {tgid: bytes}
+
+        for server, server_data in zip(servers, server_data_list):
+            target_cache = bypass_cache if server.is_bypass else main_cache
             for email, traffic in server_data.items():
-                # Extract telegram_id from email (format: {tgid}_outline, {tgid}_vless or {tgid}_ss)
                 tgid = email.split('_')[0] if '_' in email else email
                 if tgid.isdigit():
                     tgid = int(tgid)
-                    traffic_cache[tgid] = traffic_cache.get(tgid, 0) + traffic
+                    target_cache[tgid] = target_cache.get(tgid, 0) + traffic
 
-        log.info(f"[Traffic] Cached traffic for {len(traffic_cache)} users from servers")
+        log.info(f"[Traffic] Main: {len(main_cache)} users, Bypass: {len(bypass_cache)} users")
 
         # Get all users with active subscriptions
-        stmt = select(Persons).filter(
-            Persons.subscription_active == True
-        )
+        stmt = select(Persons).filter(Persons.subscription_active == True)
         result = await db.execute(stmt)
         users = result.scalars().all()
 
@@ -197,42 +210,116 @@ async def update_all_users_traffic() -> Dict[str, int]:
 
         for user in users:
             try:
-                # OPTIMIZATION: Get traffic from cache instead of querying servers
-                total_traffic = traffic_cache.get(user.tgid, 0)
+                # === MAIN TRAFFIC ===
+                main_traffic = main_cache.get(user.tgid, 0)
 
-                # Check if traffic changed (user is actively using VPN)
+                # Check activity
                 previous = user.previous_traffic_bytes or 0
-                if total_traffic > previous:
-                    # Traffic increased - user is active
+                if main_traffic > previous:
                     user.traffic_last_change = now
                     stats['active'] += 1
-                    log.debug(f"[Traffic] User {user.tgid} active: {format_bytes(previous)} -> {format_bytes(total_traffic)}")
 
-                # Save current traffic as previous for next check
-                user.previous_traffic_bytes = total_traffic
-                user.total_traffic_bytes = total_traffic
+                user.previous_traffic_bytes = main_traffic
+                user.total_traffic_bytes = main_traffic
 
-                # Fix offset if it's greater than total (keys were recreated)
-                if user.traffic_offset_bytes and user.traffic_offset_bytes > total_traffic:
-                    log.warning(f"[Traffic] User {user.tgid} offset ({format_bytes(user.traffic_offset_bytes)}) > total ({format_bytes(total_traffic)}), resetting offset")
-                    user.traffic_offset_bytes = total_traffic
+                # Fix offset if needed
+                if user.traffic_offset_bytes and user.traffic_offset_bytes > main_traffic:
+                    user.traffic_offset_bytes = main_traffic
 
-                # Check if exceeded limit (using current = total - offset)
+                # Check main limit
                 limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
                 offset = user.traffic_offset_bytes or 0
-                current_traffic = max(0, total_traffic - offset)
+                current_main = max(0, main_traffic - offset)
 
-                if current_traffic >= limit:
+                if current_main >= limit:
                     stats['exceeded'] += 1
-                    log.warning(
-                        f"[Traffic] User {user.tgid} EXCEEDED limit: "
-                        f"{format_bytes(current_traffic)} / {format_bytes(limit)}"
-                    )
+
+                # === BYPASS TRAFFIC ===
+                bypass_traffic = bypass_cache.get(user.tgid, 0)
+                user.bypass_traffic_bytes = bypass_traffic
+
+                # Fix bypass offset if needed
+                if user.bypass_offset_bytes and user.bypass_offset_bytes > bypass_traffic:
+                    user.bypass_offset_bytes = bypass_traffic
+
+                # Calculate bypass usage
+                bypass_offset = user.bypass_offset_bytes or 0
+                current_bypass = max(0, bypass_traffic - bypass_offset)
+                bypass_percent = (current_bypass / BYPASS_LIMIT_BYTES * 100) if BYPASS_LIMIT_BYTES > 0 else 0
+
+                # Days until bypass reset
+                days_until_reset = BYPASS_RESET_DAYS
+                if user.bypass_reset_date:
+                    reset_date = user.bypass_reset_date
+                    if reset_date.tzinfo is not None:
+                        reset_date = reset_date.replace(tzinfo=None)
+                    next_reset = reset_date + timedelta(days=BYPASS_RESET_DAYS)
+                    delta = next_reset - now
+                    days_until_reset = max(0, delta.days)
+
+                remaining_bypass = max(0, BYPASS_LIMIT_BYTES - current_bypass)
+
+                # === BYPASS NOTIFICATIONS (if bot provided) ===
+                if bot and bypass_traffic > 0:
+                    try:
+                        # 100% - blocked
+                        if bypass_percent >= 100:
+                            log.warning(f"[Traffic] User {user.tgid} bypass 100%: {format_bytes(current_bypass)}")
+                            await bot.send_message(
+                                user.tgid,
+                                f"🚫 <b>Лимит трафика на сервере Обхода исчерпан!</b>\n\n"
+                                f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} (100%)\n\n"
+                                f"Доступ к серверу Обхода отключён.\n\n"
+                                f"✅ <b>Основные VPN серверы — продолжают работать!</b>\n\n"
+                                f"💡 Оплатите подписку чтобы сбросить лимит."
+                            )
+                            stats['bypass_blocked'] += 1
+
+                        # 90% warning
+                        elif bypass_percent >= 90 and not user.bypass_warning_90_sent:
+                            await bot.send_message(
+                                user.tgid,
+                                f"🚨 <b>Критично! Лимит почти исчерпан</b>\n\n"
+                                f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n"
+                                f"Осталось: {format_bytes(remaining_bypass)}\n\n"
+                                f"При исчерпании лимита сервер Обхода будет отключён.\n\n"
+                                f"💡 Оплатите подписку или подождите {days_until_reset} дней."
+                            )
+                            user.bypass_warning_90_sent = True
+                            stats['bypass_notified_90'] += 1
+
+                        # 70% warning
+                        elif bypass_percent >= 70 and not user.bypass_warning_70_sent:
+                            await bot.send_message(
+                                user.tgid,
+                                f"⚠️ <b>Внимание! Лимит почти израсходован</b>\n\n"
+                                f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n"
+                                f"Осталось: {format_bytes(remaining_bypass)}\n\n"
+                                f"Основные VPN серверы — без ограничений.\n\n"
+                                f"Сброс через {days_until_reset} дней или при оплате."
+                            )
+                            user.bypass_warning_70_sent = True
+                            stats['bypass_notified_70'] += 1
+
+                        # 50% warning
+                        elif bypass_percent >= 50 and not user.bypass_warning_50_sent:
+                            await bot.send_message(
+                                user.tgid,
+                                f"📊 <b>Лимит трафика на сервере Обхода</b>\n\n"
+                                f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n\n"
+                                f"Основные серверы VPN — без ограничений.\n\n"
+                                f"Сброс через {days_until_reset} дней или при оплате."
+                            )
+                            user.bypass_warning_50_sent = True
+                            stats['bypass_notified_50'] += 1
+
+                    except Exception as e:
+                        log.error(f"[Traffic] Bypass notification error for {user.tgid}: {e}")
 
                 stats['updated'] += 1
 
             except Exception as e:
-                log.error(f"[Traffic] Error updating traffic for user {user.tgid}: {e}")
+                log.error(f"[Traffic] Error updating user {user.tgid}: {e}")
                 stats['errors'] += 1
 
         await db.commit()
@@ -498,6 +585,38 @@ async def get_user_traffic_info(telegram_id: int) -> Dict:
             'percent_used': round(percent_used, 1),
             'reset_date': user.traffic_reset_date,
             'days_until_reset': days_until_reset,
+            'exceeded': current >= limit
+        }
+
+
+async def get_user_bypass_info(telegram_id: int) -> Optional[Dict]:
+    """
+    Get bypass traffic info from DB (not real-time from servers).
+    Used for displaying in user menu.
+    """
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.tgid == telegram_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return None
+
+        total = user.bypass_traffic_bytes or 0
+        offset = user.bypass_offset_bytes or 0
+        current = max(0, total - offset)
+        limit = BYPASS_LIMIT_BYTES
+        remaining = max(0, limit - current)
+        percent_used = (current / limit * 100) if limit > 0 else 0
+
+        return {
+            'total': current,
+            'total_formatted': format_bytes(current),
+            'limit': limit,
+            'limit_formatted': format_bytes(limit),
+            'remaining': remaining,
+            'remaining_formatted': format_bytes(remaining),
+            'percent': round(percent_used, 1),
             'exceeded': current >= limit
         }
 
@@ -1520,60 +1639,69 @@ async def get_speed_test_results():
 
 async def get_bypass_traffic(telegram_id: int) -> Dict:
     """
-    Get user's traffic from bypass server (x-ui API).
+    Get user's traffic from ALL bypass servers (x-ui API).
+    Traffic is SUMMED across all bypass servers.
     Returns: {'up': bytes, 'down': bytes, 'total': bytes, 'limit': bytes} or None
     """
-    import aiohttp
-    
-    BYPASS_URL = "http://84.201.128.231:2053"
-    BYPASS_LOGIN = "admin"
-    BYPASS_PASSWORD = "AdminPass123"
-    BYPASS_LIMIT_GB = 10  # 10 GB limit
-    
+    from bot.misc.VPN.ServerManager import ServerManager
+
+    total_up = 0
+    total_down = 0
+    found_on_any_server = False
+
     try:
-        timeout = aiohttp.ClientTimeout(total=5)
-        # Use cookie jar for x-ui session cookies (required for auth)
-        jar = aiohttp.CookieJar(unsafe=True)
-        async with aiohttp.ClientSession(timeout=timeout, cookie_jar=jar) as session:
-            # Login
-            login_data = {"username": BYPASS_LOGIN, "password": BYPASS_PASSWORD}
-            async with session.post(f"{BYPASS_URL}/login", data=login_data) as resp:
-                if resp.status != 200:
-                    log.warning(f"[bypass_traffic] Login failed for user {telegram_id}, status: {resp.status}")
-                    return None
-            
-            # Get inbounds
-            async with session.get(f"{BYPASS_URL}/panel/api/inbounds/list") as resp:
-                if resp.status != 200:
-                    log.warning(f"[bypass_traffic] Inbounds request failed for user {telegram_id}, status: {resp.status}")
-                    return None
-                data = await resp.json()
-            
-            if not data.get("success"):
-                log.warning(f"[bypass_traffic] API returned success=false for user {telegram_id}")
-                return None
-            
-            # Find user's traffic
-            email = f"{telegram_id}_vless"
-            for inbound in data.get("obj", []):
-                for client in inbound.get("clientStats", []):
-                    if client.get("email") == email:
-                        up = client.get("up", 0)
-                        down = client.get("down", 0)
-                        return {
-                            "up": up,
-                            "down": down,
-                            "total": up + down,
-                            "limit": BYPASS_LIMIT_GB * 1024 * 1024 * 1024,
-                            "total_formatted": format_bytes(up + down),
-                            "limit_formatted": format_bytes(BYPASS_LIMIT_GB * 1024 * 1024 * 1024)
-                        }
-            
-            # User not found on bypass server (this is normal for users without bypass key)
+        # Get bypass servers from DB
+        bypass_servers = await get_bypass_servers()
+
+        if not bypass_servers:
+            log.warning(f"[bypass_traffic] No bypass servers found in database")
             return None
-    except asyncio.TimeoutError:
-        log.warning(f"[bypass_traffic] Timeout for user {telegram_id}")
-        return None
+
+        email = f"{telegram_id}_vless"
+
+        for server in bypass_servers:
+            try:
+                # Use ServerManager for proper connection handling
+                manager = ServerManager(server)
+                await manager.login()
+
+                # Get inbound info with client stats
+                xui = manager.client.xui
+                inbounds_response = await xui.get_inbounds()
+
+                if not inbounds_response.get("success"):
+                    log.warning(f"[bypass_traffic] Failed to get inbounds from {server.name} for user {telegram_id}")
+                    continue
+
+                # Find user's traffic on this server
+                for inbound in inbounds_response.get("obj", []):
+                    for client in inbound.get("clientStats", []):
+                        if client.get("email") == email:
+                            up = client.get("up", 0) or 0
+                            down = client.get("down", 0) or 0
+                            total_up += up
+                            total_down += down
+                            found_on_any_server = True
+                            log.debug(f"[bypass_traffic] User {telegram_id} on {server.name}: up={up}, down={down}")
+                            break
+
+            except Exception as e:
+                log.error(f"[bypass_traffic] Error getting traffic from {server.name} for user {telegram_id}: {e}")
+                continue
+
+        if not found_on_any_server:
+            # User not found on any bypass server (this is normal for users without bypass key)
+            return None
+
+        return {
+            "up": total_up,
+            "down": total_down,
+            "total": total_up + total_down,
+            "limit": BYPASS_LIMIT_BYTES,
+            "total_formatted": format_bytes(total_up + total_down),
+            "limit_formatted": format_bytes(BYPASS_LIMIT_BYTES)
+        }
+
     except Exception as e:
         log.error(f"[bypass_traffic] Error for user {telegram_id}: {type(e).__name__}: {e}")
         return None
@@ -1582,60 +1710,80 @@ async def get_bypass_traffic(telegram_id: int) -> Dict:
 
 
 # Bypass server constants (module level for notifications)
-BYPASS_URL = "http://84.201.128.231:2053"
-BYPASS_LOGIN = "admin"
-BYPASS_PASSWORD = "AdminPass123"
-BYPASS_LIMIT_GB = 10  # 10 GB limit
+# Bypass servers are now loaded from DB (servers with traffic_limit IS NOT NULL)
+BYPASS_LIMIT_GB = 10  # 10 GB limit (sum across all bypass servers)
 BYPASS_LIMIT_BYTES = BYPASS_LIMIT_GB * 1024 * 1024 * 1024  # 10737418240 bytes
 BYPASS_RESET_DAYS = 30  # Reset every 30 days
 
 
+async def get_bypass_servers() -> List[Servers]:
+    """
+    Get all bypass servers from database.
+    Bypass servers are identified by is_bypass = True.
+    """
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Servers).filter(
+            Servers.work == True,
+            Servers.is_bypass == True
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+
 async def get_all_bypass_traffic() -> Dict[int, int]:
     """
-    Get traffic for ALL users from bypass server.
+    Get traffic for ALL users from ALL bypass servers.
+    Traffic is SUMMED across all bypass servers.
     Returns: {telegram_id: total_bytes}
     """
-    import aiohttp
-
     result = {}
 
     try:
-        timeout = aiohttp.ClientTimeout(total=10)
-        jar = aiohttp.CookieJar(unsafe=True)
-        async with aiohttp.ClientSession(timeout=timeout, cookie_jar=jar) as session:
-            # Login
-            login_data = {"username": BYPASS_LOGIN, "password": BYPASS_PASSWORD}
-            async with session.post(f"{BYPASS_URL}/login", data=login_data) as resp:
-                if resp.status != 200:
-                    log.warning(f"[bypass_traffic] Login failed, status: {resp.status}")
-                    return result
+        # Get bypass servers from DB
+        bypass_servers = await get_bypass_servers()
 
-            # Get inbounds
-            async with session.get(f"{BYPASS_URL}/panel/api/inbounds/list") as resp:
-                if resp.status != 200:
-                    log.warning(f"[bypass_traffic] Inbounds request failed, status: {resp.status}")
-                    return result
-                data = await resp.json()
-
-            if not data.get("success"):
-                log.warning(f"[bypass_traffic] API returned success=false")
-                return result
-
-            # Collect all users traffic
-            for inbound in data.get("obj", []):
-                for client in inbound.get("clientStats", []):
-                    email = client.get("email", "")
-                    if email.endswith("_vless"):
-                        try:
-                            tgid = int(email.replace("_vless", ""))
-                            up = client.get("up", 0) or 0
-                            down = client.get("down", 0) or 0
-                            result[tgid] = up + down
-                        except ValueError:
-                            pass
-
-            log.info(f"[bypass_traffic] Fetched traffic for {len(result)} users")
+        if not bypass_servers:
+            log.warning("[bypass_traffic] No bypass servers found in database")
             return result
+
+        log.info(f"[bypass_traffic] Found {len(bypass_servers)} bypass servers")
+
+        for server in bypass_servers:
+            try:
+                # Use ServerManager for proper connection handling
+                manager = ServerManager(server)
+                await manager.login()
+
+                # Get inbound info with client stats
+                xui = manager.client.xui
+                inbounds_response = await xui.get_inbounds()
+
+                if not inbounds_response.get("success"):
+                    log.warning(f"[bypass_traffic] Failed to get inbounds from {server.name}")
+                    continue
+
+                # Collect traffic from this server
+                for inbound in inbounds_response.get("obj", []):
+                    for client in inbound.get("clientStats", []):
+                        email = client.get("email", "")
+                        if email.endswith("_vless"):
+                            try:
+                                tgid = int(email.replace("_vless", ""))
+                                up = client.get("up", 0) or 0
+                                down = client.get("down", 0) or 0
+                                # SUM traffic from all bypass servers
+                                result[tgid] = result.get(tgid, 0) + up + down
+                            except ValueError:
+                                pass
+
+                log.debug(f"[bypass_traffic] Collected traffic from {server.name}")
+
+            except Exception as e:
+                log.error(f"[bypass_traffic] Error getting traffic from {server.name}: {e}")
+                continue
+
+        log.info(f"[bypass_traffic] Fetched traffic for {len(result)} users from {len(bypass_servers)} servers")
+        return result
 
     except Exception as e:
         log.error(f"[bypass_traffic] Error fetching all traffic: {e}")
@@ -1893,9 +2041,11 @@ async def check_server_available(server) -> bool:
                 # Extract IP without port if present
                 ip = server.ip.split(':')[0] if ':' in server.ip else server.ip
                 port = server.ip.split(':')[1] if ':' in server.ip else '2053'
-                url = f"http://{ip}:{port}"
+                # Use HTTPS if connection_method is True
+                protocol = "https" if server.connection_method else "http"
+                url = f"{protocol}://{ip}:{port}"
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(url) as resp:
+                    async with session.get(url, ssl=False) as resp:
                         return resp.status == 200
         else:
             # Dict-based server (bypass)

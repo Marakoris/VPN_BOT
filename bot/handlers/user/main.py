@@ -39,7 +39,7 @@ from .subscription_user import subscription_router
 from .outline_user import outline_router
 from ...misc.notification_script import subscription_button
 # from ...misc.yandex_metrika import YandexMetrikaAPI  # Disabled - slow
-from ...misc.traffic_monitor import get_user_traffic_info, format_bytes, get_bypass_traffic
+from ...misc.traffic_monitor import get_user_traffic_info, format_bytes, get_user_bypass_info
 
 log = logging.getLogger(__name__)
 
@@ -169,12 +169,12 @@ async def get_traffic_info(telegram_id: int) -> str:
 
         result = f"\n{emoji} Трафик: {current} / {limit} ({percent}%)\n📊 Всего: {total}{reset_msg}"
 
-        # Добавляем информацию о bypass сервере
-        bypass_info = await get_bypass_traffic(telegram_id)
-        if bypass_info:
+        # Добавляем информацию о bypass сервере (из БД, не realtime)
+        bypass_info = await get_user_bypass_info(telegram_id)
+        if bypass_info and bypass_info["total"] > 0:
             bypass_total = bypass_info["total_formatted"]
             bypass_limit = bypass_info["limit_formatted"]
-            bypass_percent = round(bypass_info["total"] / bypass_info["limit"] * 100, 1) if bypass_info["limit"] > 0 else 0
+            bypass_percent = bypass_info["percent"]
             if bypass_percent >= 90:
                 bypass_emoji = "🔴"
             elif bypass_percent >= 70:
@@ -2540,75 +2540,43 @@ async def admin_menu_nav_handler(
                     )
             elif action == 'traffic_bypass':
                 # Выгрузить статистику трафика bypass в TXT файл
-                import aiohttp
+                from bot.misc.traffic_monitor import get_all_bypass_traffic, get_bypass_servers, format_bytes
                 from aiogram.types import BufferedInputFile
                 from datetime import datetime
                 log.info(f"[traffic_bypass] Starting handler")
                 try:
-                    BYPASS_URL = 'http://84.201.128.231:2053'
-                    BYPASS_LOGIN = 'admin'
-                    BYPASS_PASSWORD = 'AdminPass123'
+                    # Get traffic from all bypass servers (summed)
+                    bypass_traffic = await get_all_bypass_traffic()
+                    bypass_servers = await get_bypass_servers()
 
-                    jar = aiohttp.CookieJar(unsafe=True)
-                    timeout = aiohttp.ClientTimeout(total=10)
-                    async with aiohttp.ClientSession(cookie_jar=jar, timeout=timeout) as session:
-                        login_data = {'username': BYPASS_LOGIN, 'password': BYPASS_PASSWORD}
-                        async with session.post(f'{BYPASS_URL}/login', data=login_data) as resp:
-                            login_result = await resp.json()
-                            if not login_result.get('success'):
-                                raise Exception('Login failed')
+                    if not bypass_traffic:
+                        await callback.message.edit_text(
+                            f'\U0001f5fd Трафик Bypass серверов\n'
+                            f'📡 Активных серверов: {len(bypass_servers)}\n\n'
+                            f'⚠️ Нет данных о трафике',
+                            reply_markup=await admin_back_inline_menu('show_users', lang)
+                        )
+                        return
 
-                        async with session.get(f'{BYPASS_URL}/panel/api/inbounds/list') as resp:
-                            data = await resp.json()
-
-                    if not data.get('success'):
-                        raise Exception(f"API error: {data}")
-
-                    total_up = 0
-                    total_down = 0
-                    users_with_traffic = 0
-                    all_users = []
-
-                    for inbound in data.get('obj', []):
-                        for client in inbound.get('clientStats', []):
-                            up = client.get('up', 0)
-                            down = client.get('down', 0)
-                            total = up + down
-                            total_up += up
-                            total_down += down
-                            tg_id = client.get('email', ''').replace('_vless', ''')
-                            all_users.append({'tgid': tg_id, 'traffic': total})
-                            if total > 0:
-                                users_with_traffic += 1
-
-                    all_users.sort(key=lambda x: x['traffic'], reverse=True)
-
-                    def fmt_bytes(bytes_val):
-                        if bytes_val >= 1024**4:
-                            return f'{bytes_val / (1024**4):.2f} TB'
-                        elif bytes_val >= 1024**3:
-                            return f'{bytes_val / (1024**3):.2f} GB'
-                        elif bytes_val >= 1024**2:
-                            return f'{bytes_val / (1024**2):.2f} MB'
-                        elif bytes_val >= 1024:
-                            return f'{bytes_val / 1024:.2f} KB'
-                        return f'{bytes_val} B'
+                    # Calculate totals and sort users by traffic
+                    total_traffic = sum(bypass_traffic.values())
+                    users_with_traffic = len([t for t in bypass_traffic.values() if t > 0])
+                    all_users = sorted(bypass_traffic.items(), key=lambda x: x[1], reverse=True)
 
                     # Генерируем TXT файл
                     lines = []
-                    for i, user in enumerate(all_users, 1):
-                        lines.append(f"{i}. ID:{user['tgid']} - {fmt_bytes(user['traffic'])}")
+                    for i, (tg_id, traffic) in enumerate(all_users, 1):
+                        lines.append(f"{i}. ID:{tg_id} - {format_bytes(traffic)}")
 
                     txt_content = "\n".join(lines).encode('utf-8')
                     filename = f"traffic_bypass_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
 
                     caption = (
-                        f"\U0001f5fd Трафик Bypass сервера (БС)\n"
+                        f"\U0001f5fd Трафик Bypass серверов (суммарно)\n"
                         f"Обход белых списков\n\n"
+                        f"📡 Активных серверов: {len(bypass_servers)}\n"
                         f"\U0001f465 Пользователей с трафиком: {users_with_traffic}\n"
-                        f"\U0001f4e4 Исходящий: {fmt_bytes(total_up)}\n"
-                        f"\U0001f4e5 Входящий: {fmt_bytes(total_down)}\n"
-                        f"\U0001f4c8 Общий: {fmt_bytes(total_up + total_down)}"
+                        f"\U0001f4c8 Общий: {format_bytes(total_traffic)}"
                     )
 
                     await callback.message.delete()

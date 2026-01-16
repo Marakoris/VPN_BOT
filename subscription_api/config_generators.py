@@ -67,8 +67,15 @@ async def generate_vless_config(
         # New format: realitySettings.publicKey
         fingerprint = settings_data.get("fingerprint") or reality_settings.get("fingerprint", "chrome")
         public_key = settings_data.get("publicKey") or reality_settings.get("publicKey", "")
-        # Fix for bypass server (84.201.128.231) which does not store publicKey in panel
-        if "84.201.128.231" in server.ip and not public_key:
+        # Fix for bypass servers which do not store publicKey in panel
+        # node-ru-2: Bypass server with maps.yandex.ru SNI
+        if "158.160.108.166" in server.ip and not public_key:
+            public_key = "HSqvhRega6eWr3WtfWUZskn4rVF5g4d_MoAJCCSw83o"
+        # node-ru-4: Bypass server with maps.yandex.ru SNI
+        elif "178.154.207.0" in server.ip and not public_key:
+            public_key = "E6MPRwSW5xVzROOmUVPIXPmRis42UH-xidxaOlH4ygU"
+        # Legacy bypass server
+        elif "84.201.128.231" in server.ip and not public_key:
             public_key = "yMmi7MkhSSv4DW2PXJm3pS4RpmLFM8vSt3ZhesZDKz0"
         server_names = reality_settings.get("serverNames", [])
         short_ids = reality_settings.get("shortIds", [])

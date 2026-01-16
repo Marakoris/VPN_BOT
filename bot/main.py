@@ -27,7 +27,7 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
-from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, check_and_notify_bypass_traffic, reset_monthly_bypass_traffic
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, reset_monthly_bypass_traffic
 from bot.misc.util import CONFIG
 
 
@@ -102,8 +102,9 @@ async def start_bot():
     )
 
     # Добавляем задачу мониторинга трафика (каждый час)
+    # UNIFIED: обновляет main + bypass трафик + отправляет уведомления bypass
     async def traffic_monitor_job():
-        await update_all_users_traffic()
+        await update_all_users_traffic(bot)  # Передаём bot для bypass уведомлений
         await check_and_block_exceeded_users(bot)
 
     scheduler.add_job(
@@ -118,17 +119,6 @@ async def start_bot():
         reset_monthly_traffic,
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=0, minute=5),
         id='monthly_traffic_reset',
-        replace_existing=True
-    )
-
-    # Проверка bypass трафика и уведомления (каждый час в :30)
-    async def bypass_traffic_check_job():
-        await check_and_notify_bypass_traffic(bot)
-
-    scheduler.add_job(
-        bypass_traffic_check_job,
-        trigger=CronTrigger(minute=30),  # Каждый час в :30
-        id='bypass_traffic_check',
         replace_existing=True
     )
 
