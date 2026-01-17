@@ -508,6 +508,10 @@ async def reset_monthly_traffic() -> Dict[str, int]:
                 # Check if reset is needed
                 last_reset = user.traffic_reset_date
 
+                # Normalize timezone for comparison (remove tzinfo if present)
+                if last_reset is not None and last_reset.tzinfo is not None:
+                    last_reset = last_reset.replace(tzinfo=None)
+
                 # Reset if: no reset date OR reset was more than 30 days ago
                 if last_reset is None or last_reset < reset_threshold:
                     current_total = user.total_traffic_bytes or 0

@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, update
@@ -110,6 +110,10 @@ async def add_time_person(tgid, count_time):
                 person.notion_twodays = False
                 person.notion_oneday = False
                 person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
+                # Сброс счётчика трафика при новой подписке
+                person.traffic_offset_bytes = person.total_traffic_bytes or 0
+                person.traffic_reset_date = datetime.now(timezone.utc)
+                person.traffic_warning_sent = False
             else:
                 person.subscription += count_time
                 person.subscription_expired = False  # Сброс флага истечения
@@ -118,6 +122,10 @@ async def add_time_person(tgid, count_time):
                 person.notion_twodays = False
                 person.notion_oneday = False
                 person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
+                # Сброс счётчика трафика при продлении подписки
+                person.traffic_offset_bytes = person.total_traffic_bytes or 0
+                person.traffic_reset_date = datetime.now(timezone.utc)
+                person.traffic_warning_sent = False
             await db.commit()
 
             # Автоматически активировать единую подписку при продлении
