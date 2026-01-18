@@ -97,10 +97,25 @@ async def add_referral_balance_person(amount, tgid):
 
 
 async def add_time_person(tgid, count_time):
+    # Получаем актуальный трафик с VPN серверов ДО транзакции
+    # Это гарантирует правильный offset даже если данные в БД устарели
+    actual_traffic = 0
+    try:
+        from bot.misc.traffic_monitor import collect_user_traffic
+        actual_traffic = await collect_user_traffic(tgid)
+    except Exception as e:
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"Could not fetch actual traffic for {tgid}, using DB value: {e}")
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         person = await _get_person(db, tgid)
         if person is not None:
             now_time = int(time.time()) + count_time
+
+            # Используем актуальный трафик с серверов, или значение из БД как fallback
+            traffic_for_offset = actual_traffic if actual_traffic > 0 else (person.total_traffic_bytes or 0)
+
             if person.banned or int(time.time()) >= person.subscription:
                 person.subscription = int(now_time)
                 person.banned = False
@@ -110,8 +125,9 @@ async def add_time_person(tgid, count_time):
                 person.notion_twodays = False
                 person.notion_oneday = False
                 person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
-                # Сброс счётчика трафика при новой подписке
-                person.traffic_offset_bytes = person.total_traffic_bytes or 0
+                # Сброс счётчика трафика при новой подписке (с актуальными данными!)
+                person.traffic_offset_bytes = traffic_for_offset
+                person.total_traffic_bytes = traffic_for_offset  # Синхронизируем total
                 person.traffic_reset_date = datetime.now(timezone.utc)
                 person.traffic_warning_sent = False
             else:
@@ -122,8 +138,9 @@ async def add_time_person(tgid, count_time):
                 person.notion_twodays = False
                 person.notion_oneday = False
                 person.last_expiry_notification = 0  # Сброс timestamp ежедневных уведомлений
-                # Сброс счётчика трафика при продлении подписки
-                person.traffic_offset_bytes = person.total_traffic_bytes or 0
+                # Сброс счётчика трафика при продлении подписки (с актуальными данными!)
+                person.traffic_offset_bytes = traffic_for_offset
+                person.total_traffic_bytes = traffic_for_offset  # Синхронизируем total
                 person.traffic_reset_date = datetime.now(timezone.utc)
                 person.traffic_warning_sent = False
             await db.commit()
