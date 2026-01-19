@@ -8,7 +8,8 @@ import os
 import logging
 import asyncio
 import base64
-from typing import Optional
+import time
+from typing import Optional, Dict, Tuple
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Response, HTTPException
@@ -42,6 +43,26 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 log = logging.getLogger(__name__)
+
+# Subscription cache: {user_id: (content, timestamp, headers)}
+# Cache TTL: 5 minutes (300 seconds)
+SUBSCRIPTION_CACHE: Dict[int, Tuple[str, float, dict]] = {}
+CACHE_TTL = 300  # 5 minutes
+
+def get_cached_subscription(user_id: int) -> Optional[Tuple[str, dict]]:
+    """Get cached subscription if valid"""
+    if user_id in SUBSCRIPTION_CACHE:
+        content, timestamp, headers = SUBSCRIPTION_CACHE[user_id]
+        if time.time() - timestamp < CACHE_TTL:
+            return content, headers
+        else:
+            del SUBSCRIPTION_CACHE[user_id]
+    return None
+
+def cache_subscription(user_id: int, content: str, headers: dict):
+    """Cache subscription content"""
+    SUBSCRIPTION_CACHE[user_id] = (content, time.time(), headers)
+    log.info(f"[Cache] Cached subscription for user {user_id}")
 
 # Create FastAPI app
 app = FastAPI(
@@ -210,6 +231,13 @@ async def get_subscription(token: str, request: Request):
                 headers={"profile-title": "NoBorder VPN"}
             )
 
+        # 1.5 Check cache first (for fast response)
+        cached = get_cached_subscription(user_id)
+        if cached:
+            content, headers = cached
+            log.info(f"[Subscription API] ⚡ Returning cached subscription for user_id {user_id}")
+            return PlainTextResponse(content=content, headers=headers)
+
         # 2. Get user from database (using internal user_id)
         async with AsyncSession(autoflush=False, bind=engine()) as db:
             statement = select(Persons).filter(Persons.id == user_id)
@@ -242,8 +270,8 @@ async def get_subscription(token: str, request: Request):
                 return ""
 
             # 5. Check which servers have keys for this user (PARALLEL with early return)
-            SERVER_TIMEOUT = 3  # seconds per server (reduced for Happ compatibility)
-            TOTAL_TIMEOUT = 8     # max total time for all servers
+            SERVER_TIMEOUT = 8  # seconds per server (increased for high-latency servers like USA)
+            TOTAL_TIMEOUT = 20    # max total time for all servers
 
             async def check_server(server):
                 """Check if user has key on server and generate config"""
@@ -341,6 +369,9 @@ async def get_subscription(token: str, request: Request):
                 "subscription-userinfo": f"upload=0; download=0; expire={int(user.subscription)}",
                 "access-control-allow-origin": "*",
             }
+
+            # Cache the result for fast subsequent requests
+            cache_subscription(user_id, content, headers)
 
             return PlainTextResponse(content=content, headers=headers)
 
