@@ -108,6 +108,38 @@ if [ -d ".git" ]; then
   echo ""
   echo "### Последние коммиты:"
   git log --oneline -3 2>/dev/null | sed 's/^/  - /'
+
+  echo ""
+  echo "### 🔄 Синхронизация с GitHub:"
+
+  # Fetch latest from origin (silent)
+  git fetch origin 2>/dev/null
+
+  # Check for uncommitted changes
+  UNCOMMITTED=$(git status --porcelain 2>/dev/null | grep -c "^ M\|^M \|^??" || echo "0")
+
+  # Check ahead/behind status
+  AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+  BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+
+  if [ "$UNCOMMITTED" -gt 0 ]; then
+    echo "  - ⚠️ **Незакоммиченные изменения: $UNCOMMITTED файлов**"
+    echo "    → Не забудь: \`git add . && git commit && git push\`"
+  fi
+
+  if [ "$BEHIND" -gt 0 ]; then
+    echo "  - ⚠️ **Отстаёшь от origin на $BEHIND коммитов**"
+    echo "    → Сначала выполни: \`git pull origin main\`"
+  fi
+
+  if [ "$AHEAD" -gt 0 ]; then
+    echo "  - 📤 **Впереди origin на $AHEAD коммитов (не запушено)**"
+    echo "    → Не забудь: \`git push origin main\`"
+  fi
+
+  if [ "$UNCOMMITTED" -eq 0 ] && [ "$BEHIND" -eq 0 ] && [ "$AHEAD" -eq 0 ]; then
+    echo "  - ✅ **Синхронизировано с GitHub**"
+  fi
 fi
 
 echo ""
