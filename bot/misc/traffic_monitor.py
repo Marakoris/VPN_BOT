@@ -1086,13 +1086,12 @@ async def send_daily_stats(bot) -> None:
         "germany": "DE Германия",
         "netherlands": "NL Нидерланды",
         "netherlands2": "NL Нидерланды-2",
-        "netherlands3": "NL Нидерланды-3",
         "spain": "ES Испания",
         "usa": "US США",
         "bypass_yc": "🇷🇺 RU-bypass (→NL)"
     }
 
-    for server_key in ["germany", "netherlands", "netherlands2", "netherlands3", "spain", "usa", "bypass_yc"]:
+    for server_key in ["germany", "netherlands", "netherlands2", "spain", "usa", "bypass_yc"]:
         if server_key in speed_results.get("servers", {}):
             data = speed_results["servers"][server_key]
             download = data.get("download", 0)
@@ -1102,6 +1101,9 @@ async def send_daily_stats(bot) -> None:
             # Get local speed on server
             local_key = f"{server_key}_local"
             local_download = speed_results.get("servers", {}).get(local_key, {}).get("download", 0)
+            # Also check for local speed stored directly in the server data (e.g., USA)
+            if local_download == 0 and data.get("local", 0) > 0:
+                local_download = data.get("local", 0)
 
             # Special handling for bypass - show chain: bypass→NL→internet
             if server_key == "bypass_yc":
@@ -1651,6 +1653,16 @@ async def get_speed_test_results():
                                 if "usa" not in results["servers"]:
                                     results["servers"]["usa"] = {}
                                 results["servers"]["usa"]["ping"] = value
+                            except:
+                                pass
+
+                        # speedtest_local_mbps{target="usa"} - USA local speed (not via tunnel)
+                        elif "speedtest_local_mbps" in line and 'target="usa"' in line:
+                            try:
+                                value = float(line.split()[-1])
+                                if "usa" not in results["servers"]:
+                                    results["servers"]["usa"] = {}
+                                results["servers"]["usa"]["local"] = value
                             except:
                                 pass
     except Exception as e:
