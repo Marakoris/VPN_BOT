@@ -26,23 +26,38 @@ class Shadowsocks(XuiBase):
         try:
             # Use unique email suffix for Shadowsocks to avoid collision with other protocols
             email = f"{name}_ss"
-            return await self.get_client_ss(
+            result = await self.get_client_ss(
                 inbound_id=self.inbound_id,
                 email=email
             )
+            return result
         except pyxui_async.errors.NotFound:
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                email = f"{name}_ss"
+                print(f"[SS get_client] API returned NotFound, trying SSH fallback for {email}")
+                return await self._ssh_get_client_ss(email)
+            return None
+        except Exception as e:
+            # Try SSH fallback for x-ui 2.8.7+ on any error
+            if self.vds_password:
+                email = f"{name}_ss"
+                print(f"[SS get_client] API error: {e}, trying SSH fallback for {email}")
+                return await self._ssh_get_client_ss(email)
             return None
 
     async def add_client(self, name):
+        # Use unique email suffix for Shadowsocks to avoid collision with other protocols
+        email = f"{name}_ss"
+        total_gb = (self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
+
         try:
-            # Use unique email suffix for Shadowsocks to avoid collision with other protocols
-            email = f"{name}_ss"
             print(f"[SS] add_client: inbound_id={self.inbound_id}, email={email}")
             response = await self.add_client_ss(
                 inbound_id=self.inbound_id,
                 email=email,
                 limit_ip=CONFIG.limit_ip,
-                total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
+                total_gb=total_gb
             )
             print(f"[SS] add_client response: {response}")
 
@@ -56,7 +71,7 @@ class Shadowsocks(XuiBase):
                         inbound_id=self.inbound_id,
                         email=email,
                         limit_ip=CONFIG.limit_ip,
-                        total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
+                        total_gb=total_gb
                     )
                     print(f"[SS] Second add_client response: {response}")
                 except Exception as del_error:
@@ -65,9 +80,27 @@ class Shadowsocks(XuiBase):
             return response['success']
         except pyxui_async.errors.NotFound as e:
             print(f"[SS] add_client NotFound error: {e}")
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[SS] Trying SSH fallback for {email}")
+                return await self._ssh_add_client_ss(
+                    email=email,
+                    password=random_shadowsocks_password(),
+                    limit_ip=CONFIG.limit_ip,
+                    total_gb=total_gb
+                )
             return False
         except Exception as e:
             print(f"[SS] add_client unexpected error: {type(e).__name__}: {e}")
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[SS] Trying SSH fallback for {email}")
+                return await self._ssh_add_client_ss(
+                    email=email,
+                    password=random_shadowsocks_password(),
+                    limit_ip=CONFIG.limit_ip,
+                    total_gb=total_gb
+                )
             return False
 
     async def delete_client(self, telegram_id):
@@ -84,14 +117,18 @@ class Shadowsocks(XuiBase):
 
     async def disable_client(self, telegram_id):
         """Disable client by setting traffic limit to 1 byte (similar to Outline)"""
-        try:
-            email = f"{telegram_id}_ss"
-            print(f"[SS] disable_client: email={email}")
+        email = f"{telegram_id}_ss"
+        print(f"[SS] disable_client: email={email}")
 
+        try:
             client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
             if not client or not isinstance(client, dict):
-                print(f"[SS] Client not found for disable")
-                return False
+                # Try SSH fallback to get client
+                if self.vds_password:
+                    client = await self._ssh_get_client_ss(email)
+                if not client:
+                    print(f"[SS] Client not found for disable")
+                    return False
 
             # Delete and recreate client with 1 byte limit to effectively disable
             await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
@@ -106,19 +143,28 @@ class Shadowsocks(XuiBase):
             print(f"[SS] disable_client (recreated with 1 byte): {response}")
             return response.get('success', False)
         except Exception as e:
-            print(f"[SS] disable_client error: {e}")
+            print(f"[SS] disable_client API error: {e}")
+
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[SS] disable_client trying SSH fallback for {email}")
+                return await self._ssh_update_client_ss(email=email, total_gb=1)
             return False
 
     async def enable_client(self, telegram_id):
         """Enable client with unlimited traffic (total_gb=0)"""
-        try:
-            email = f"{telegram_id}_ss"
-            print(f"[SS] enable_client: email={email}")
+        email = f"{telegram_id}_ss"
+        print(f"[SS] enable_client: email={email}")
 
+        try:
             client = await self.get_client_ss(inbound_id=self.inbound_id, email=email)
             if not client or not isinstance(client, dict):
-                print(f"[SS] Client not found for enable")
-                return False
+                # Try SSH fallback to get client
+                if self.vds_password:
+                    client = await self._ssh_get_client_ss(email)
+                if not client:
+                    print(f"[SS] Client not found for enable")
+                    return False
 
             # Delete and recreate client with unlimited traffic (total_gb=0)
             await self.delete_client_ss(inbound_id=self.inbound_id, email=email)
@@ -133,7 +179,12 @@ class Shadowsocks(XuiBase):
             print(f"[SS] enable_client (recreated with unlimited traffic): {response}")
             return response.get('success', False)
         except Exception as e:
-            print(f"[SS] enable_client error: {e}")
+            print(f"[SS] enable_client API error: {e}")
+
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[SS] enable_client trying SSH fallback for {email}")
+                return await self._ssh_update_client_ss(email=email, total_gb=0)
             return False
 
     async def get_key_user(self, name, name_key):

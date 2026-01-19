@@ -17,23 +17,37 @@ class Vless(XuiBase):
         try:
             # Add _vless suffix to avoid conflicts with Shadowsocks on same server
             email = f"{name}_vless"
-            return await self.xui.get_client(
+            result = await self.xui.get_client(
                 inbound_id=self.inbound_id,
                 email=email,
             )
+            return result
         except pyxui_async.errors.NotFound:
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[VLESS get_client] API returned NotFound, trying SSH fallback for {email}")
+                return await self._ssh_get_client(email)
+            return None
+        except Exception as e:
+            # Try SSH fallback for x-ui 2.8.7+ on any error
+            if self.vds_password:
+                print(f"[VLESS get_client] API error: {e}, trying SSH fallback for {email}")
+                return await self._ssh_get_client(email)
             return None
 
     async def add_client(self, name):
+        # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+        email = f"{name}_vless"
+        client_uuid = str(uuid.uuid4())
+        total_gb = (self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824
+
         try:
-            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
-            email = f"{name}_vless"
             response = await self.xui.add_client(
                 inbound_id=self.inbound_id,
                 email=email,
-                uuid=str(uuid.uuid4()),
+                uuid=client_uuid,
                 limit_ip=CONFIG.limit_ip,
-                total_gb=(self.traffic_limit if self.traffic_limit is not None else CONFIG.limit_GB) * 1073741824,
+                total_gb=total_gb,
                 flow="xtls-rprx-vision"  # Добавлено для защиты от DPI
             )
             # Логируем ответ для отладки
@@ -42,8 +56,19 @@ class Vless(XuiBase):
                 return True
             return False
         except Exception as e:
-            # Логируем все ошибки
-            print(f"[VLESS add_client] Exception: {e}")
+            # Логируем ошибку
+            print(f"[VLESS add_client] API Exception: {e}")
+
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[VLESS add_client] Trying SSH fallback for {email}")
+                return await self._ssh_add_client(
+                    email=email,
+                    client_uuid=client_uuid,
+                    limit_ip=CONFIG.limit_ip,
+                    total_gb=total_gb,
+                    flow="xtls-rprx-vision"
+                )
             return False
 
     async def delete_client(self, telegram_id):
@@ -96,10 +121,11 @@ class Vless(XuiBase):
 
     async def disable_client(self, telegram_id):
         """Disable client without deleting - sets enable=false"""
+        # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+        email = f"{telegram_id}_vless"
+        print(f"[VLESS] disable_client called for email={email}")
+
         try:
-            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
-            email = f"{telegram_id}_vless"
-            print(f"[VLESS] disable_client called for email={email}")
             client = await self.get_client(telegram_id)
             if not client:
                 print(f"[VLESS] Client not found for disable")
@@ -122,15 +148,21 @@ class Vless(XuiBase):
             print(f"[VLESS] disable_client response: {response}")
             return response['success']
         except Exception as e:
-            print(f"[VLESS] disable_client error: {e}")
+            print(f"[VLESS] disable_client API error: {e}")
+
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[VLESS] disable_client trying SSH fallback for {email}")
+                return await self._ssh_update_client(email=email, enable=False)
             return False
 
     async def enable_client(self, telegram_id):
         """Enable client with unlimited traffic (enable=true, total_gb=0)"""
+        # Add _vless suffix to avoid conflicts with Shadowsocks on same server
+        email = f"{telegram_id}_vless"
+        print(f"[VLESS] enable_client called for email={email}")
+
         try:
-            # Add _vless suffix to avoid conflicts with Shadowsocks on same server
-            email = f"{telegram_id}_vless"
-            print(f"[VLESS] enable_client called for email={email}")
             client = await self.get_client(telegram_id)
             if not client:
                 print(f"[VLESS] Client not found for enable")
@@ -153,7 +185,12 @@ class Vless(XuiBase):
             print(f"[VLESS] enable_client response: {response}")
             return response['success']
         except Exception as e:
-            print(f"[VLESS] enable_client error: {e}")
+            print(f"[VLESS] enable_client API error: {e}")
+
+            # Try SSH fallback for x-ui 2.8.7+
+            if self.vds_password:
+                print(f"[VLESS] enable_client trying SSH fallback for {email}")
+                return await self._ssh_update_client(email=email, enable=True, total_gb=0)
             return False
 
     async def get_key_user(self, name, name_key):
