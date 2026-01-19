@@ -508,6 +508,10 @@ async def reset_monthly_traffic() -> Dict[str, int]:
                 # Check if reset is needed
                 last_reset = user.traffic_reset_date
 
+                # Normalize timezone for comparison (remove tzinfo if present)
+                if last_reset is not None and last_reset.tzinfo is not None:
+                    last_reset = last_reset.replace(tzinfo=None)
+
                 # Reset if: no reset date OR reset was more than 30 days ago
                 if last_reset is None or last_reset < reset_threshold:
                     current_total = user.total_traffic_bytes or 0
@@ -1627,6 +1631,26 @@ async def get_speed_test_results():
                                 if server not in results["servers"]:
                                     results["servers"][server] = {}
                                 results["servers"][server]["to_nl"] = value
+                            except:
+                                pass
+
+                        # speedtest_nl_usa_download_mbps - USA speed tested from Netherlands (via tunnel)
+                        elif "speedtest_nl_usa_download_mbps" in line:
+                            try:
+                                value = float(line.split()[-1])
+                                if "usa" not in results["servers"]:
+                                    results["servers"]["usa"] = {}
+                                results["servers"]["usa"]["download"] = value
+                            except:
+                                pass
+
+                        # speedtest_nl_usa_ping_ms - USA ping from Netherlands
+                        elif "speedtest_nl_usa_ping_ms" in line:
+                            try:
+                                value = float(line.split()[-1])
+                                if "usa" not in results["servers"]:
+                                    results["servers"]["usa"] = {}
+                                results["servers"]["usa"]["ping"] = value
                             except:
                                 pass
     except Exception as e:
