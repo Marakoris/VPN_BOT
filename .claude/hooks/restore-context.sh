@@ -117,11 +117,13 @@ if [ -d ".git" ]; then
   git fetch origin 2>/dev/null
 
   # Check for uncommitted changes
-  UNCOMMITTED=$(git status --porcelain 2>/dev/null | grep -c "^ M\|^M \|^??" || echo "0")
+  UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l)
 
   # Check ahead/behind status
-  AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
-  BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+  AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null)
+  BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null)
+  AHEAD=${AHEAD:-0}
+  BEHIND=${BEHIND:-0}
 
   if [ "$UNCOMMITTED" -gt 0 ]; then
     echo "  - ⚠️ **Незакоммиченные изменения: $UNCOMMITTED файлов**"
