@@ -2,6 +2,7 @@
 
 # SessionStart Hook - Автоматическое восстановление контекста
 # Запускается при каждом старте Claude Code
+# Updated: 2026-01-19 - Added git sync check
 
 # Determine environment early for env vars
 early_detect_env() {
