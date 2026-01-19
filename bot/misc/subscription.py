@@ -196,6 +196,49 @@ async def _send_activation_alert(user_id: int, username: str, success_count: int
         log.error(f"[Subscription Alert] Error sending alert: {e}")
 
 
+async def _send_server_limit_alert(server_name: str, server_id: int, current_space: int, max_limit: int):
+    """Send alert to admins when server reaches its key limit.
+
+    Args:
+        server_name: Name of the server
+        server_id: Server ID in database
+        current_space: Current number of keys on server
+        max_limit: Maximum allowed keys
+    """
+    try:
+        from aiogram import Bot
+        from bot.misc.util import CONFIG
+
+        message = f"""🚨 Сервер достиг лимита ключей!
+
+🖥️ Сервер: {server_name}
+🆔 ID: {server_id}
+
+📊 Заполненность: {current_space}/{max_limit} ({round(current_space/max_limit*100)}%)
+
+⚠️ Новые пользователи НЕ смогут получить ключи на этом сервере.
+
+💡 Рекомендации:
+• Добавить новый сервер
+• Увеличить лимит MAX_PEOPLE_SERVER в .env
+• Очистить неактивных пользователей"""
+
+        bot = Bot(token=CONFIG.tg_token)
+        try:
+            for admin_id in CONFIG.admins_ids:
+                try:
+                    await bot.send_message(admin_id, message)
+                except Exception as e:
+                    log.error(f"[Server Limit Alert] Failed to send to admin {admin_id}: {e}")
+        finally:
+            await bot.session.close()
+
+        log.warning(f"[Server Limit] Server {server_name} (id={server_id}) reached limit: {current_space}/{max_limit}")
+
+    except Exception as e:
+        log.error(f"[Server Limit Alert] Error sending alert: {e}")
+
+
 # ==================== SUBSCRIPTION ACTIVATION ====================
 
 async def _activate_on_server(server, user_id: int) -> tuple:
@@ -336,10 +379,19 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                                 error_count += 1
 
                     # Update server.space for servers where new keys were created
+                    # and check if any server reached its limit
+                    servers_at_limit = []
                     if new_keys_server_ids:
                         for server in servers:
                             if server.id in new_keys_server_ids:
                                 server.space += 1
+                                # Check if server reached limit
+                                if server.space >= MAX_PEOPLE_SERVER:
+                                    servers_at_limit.append({
+                                        'name': server.name,
+                                        'id': server.id,
+                                        'space': server.space
+                                    })
 
                     # 4. Set subscription_active = true and commit all changes
                     user.subscription_active = True
@@ -380,6 +432,15 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                     # Fire-and-forget alert AFTER session is closed
                     if alert_data:
                         asyncio.create_task(_send_activation_alert(**alert_data))
+
+                    # Send alerts for servers that reached their limit
+                    for srv in servers_at_limit:
+                        asyncio.create_task(_send_server_limit_alert(
+                            server_name=srv['name'],
+                            server_id=srv['id'],
+                            current_space=srv['space'],
+                            max_limit=MAX_PEOPLE_SERVER
+                        ))
 
                     return token
 
@@ -731,6 +792,15 @@ async def create_keys_for_active_subscriptions_on_new_server(server_id: int) -> 
                 server.space = new_space
                 await db.commit()
                 log.info(f"[Stage 7] Updated server {server_id} space to {new_space}")
+
+                # Check if server reached limit after creating keys
+                if new_space >= MAX_PEOPLE_SERVER:
+                    asyncio.create_task(_send_server_limit_alert(
+                        server_name=server.name,
+                        server_id=server.id,
+                        current_space=new_space,
+                        max_limit=MAX_PEOPLE_SERVER
+                    ))
             except Exception as e:
                 log.warning(f"[Stage 7] Failed to update server space: {e}")
             
