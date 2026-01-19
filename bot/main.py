@@ -27,6 +27,7 @@ from bot.misc.check_and_proceed_subscriptions import process_subscriptions
 from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
+from bot.misc.winback_sender import winback_autosend
 from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, reset_monthly_bypass_traffic
 from bot.misc.util import CONFIG
 
@@ -161,6 +162,17 @@ async def start_bot():
         daily_stats_job,
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=9, minute=0),
         id='daily_stats',
+        replace_existing=True
+    )
+
+    # Win-back автоматическая рассылка (каждый день в 12:00 MSK)
+    async def winback_job():
+        await winback_autosend(bot)
+
+    scheduler.add_job(
+        winback_job,
+        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=12, minute=0),
+        id='winback_autosend',
         replace_existing=True
     )
 

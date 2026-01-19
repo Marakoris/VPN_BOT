@@ -34,6 +34,7 @@ from bot.handlers.admin.user_management import (
 from bot.handlers.admin.state_servers import state_admin_router
 from bot.handlers.admin.state_servers import AddServer, RemoveServer
 from bot.handlers.admin.regenerate_keys import regenerate_router
+from bot.handlers.admin.winback_admin import winback_router
 from bot.keyboards.inline.admin_inline import (
     server_control,
     missing_user_menu,
@@ -73,7 +74,8 @@ admin_router.include_routers(
     state_admin_router,
     referral_router,
     group_management,
-    regenerate_router
+    regenerate_router,
+    winback_router
 )
 
 
