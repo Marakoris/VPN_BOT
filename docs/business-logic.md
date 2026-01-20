@@ -144,7 +144,7 @@ graph TD
 # Файл: bot/misc/subscription.py
 
 1. Получаем ВСЕ активные серверы (type_vpn=1, 2)
-2. Фильтруем по лимиту (space < MAX_PEOPLE_SERVER=120)
+2. Фильтруем по лимиту (space < MAX_PEOPLE_SERVER=500)
 3. Параллельно (asyncio.gather) создаём ключи:
    - VLESS: add_client() → UUID
    - SS: add_client() → password
@@ -495,7 +495,7 @@ accessed_at   TIMESTAMP
 |----------|----------|-----|
 | Трафик | **Безлимит** (по умолчанию) | .env: `LIMIT_GB=0` |
 | IP | **Безлимит** | .env: `LIMIT_IP=0` |
-| Пользователей на сервер | **120** | .env: `MAX_PEOPLE_SERVER` |
+| Пользователей на сервер | **500** | .env: `MAX_PEOPLE_SERVER` |
 | Таймаут на сервер | 8 сек | subscription_api/main.py |
 | Общий таймаут | 20 сек | subscription_api/main.py |
 | Cache TTL | 5 мин | subscription_api/main.py |
