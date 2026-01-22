@@ -431,7 +431,7 @@ async def command_connect(message: Message, state: FSMContext):
         encoded_token = urllib.parse.quote(status['token'], safe='')
 
     # Формируем URL лендинга
-    add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+    add_link_url = f"{CONFIG.subscription_api_url}/connect/{encoded_token}"
 
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text="🔌 Подключиться", url=add_link_url))
@@ -1059,7 +1059,7 @@ async def handle_custom_traffic_source(message: Message, state: FSMContext, bot:
 
     # Если есть токен - сразу URL на лендинг
     if person.subscription_token:
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+        add_link_url = f"{CONFIG.subscription_api_url}/connect/{quote(person.subscription_token, safe='')}"
         builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
     else:
         builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
@@ -1151,7 +1151,7 @@ async def handle_traffic_source_survey(callback: CallbackQuery, callback_data: T
 
     # Если есть токен - сразу URL на лендинг
     if person.subscription_token:
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+        add_link_url = f"{CONFIG.subscription_api_url}/connect/{quote(person.subscription_token, safe='')}"
         builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
     else:
         builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
@@ -1306,7 +1306,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         # User has active subscription - show URL
         from bot.misc.util import CONFIG
         subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{status['token']}"
+        add_link_url = f"{CONFIG.subscription_api_url}/connect/{status['token']}"
 
         kb = InlineKeyboardBuilder()
 
@@ -1758,7 +1758,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         # Если есть токен - сразу URL на лендинг
         if person.subscription_token:
-            add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person.subscription_token, safe='')}"
+            add_link_url = f"{CONFIG.subscription_api_url}/connect/{quote(person.subscription_token, safe='')}"
             builder.row(InlineKeyboardButton(text="🔑 Подключить VPN", url=add_link_url))
         else:
             builder.button(text="🔑 Подключить VPN", callback_data=MainMenuAction(action='my_keys'))
@@ -2039,7 +2039,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             encoded_token = urllib.parse.quote(status['token'], safe='')
 
         # Формируем URL лендинга
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+        add_link_url = f"{CONFIG.subscription_api_url}/connect/{encoded_token}"
 
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="🔌 Открыть страницу подключения", url=add_link_url))
