@@ -218,18 +218,36 @@ docker logs -f subscription_checker_container
 # Database
 POSTGRES_DB=VPNHubBotDB_TEST
 POSTGRES_USER=marakoris_test
-POSTGRES_PASSWORD=TestPass123
+POSTGRES_PASSWORD=[см. .env файл]
 
 # Bot
-TG_TOKEN=7501968261:AAFFQhRO8YLWB71rrm4zmCiixJgzy1zqwvU
+TG_TOKEN=[см. .env файл]
 
 # Subscription API
 SUBSCRIPTION_API_URL=http://185.58.204.196:8003
-SUBSCRIPTION_SECRET_KEY=change-this-secret-key-in-production-use-random-64-chars
+SUBSCRIPTION_SECRET_KEY=[см. .env файл]
 
 # Cronjob
 SUBSCRIPTION_CHECK_INTERVAL=300
 ```
+
+## 🔒 Безопасность credentials
+
+### SOPS + age шифрование
+Файлы с паролями зашифрованы с помощью SOPS + age:
+- `projects/vpn-servers/vpn-servers-credentials.enc.md` — доступы к VPN серверам
+- `projects/infrastructure/server-connections.enc.md` — SSH доступы
+
+**Расшифровка** (ключ должен быть в `~/.config/sops/age/keys.txt`):
+```bash
+sops -d /root/claude-docs/projects/vpn-servers/vpn-servers-credentials.enc.md
+```
+
+### ⚠️ ПРАВИЛА работы с credentials
+1. **НЕ копировать пароли в сессии** — писать `см. credentials файл`
+2. **НЕ показывать пароли в чате** — использовать ссылки на файлы
+3. **При необходимости доступа** — расшифровать файл через `sops -d`
+4. **Случайно попал пароль в сессию** — немедленно удалить из файла
 
 ## 📊 Текущий статус
 
@@ -260,5 +278,5 @@ SUBSCRIPTION_CHECK_INTERVAL=300
 
 ---
 
-**Последнее обновление**: 2025-12-16
+**Последнее обновление**: 2026-01-19
 **Версия проекта**: 2.0 (Subscription System Complete)
