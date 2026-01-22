@@ -199,10 +199,22 @@ cat << 'EOF'
 ## 📚 Доступная документация
 
 Используйте `@` для быстрого доступа к файлам:
+- **@/root/claude-docs/projects/vpn-bot/VPN-SUPPORT-CONTEXT.md** - 🆘 Поддержка клиентов (приложения, серверы, диагностика)
 - **@/root/claude-docs/QUICK_START.md** - Быстрый старт
 - **@/root/claude-docs/STATUS.md** - Полный статус проекта
 - **@/root/claude-docs/sessions/** - История всех сессий
 - **@/root/claude-docs/knowledge/** - База знаний
+
+## 🔐 Зашифрованные пароли (SOPS + age)
+
+Все credentials хранятся в зашифрованных файлах:
+- `projects/infrastructure/server-connections.enc.md` — SSH доступы (MikroTik, Proxmox, Ubuntu)
+- `projects/vpn-servers/vpn-servers-credentials.enc.md` — Доступы к VPN серверам
+
+**Расшифровка:**
+\`\`\`bash
+cd /root/claude-docs && sops -d projects/infrastructure/server-connections.enc.md
+\`\`\`
 
 ## 🔧 Полезные slash команды
 - **/restore** - Восстановить контекст вручную (показать последние сессии)

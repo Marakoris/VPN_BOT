@@ -594,6 +594,7 @@ async def add_subscription_deeplink(token: str, request: Request):
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>">
     <title>NoBorder VPN</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -902,6 +903,45 @@ async def add_subscription_deeplink(token: str, request: Request):
         .copy-toast.show {{
             transform: translateX(-50%) translateY(0);
             opacity: 1;
+        }}
+
+        /* Navigation buttons */
+        .nav-buttons {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 30px;
+        }}
+        .nav-btn {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }}
+        .nav-btn-primary {{
+            background: linear-gradient(135deg, #00d9ff, #0099ff);
+            color: #000;
+        }}
+        .nav-btn-primary:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+        }}
+        .nav-btn-outline {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }}
+        .nav-btn-outline:hover {{
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
         }}
     </style>
 </head>
@@ -1213,6 +1253,13 @@ async def add_subscription_deeplink(token: str, request: Request):
             - Снимите галочку с <code>TUN</code> и включите <code>Системный прокси</code><br><br>
             Если не помогло, включите <code>TUN</code> и выключите <code>Системный прокси</code>
         </div>
+
+        <!-- Navigation -->
+        <div class="nav-buttons">
+            <a href="/connect/{token}" class="nav-btn nav-btn-outline">
+                <span>🏠</span> Главное меню
+            </a>
+        </div>
     </div>
 
     <!-- Copy Toast -->
@@ -1268,10 +1315,11 @@ async def add_subscription_deeplink(token: str, request: Request):
 # ==================== OUTLINE DEEP LINK ENDPOINT ====================
 
 @app.get("/outline/{encoded_key}", response_class=HTMLResponse, tags=["Outline"])
-async def outline_deeplink(encoded_key: str, request: Request):
+async def outline_deeplink(encoded_key: str, request: Request, token: str = None):
     """
     Beautiful landing page for adding Outline key to VPN apps.
     Key is passed as base64 encoded string.
+    Token is optional query parameter for navigation.
     """
     import base64
     import urllib.parse
@@ -1283,11 +1331,16 @@ async def outline_deeplink(encoded_key: str, request: Request):
         except Exception:
             return HTMLResponse(content=get_error_page("Неверная ссылка", "Ссылка на ключ недействительна."), status_code=400)
 
+        # Extract server name from key (after #)
+        server_name = "Outline"
+        if '#' in outline_key:
+            server_name = urllib.parse.unquote(outline_key.split('#')[-1])
+
         # Create ssconf:// deep link for Outline
         # Format: ssconf://base64(ss://...)
         outline_key_encoded = urllib.parse.quote(outline_key, safe='')
 
-        log.info(f"[Outline] Serving key page from {request.client.host}")
+        log.info(f"[Outline] Serving key page from {request.client.host}, token={'yes' if token else 'no'}")
 
         html_content = f"""
 <!DOCTYPE html>
@@ -1295,6 +1348,7 @@ async def outline_deeplink(encoded_key: str, request: Request):
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪐</text></svg>">
     <title>Outline VPN - NoBorder</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -1356,6 +1410,21 @@ async def outline_deeplink(encoded_key: str, request: Request):
         }}
         .header-icon:hover {{
             background: rgba(255,255,255,0.2);
+        }}
+
+        /* Server Info */
+        .server-info-card {{
+            text-align: center;
+            margin-bottom: 20px;
+        }}
+        .server-badge {{
+            display: inline-block;
+            background: linear-gradient(135deg, #00bfa5, #1de9b6);
+            color: #000;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 600;
         }}
 
         /* Key Card */
@@ -1530,6 +1599,45 @@ async def outline_deeplink(encoded_key: str, request: Request):
             transform: translateX(-50%) translateY(0);
             opacity: 1;
         }}
+
+        /* Navigation buttons */
+        .nav-buttons {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 30px;
+        }}
+        .nav-btn {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }}
+        .nav-btn-primary {{
+            background: linear-gradient(135deg, #00bfa5, #1de9b6);
+            color: #000;
+        }}
+        .nav-btn-primary:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(0, 191, 165, 0.3);
+        }}
+        .nav-btn-outline {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }}
+        .nav-btn-outline:hover {{
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+        }}
     </style>
 </head>
 <body>
@@ -1543,6 +1651,11 @@ async def outline_deeplink(encoded_key: str, request: Request):
             <div class="header-icons">
                 <a href="https://t.me/VPN_NB_test_bot" class="header-icon" title="Открыть бота">✈️</a>
             </div>
+        </div>
+
+        <!-- Server Info -->
+        <div class="server-info-card">
+            <div class="server-badge">{server_name}</div>
         </div>
 
         <!-- Key Card -->
@@ -1692,6 +1805,18 @@ async def outline_deeplink(encoded_key: str, request: Request):
                 </div>
             </div>
         </div>
+
+        <!-- Navigation buttons (only if token is present) -->
+        {"" if not token else f'''
+        <div class="nav-buttons">
+            <a href="/outline-servers/{token}" class="nav-btn nav-btn-primary">
+                <span>➕</span> Добавить ещё один ключ
+            </a>
+            <a href="/connect/{token}" class="nav-btn nav-btn-outline">
+                <span>🏠</span> Главное меню
+            </a>
+        </div>
+        '''}
     </div>
 
     <!-- Copy Toast -->
@@ -1750,6 +1875,917 @@ async def outline_deeplink(encoded_key: str, request: Request):
         traceback.print_exc()
         return HTMLResponse(content=get_error_page("Ошибка", "Что-то пошло не так. Попробуйте ещё раз."),
             status_code=500
+        )
+
+
+# ==================== UNIFIED CONNECT PAGE ====================
+
+@app.get("/connect/{token}", response_class=HTMLResponse, tags=["Subscription"])
+async def connect_page(token: str, request: Request):
+    """
+    Unified landing page for choosing VPN protocol.
+    User can select between VLESS/Shadowsocks (subscription) or Outline.
+    """
+    client_ip = request.client.host
+
+    try:
+        # Verify token first
+        user_id = verify_subscription_token(token)
+        if not user_id:
+            record_failed_attempt(client_ip, reason="invalid_token")
+            return HTMLResponse(content=get_error_page("Неверная ссылка", "Ссылка недействительна или истекла.<br>Получите новую ссылку в боте."), status_code=401)
+
+        # Get user info
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            statement = select(Persons).filter(Persons.id == user_id)
+            result = await db.execute(statement)
+            user = result.scalar_one_or_none()
+
+        # Calculate subscription expiry
+        expiry_text = "Неизвестно"
+        if user and user.subscription:
+            from datetime import datetime
+            expiry_date = datetime.fromtimestamp(user.subscription)
+            now = datetime.now()
+            diff = expiry_date - now
+            if diff.days > 30:
+                months = diff.days // 30
+                expiry_text = f"Истекает через {months} мес."
+            elif diff.days > 0:
+                expiry_text = f"Истекает через {diff.days} дн."
+            elif diff.days == 0:
+                expiry_text = "Истекает сегодня"
+            else:
+                expiry_text = "Подписка истекла"
+
+        user_display = f"_{user.tgid}" if user else "Пользователь"
+
+        log.info(f"[Connect] User {user_id} accessing connect page from {client_ip}")
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+    <title>NoBorder VPN - Выбор протокола</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 500px;
+            margin: 0 auto;
+        }}
+
+        /* Header */
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }}
+        .logo-section {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .logo {{
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #ff8c00, #ffb347);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }}
+        .brand-name {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+
+        /* User Card */
+        .user-card {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .user-check {{
+            width: 24px;
+            height: 24px;
+            background: #00d9ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 14px;
+        }}
+        .user-info {{
+            flex: 1;
+        }}
+        .user-name {{
+            font-size: 14px;
+            opacity: 0.8;
+        }}
+        .user-status {{
+            font-size: 12px;
+            opacity: 0.6;
+        }}
+
+        /* Title */
+        .page-title {{
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        .page-title h1 {{
+            font-size: 24px;
+            margin-bottom: 8px;
+        }}
+        .page-title p {{
+            font-size: 14px;
+            opacity: 0.7;
+        }}
+
+        /* Protocol Cards */
+        .protocol-cards {{
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }}
+        .protocol-card {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }}
+        .protocol-card:hover {{
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }}
+        .protocol-card.recommended {{
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+        }}
+        .protocol-card.recommended:hover {{
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.15);
+        }}
+        .card-header {{
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 12px;
+        }}
+        .card-icon {{
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }}
+        .card-icon.vless {{
+            background: linear-gradient(135deg, #00d9ff, #0099ff);
+        }}
+        .card-icon.outline {{
+            background: linear-gradient(135deg, #00c853, #00e676);
+        }}
+        .card-title {{
+            flex: 1;
+        }}
+        .card-title h3 {{
+            font-size: 18px;
+            margin-bottom: 4px;
+        }}
+        .card-title .badge {{
+            display: inline-block;
+            background: #00d9ff;
+            color: #000;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .card-description {{
+            font-size: 13px;
+            opacity: 0.7;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }}
+        .card-features {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        .feature-tag {{
+            background: rgba(255,255,255,0.1);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .feature-tag.highlight {{
+            background: rgba(0, 217, 255, 0.2);
+            color: #00d9ff;
+        }}
+        .arrow {{
+            margin-left: auto;
+            font-size: 20px;
+            opacity: 0.5;
+        }}
+
+        /* Footer */
+        .footer {{
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            opacity: 0.5;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">🌐</div>
+                <span class="brand-name">NoBorder VPN</span>
+            </div>
+        </div>
+
+        <!-- User Card -->
+        <div class="user-card">
+            <div class="user-check">✓</div>
+            <div class="user-info">
+                <div class="user-name">{user_display}</div>
+                <div class="user-status">{expiry_text}</div>
+            </div>
+        </div>
+
+        <!-- Title -->
+        <div class="page-title">
+            <h1>Выберите протокол</h1>
+            <p>Выберите тип VPN подключения</p>
+        </div>
+
+        <!-- Protocol Cards -->
+        <div class="protocol-cards">
+            <!-- VLESS Card -->
+            <a href="/add/{token}" class="protocol-card recommended">
+                <div class="card-header">
+                    <div class="card-icon vless">🔷</div>
+                    <div class="card-title">
+                        <h3>VLESS</h3>
+                        <span class="badge">Рекомендуем</span>
+                    </div>
+                    <span class="arrow">→</span>
+                </div>
+                <div class="card-description">
+                    Современный протокол с высокой скоростью и надёжностью.
+                    Автоматическое обновление серверов через подписку.
+                </div>
+                <div class="card-features">
+                    <span class="feature-tag highlight">🚀 Быстрый</span>
+                    <span class="feature-tag">🔄 Авто-обновление</span>
+                    <span class="feature-tag">🌍 Все серверы</span>
+                </div>
+            </a>
+
+            <!-- Outline Card -->
+            <a href="/outline-servers/{token}" class="protocol-card">
+                <div class="card-header">
+                    <div class="card-icon outline">🔐</div>
+                    <div class="card-title">
+                        <h3>Outline VPN</h3>
+                    </div>
+                    <span class="arrow">→</span>
+                </div>
+                <div class="card-description">
+                    Простой и надёжный протокол от Google Jigsaw.
+                    Легко настраивается, работает везде.
+                </div>
+                <div class="card-features">
+                    <span class="feature-tag">📱 Простой</span>
+                    <span class="feature-tag">🛡️ Надёжный</span>
+                    <span class="feature-tag">🔑 По серверам</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            NoBorder VPN © 2024
+        </div>
+    </div>
+</body>
+</html>
+        """
+
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        log.error(f"[Connect] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(content=get_error_page("Ошибка", "Что-то пошло не так. Попробуйте ещё раз."),
+            status_code=500
+        )
+
+
+# ==================== OUTLINE SERVERS PAGE ====================
+
+@app.get("/outline-servers/{token}", response_class=HTMLResponse, tags=["Outline"])
+async def outline_servers_page(token: str, request: Request):
+    """
+    Page to select Outline server and get a key.
+    Shows all available Outline servers (type_vpn=0).
+    """
+    client_ip = request.client.host
+
+    try:
+        # Verify token first
+        user_id = verify_subscription_token(token)
+        if not user_id:
+            record_failed_attempt(client_ip, reason="invalid_token")
+            return HTMLResponse(content=get_error_page("Неверная ссылка", "Ссылка недействительна или истекла.<br>Получите новую ссылку в боте."), status_code=401)
+
+        # Get user info
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            statement = select(Persons).filter(Persons.id == user_id)
+            result = await db.execute(statement)
+            user = result.scalar_one_or_none()
+
+            # Get all Outline servers (type_vpn=0)
+            servers_statement = select(Servers).filter(Servers.type_vpn == 0)
+            servers_result = await db.execute(servers_statement)
+            outline_servers = servers_result.scalars().all()
+
+        if not user:
+            return HTMLResponse(content=get_error_page("Ошибка", "Пользователь не найден."), status_code=404)
+
+        # Calculate subscription expiry
+        expiry_text = "Неизвестно"
+        if user.subscription:
+            from datetime import datetime
+            expiry_date = datetime.fromtimestamp(user.subscription)
+            now = datetime.now()
+            diff = expiry_date - now
+            if diff.days > 30:
+                months = diff.days // 30
+                expiry_text = f"Истекает через {months} мес."
+            elif diff.days > 0:
+                expiry_text = f"Истекает через {diff.days} дн."
+            elif diff.days == 0:
+                expiry_text = "Истекает сегодня"
+            else:
+                expiry_text = "Подписка истекла"
+
+        user_display = f"_{user.tgid}"
+        telegram_id = user.tgid
+
+        log.info(f"[Outline Servers] User {user_id} accessing page from {client_ip}, found {len(outline_servers)} servers")
+
+        # Function to extract country flag from server name
+        def get_country_flag(name):
+            import re
+            # Try to find emoji flag in name
+            flag_match = re.search(r'[\U0001F1E0-\U0001F1FF]{2}', name)
+            if flag_match:
+                return flag_match.group()
+            # Fallback mappings
+            name_lower = name.lower()
+            if 'russia' in name_lower or 'рос' in name_lower or 'moscow' in name_lower:
+                return '🇷🇺'
+            elif 'spain' in name_lower or 'madrid' in name_lower or 'испан' in name_lower:
+                return '🇪🇸'
+            elif 'germany' in name_lower or 'frankfurt' in name_lower or 'герман' in name_lower:
+                return '🇩🇪'
+            elif 'netherlands' in name_lower or 'amsterdam' in name_lower or 'нидерланд' in name_lower:
+                return '🇳🇱'
+            elif 'usa' in name_lower or 'united states' in name_lower or 'америк' in name_lower:
+                return '🇺🇸'
+            elif 'uk' in name_lower or 'britain' in name_lower or 'london' in name_lower:
+                return '🇬🇧'
+            elif 'france' in name_lower or 'paris' in name_lower or 'франц' in name_lower:
+                return '🇫🇷'
+            elif 'turkey' in name_lower or 'турц' in name_lower:
+                return '🇹🇷'
+            elif 'finland' in name_lower or 'финлянд' in name_lower:
+                return '🇫🇮'
+            return '🌐'
+
+        # Build server cards HTML
+        server_cards_html = ""
+        for server in outline_servers:
+            flag = get_country_flag(server.name)
+            # Extract country name from server name (remove "Outline" suffix)
+            country_name = server.name.replace('Outline', '').strip()
+            server_cards_html += f"""
+            <div class="server-card" data-server-id="{server.id}" data-server-name="{server.name}">
+                <div class="server-info">
+                    <div class="server-icon">{flag}</div>
+                    <div class="server-details">
+                        <div class="server-name">{country_name}</div>
+                        <div class="server-location">Outline VPN</div>
+                    </div>
+                </div>
+                <button class="get-key-btn" onclick="getOutlineKey({server.id}, '{server.name}')">
+                    <span class="btn-text">Получить ключ</span>
+                    <span class="btn-loading" style="display:none;">⏳</span>
+                </button>
+            </div>
+            """
+
+        if not outline_servers:
+            server_cards_html = """
+            <div class="no-servers">
+                <p>😔 Outline серверы временно недоступны</p>
+            </div>
+            """
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
+    <title>NoBorder VPN - Outline серверы</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 500px;
+            margin: 0 auto;
+        }}
+
+        /* Header */
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }}
+        .logo-section {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .logo {{
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }}
+        .brand-name {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+        .back-btn {{
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }}
+        .back-btn:hover {{
+            background: rgba(255,255,255,0.2);
+        }}
+
+        /* User Card */
+        .user-card {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .user-check {{
+            width: 24px;
+            height: 24px;
+            background: #00c853;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 14px;
+        }}
+        .user-info {{
+            flex: 1;
+        }}
+        .user-name {{
+            font-size: 14px;
+            opacity: 0.8;
+        }}
+        .user-status {{
+            font-size: 12px;
+            opacity: 0.6;
+        }}
+
+        /* Title */
+        .page-title {{
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        .page-title h1 {{
+            font-size: 24px;
+            margin-bottom: 8px;
+        }}
+        .page-title p {{
+            font-size: 14px;
+            opacity: 0.7;
+        }}
+
+        /* Server Cards */
+        .server-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }}
+        .server-card {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }}
+        .server-card:hover {{
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.2);
+        }}
+        .server-info {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .server-icon {{
+            width: 44px;
+            height: 44px;
+            background: rgba(0, 200, 83, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }}
+        .server-details {{
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }}
+        .server-name {{
+            font-size: 16px;
+            font-weight: 500;
+        }}
+        .server-location {{
+            font-size: 12px;
+            opacity: 0.5;
+        }}
+        .get-key-btn {{
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border: none;
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            min-width: 130px;
+        }}
+        .get-key-btn:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(0, 200, 83, 0.3);
+        }}
+        .get-key-btn:disabled {{
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }}
+
+        .no-servers {{
+            text-align: center;
+            padding: 40px;
+            opacity: 0.7;
+        }}
+
+        /* Navigation buttons */
+        .nav-buttons {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 30px;
+        }}
+        .nav-btn {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }}
+        .nav-btn-primary {{
+            background: linear-gradient(135deg, #00c853, #00e676);
+            color: #000;
+        }}
+        .nav-btn-primary:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(0, 200, 83, 0.3);
+        }}
+        .nav-btn-outline {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }}
+        .nav-btn-outline:hover {{
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+        }}
+
+        /* Toast */
+        .toast {{
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(0, 200, 83, 0.9);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }}
+        .toast.error {{
+            background: rgba(255, 82, 82, 0.9);
+        }}
+        .toast.show {{
+            transform: translateX(-50%) translateY(0);
+        }}
+
+        /* Footer */
+        .footer {{
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            opacity: 0.5;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">🔐</div>
+                <span class="brand-name">Outline VPN</span>
+            </div>
+            <a href="/connect/{token}" class="back-btn">← Назад</a>
+        </div>
+
+        <!-- User Card -->
+        <div class="user-card">
+            <div class="user-check">✓</div>
+            <div class="user-info">
+                <div class="user-name">{user_display}</div>
+                <div class="user-status">{expiry_text}</div>
+            </div>
+        </div>
+
+        <!-- Title -->
+        <div class="page-title">
+            <h1>Выберите сервер</h1>
+            <p>Нажмите "Получить ключ" для выбранного сервера</p>
+        </div>
+
+        <!-- Server List -->
+        <div class="server-list">
+            {server_cards_html}
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-buttons">
+            <a href="/connect/{token}" class="nav-btn nav-btn-outline">
+                <span>🏠</span> Главное меню
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            NoBorder VPN © 2024
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const token = "{token}";
+        const telegramId = "{telegram_id}";
+
+        function showToast(message, isError = false) {{
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = isError ? 'toast error show' : 'toast show';
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }}
+
+        async function getOutlineKey(serverId, serverName) {{
+            const btn = event.target.closest('.get-key-btn');
+            const btnText = btn.querySelector('.btn-text');
+            const btnLoading = btn.querySelector('.btn-loading');
+
+            // Show loading state
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            btnLoading.style.display = 'inline';
+
+            try {{
+                const response = await fetch('/api/outline/create-key', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{
+                        token: token,
+                        server_id: serverId
+                    }})
+                }});
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {{
+                    showToast('✓ Ключ создан! Переход...');
+                    setTimeout(() => {{
+                        window.location.href = data.redirect_url;
+                    }}, 1000);
+                }} else {{
+                    showToast(data.error || 'Ошибка создания ключа', true);
+                    btn.disabled = false;
+                    btnText.style.display = 'inline';
+                    btnLoading.style.display = 'none';
+                }}
+            }} catch (error) {{
+                showToast('Ошибка сети. Попробуйте ещё раз.', true);
+                btn.disabled = false;
+                btnText.style.display = 'inline';
+                btnLoading.style.display = 'none';
+            }}
+        }}
+    </script>
+</body>
+</html>
+        """
+
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        log.error(f"[Outline Servers] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(content=get_error_page("Ошибка", "Что-то пошло не так. Попробуйте ещё раз."),
+            status_code=500
+        )
+
+
+# ==================== OUTLINE API ENDPOINTS ====================
+
+@app.post("/api/outline/create-key", tags=["Outline API"])
+async def create_outline_key(request: Request):
+    """
+    API endpoint to create Outline key for a user on selected server.
+    Returns redirect URL to outline page with the key.
+    """
+    client_ip = request.client.host
+
+    try:
+        data = await request.json()
+        token = data.get('token')
+        server_id = data.get('server_id')
+
+        if not token or not server_id:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Требуется token и server_id"}
+            )
+
+        # Verify token
+        user_id = verify_subscription_token(token)
+        if not user_id:
+            record_failed_attempt(client_ip, reason="invalid_token")
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Недействительный токен"}
+            )
+
+        # Get user and server
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            # Get user
+            user_stmt = select(Persons).filter(Persons.id == user_id)
+            user_result = await db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                return JSONResponse(
+                    status_code=404,
+                    content={"success": False, "error": "Пользователь не найден"}
+                )
+
+            # Get server
+            server_stmt = select(Servers).filter(Servers.id == server_id, Servers.type_vpn == 0)
+            server_result = await db.execute(server_stmt)
+            server = server_result.scalar_one_or_none()
+
+            if not server:
+                return JSONResponse(
+                    status_code=404,
+                    content={"success": False, "error": "Сервер не найден"}
+                )
+
+        # Create Outline key
+        from bot.misc.VPN.Outline import Outline
+        outline = Outline(server)
+        await outline.login()
+
+        # Get or create key for user
+        outline_key = await outline.get_key_user(str(user.tgid), server.name)
+
+        if not outline_key:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": "Не удалось создать ключ"}
+            )
+
+        log.info(f"[Outline API] Created key for user {user.tgid} on server {server.name}")
+
+        # Encode key for URL
+        import base64
+        encoded_key = base64.b64encode(outline_key.encode()).decode()
+
+        return JSONResponse(content={
+            "success": True,
+            "redirect_url": f"/outline/{encoded_key}?token={token}"
+        })
+
+    except Exception as e:
+        log.error(f"[Outline API] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": "Внутренняя ошибка сервера"}
         )
 
 
