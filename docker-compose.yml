@@ -49,6 +49,7 @@ services:
       - YOOKASSA_SHOP_ID
       - YOOMONEY_TOKEN
       - YOOMONEY_WALLET
+      - MAX_PEOPLE_SERVER
     volumes:
       - ./bot:/app/bot  # Монтируем весь код бота для быстрой разработки
       - ./logs:/app/logs
