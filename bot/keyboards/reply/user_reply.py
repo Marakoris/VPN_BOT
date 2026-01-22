@@ -35,10 +35,9 @@ async def user_menu(person, lang) -> ReplyKeyboardMarkup:
             text=_('subscription_not_time_btn', lang).format(time=time_sub)
         )
 
-    # 2. Main connection buttons (NEW: simplified)
+    # 2. Main connection button → opens protocol selection page
     kb.row(
-        keyBtn(text="📲 Subscription URL"),  # VLESS + Shadowsocks (all servers)
-        keyBtn(text="🔑 Outline VPN")        # Outline (select server)
+        keyBtn(text="🔌 Подключить VPN")
     )
 
     # 3. Subscription management

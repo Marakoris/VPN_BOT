@@ -27,7 +27,7 @@ subscription_router = Router()
 
 # ==================== SUBSCRIPTION URL HANDLER ====================
 
-@subscription_router.message(F.text.in_(["📲 Subscription URL", "📲 Subscription", "Subscription"]))
+@subscription_router.message(F.text.in_(["🔌 Подключить VPN", "📲 Subscription URL", "📲 Subscription", "Subscription"]))
 async def get_subscription_url(message: Message, state: FSMContext) -> None:
     """
     Handler for getting subscription URL
@@ -65,18 +65,18 @@ async def get_subscription_url(message: Message, state: FSMContext) -> None:
     # URL-encode token (base64 may contain = which needs encoding)
     encoded_token = urllib.parse.quote(status['token'], safe='')
     subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
-    add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+    connect_url = f"{CONFIG.subscription_api_url}/connect/{encoded_token}"
     # Raw URL for happ:// deep links (without URL encoding)
     raw_subscription_url = f"{CONFIG.subscription_api_url}/sub/{status['token']}"
 
     # Create keyboard with Happ download links (by platform)
     kb = InlineKeyboardBuilder()
 
-    # 🔌 ГЛАВНАЯ КНОПКА - Подключиться (deep link для автоматического добавления)
+    # 🔌 ГЛАВНАЯ КНОПКА - Подключиться (страница выбора протокола)
     kb.row(
         InlineKeyboardButton(
             text="🔌 Подключиться",
-            url=add_link_url
+            url=connect_url
         )
     )
 
