@@ -243,18 +243,18 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
         # URL-encode token (base64 may contain = which needs encoding)
         encoded_token = urllib.parse.quote(token, safe='')
         subscription_url = f"{CONFIG.subscription_api_url}/sub/{encoded_token}"
-        add_link_url = f"{CONFIG.subscription_api_url}/add/{encoded_token}"
+        connect_url = f"{CONFIG.subscription_api_url}/connect/{encoded_token}"
         # Raw URL for happ:// deep links (without URL encoding)
         raw_subscription_url = f"{CONFIG.subscription_api_url}/sub/{token}"
 
         # Create keyboard with Happ download links (by platform)
         kb = InlineKeyboardBuilder()
 
-        # 🔌 ГЛАВНАЯ КНОПКА - Подключиться (deep link для автоматического добавления)
+        # 🔌 ГЛАВНАЯ КНОПКА - Подключиться (страница выбора протокола)
         kb.row(
             InlineKeyboardButton(
                 text="🔌 Подключиться",
-                url=add_link_url
+                url=connect_url
             )
         )
 
