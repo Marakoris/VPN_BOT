@@ -23,6 +23,13 @@ DEFAULT_TRAFFIC_LIMIT = 500 * 1024 * 1024 * 1024  # 536870912000
 # Количество дней до автоматического сброса трафика
 TRAFFIC_RESET_DAYS = 30
 
+# Cache for server traffic data
+# Key: server_id, Value: {email: bytes}
+# Used when server is temporarily unavailable to preserve last known values
+_server_traffic_cache: Dict[int, Dict[str, int]] = {}
+_server_cache_updated: Dict[int, datetime] = {}  # Last update time per server
+SERVER_CACHE_MAX_AGE_HOURS = 24  # Don't use cache older than 24 hours
+
 
 async def get_user_traffic_from_server(server: Servers, telegram_id: int) -> int:
     """
@@ -96,7 +103,33 @@ async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
     """
     Fetch all client traffic data from a single server.
     Returns dict: {email: total_bytes}
+
+    Uses caching: if server is unavailable, returns last known values
+    (up to SERVER_CACHE_MAX_AGE_HOURS old).
     """
+    global _server_traffic_cache, _server_cache_updated
+
+    def _get_cached_data() -> Dict[str, int]:
+        """Return cached data if available and not too old."""
+        if server.id not in _server_traffic_cache:
+            return {}
+
+        last_update = _server_cache_updated.get(server.id)
+        if last_update:
+            age = datetime.utcnow() - last_update
+            if age.total_seconds() > SERVER_CACHE_MAX_AGE_HOURS * 3600:
+                log.warning(f"[Traffic] Cache for {server.name} is too old ({age}), ignoring")
+                return {}
+
+        cached = _server_traffic_cache[server.id]
+        log.warning(f"[Traffic] Using cached data for {server.name}: {len(cached)} clients")
+        return cached
+
+    def _update_cache(data: Dict[str, int]):
+        """Update cache with fresh data."""
+        _server_traffic_cache[server.id] = data.copy()
+        _server_cache_updated[server.id] = datetime.utcnow()
+
     try:
         from bot.misc.VPN.ServerManager import ServerManager
         manager = ServerManager(server)
@@ -111,7 +144,7 @@ async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
 
                 if not metrics or 'bytesTransferredByUserId' not in metrics:
                     log.debug(f"[Traffic] No metrics from Outline server {server.name}")
-                    return {}
+                    return _get_cached_data()
 
                 result = {}
                 bytes_by_id = metrics['bytesTransferredByUserId']
@@ -124,16 +157,18 @@ async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
                         result[f"{telegram_id}_outline"] = bytes_by_id[key_id]
 
                 log.debug(f"[Traffic] Fetched {len(result)} clients from {server.name} (Outline)")
+                _update_cache(result)
                 return result
 
             except Exception as e:
                 log.error(f"[Traffic] Error fetching Outline traffic from {server.name}: {e}")
-                return {}
+                return _get_cached_data()
 
         # Get all client stats from server
         client_stats = await manager.get_all_user()
         if not client_stats:
-            return {}
+            log.warning(f"[Traffic] No data from {server.name}, using cache")
+            return _get_cached_data()
 
         result = {}
         for stat in client_stats:
@@ -143,11 +178,12 @@ async def fetch_all_traffic_from_server(server) -> Dict[str, int]:
             result[email] = up + down
 
         log.debug(f"[Traffic] Fetched {len(result)} clients from {server.name}")
+        _update_cache(result)
         return result
 
     except Exception as e:
         log.error(f"[Traffic] Error fetching from server {server.name}: {e}")
-        return {}
+        return _get_cached_data()
 
 
 async def update_all_users_traffic(bot=None) -> Dict[str, int]:
@@ -222,9 +258,14 @@ async def update_all_users_traffic(bot=None) -> Dict[str, int]:
                 user.previous_traffic_bytes = main_traffic
                 user.total_traffic_bytes = main_traffic
 
-                # Fix offset if needed
+                # NOTE: Don't reset offset if offset > main_traffic
+                # This can happen when servers are temporarily unavailable
+                # and main_traffic is incomplete. Resetting offset breaks accounting.
                 if user.traffic_offset_bytes and user.traffic_offset_bytes > main_traffic:
-                    user.traffic_offset_bytes = main_traffic
+                    log.debug(
+                        f"[Traffic] User {user.tgid} offset ({format_bytes(user.traffic_offset_bytes)}) > "
+                        f"total ({format_bytes(main_traffic)}), keeping offset (server may be unavailable)"
+                    )
 
                 # Check main limit
                 limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
@@ -238,9 +279,11 @@ async def update_all_users_traffic(bot=None) -> Dict[str, int]:
                 bypass_traffic = bypass_cache.get(user.tgid, 0)
                 user.bypass_traffic_bytes = bypass_traffic
 
-                # Fix bypass offset if needed
+                # NOTE: Don't reset bypass offset either (same reason as main traffic)
                 if user.bypass_offset_bytes and user.bypass_offset_bytes > bypass_traffic:
-                    user.bypass_offset_bytes = bypass_traffic
+                    log.debug(
+                        f"[Traffic] User {user.tgid} bypass offset > total, keeping offset"
+                    )
 
                 # Calculate bypass usage
                 bypass_offset = user.bypass_offset_bytes or 0
