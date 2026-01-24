@@ -123,7 +123,7 @@ class PaymentSystem:
 
             # Если есть токен - сразу URL на лендинг
             if person_after_payment.subscription_token:
-                add_link_url = f"{CONFIG.subscription_api_url}/add/{quote(person_after_payment.subscription_token, safe='')}"
+                add_link_url = f"{CONFIG.subscription_api_url}/connect/{quote(person_after_payment.subscription_token, safe='')}"
                 kb.row(InlineKeyboardButton(text="🔑 Подключиться к VPN", url=add_link_url))
             else:
                 # Fallback на callback если токена нет

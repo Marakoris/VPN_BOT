@@ -10,7 +10,8 @@ import hmac
 import hashlib
 import time
 import logging
-from typing import Optional, List, Dict
+import aiohttp
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 
 from sqlalchemy import select
@@ -22,6 +23,10 @@ from bot.misc.VPN.ServerManager import ServerManager
 from bot.misc.util import CONFIG
 
 log = logging.getLogger(__name__)
+
+# Retry settings for disable operations
+DISABLE_MAX_RETRIES = 3
+DISABLE_RETRY_DELAY = 5  # seconds
 
 # Secret key for HMAC token generation
 # Load from environment variable
@@ -45,6 +50,54 @@ async def _get_user_lock(user_id: int) -> asyncio.Lock:
         if user_id not in _user_locks:
             _user_locks[user_id] = asyncio.Lock()
         return _user_locks[user_id]
+
+
+async def _notify_admins_disable_failed(user_id: int, failed_servers: List[Tuple[int, str]]) -> None:
+    """
+    Send Telegram notification to admins about failed disable operations.
+
+    Args:
+        user_id: User's telegram ID
+        failed_servers: List of (server_id, server_name) tuples that failed
+    """
+    try:
+        bot_token = os.getenv("TG_TOKEN")
+        admin_ids_str = os.getenv("ADMINS_IDS", "")
+
+        if not bot_token or not admin_ids_str:
+            log.error("[Subscription] Cannot notify admins: TG_TOKEN or ADMINS_IDS not set")
+            return
+
+        admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+
+        # Format message
+        servers_list = "\n".join([f"   • {name} (ID={sid})" for sid, name in failed_servers])
+        message = (
+            f"⚠️ <b>Неполная блокировка пользователя!</b>\n\n"
+            f"👤 User ID: <code>{user_id}</code>\n"
+            f"❌ Не удалось отключить ({len(failed_servers)} серверов):\n"
+            f"{servers_list}\n\n"
+            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"🔧 Требуется ручная проверка!"
+        )
+
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+        async with aiohttp.ClientSession() as session:
+            for admin_id in admin_ids:
+                try:
+                    await session.post(url, json={
+                        "chat_id": admin_id,
+                        "text": message,
+                        "parse_mode": "HTML"
+                    })
+                except Exception as e:
+                    log.error(f"[Subscription] Failed to notify admin {admin_id}: {e}")
+
+        log.info(f"[Subscription] Notified admins about failed disable for user {user_id}")
+
+    except Exception as e:
+        log.error(f"[Subscription] Error sending admin notification: {e}")
 
 
 async def _cleanup_user_lock(user_id: int):
@@ -602,28 +655,47 @@ async def expire_subscription(user_id: int) -> bool:
 
                     log.info(f"[Subscription] Found {len(user_servers)} servers with keys for user {user_id}")
 
-                    # 3. Disable keys on each server
+                    # 3. Disable keys on each server with retry logic
                     success_count = 0
-                    error_count = 0
+                    failed_servers: List[Tuple[int, str]] = []  # (server_id, server_name)
 
                     for server in user_servers:
-                        try:
-                            server_manager = ServerManager(server)
-                            await server_manager.login()
+                        disabled = False
 
-                            result = await server_manager.disable_client(user_id)
+                        # Try up to DISABLE_MAX_RETRIES times
+                        for attempt in range(1, DISABLE_MAX_RETRIES + 1):
+                            try:
+                                server_manager = ServerManager(server)
+                                await server_manager.login()
+                                result = await server_manager.disable_client(user_id)
 
-                            if result:
-                                success_count += 1
-                                log.debug(f"[Subscription] Disabled key for user {user_id} on server {server.id}")
-                            else:
-                                error_count += 1
-                                log.error(f"[Subscription] Failed to disable key on server {server.id}")
+                                if result:
+                                    disabled = True
+                                    success_count += 1
+                                    log.debug(f"[Subscription] Disabled key for user {user_id} on server {server.id}")
+                                    break
+                                else:
+                                    log.warning(
+                                        f"[Subscription] Disable attempt {attempt}/{DISABLE_MAX_RETRIES} "
+                                        f"failed on server {server.id} ({server.name})"
+                                    )
 
-                        except Exception as e:
-                            error_count += 1
-                            log.error(f"[Subscription] Error disabling on server {server.id}: {e}")
-                            continue
+                            except Exception as e:
+                                log.warning(
+                                    f"[Subscription] Disable attempt {attempt}/{DISABLE_MAX_RETRIES} "
+                                    f"error on server {server.id}: {e}"
+                                )
+
+                            # Wait before retry (except on last attempt)
+                            if attempt < DISABLE_MAX_RETRIES:
+                                await asyncio.sleep(DISABLE_RETRY_DELAY)
+
+                        if not disabled:
+                            failed_servers.append((server.id, server.name))
+                            log.error(
+                                f"[Subscription] Failed to disable key on server {server.id} "
+                                f"({server.name}) after {DISABLE_MAX_RETRIES} attempts"
+                            )
 
                     # 4. Set subscription_active = false (even if there were errors)
                     user.subscription_active = False
@@ -631,10 +703,14 @@ async def expire_subscription(user_id: int) -> bool:
 
                     log.info(
                         f"[Subscription] ✅ Expired for user {user_id}: "
-                        f"{success_count} success, {error_count} errors"
+                        f"{success_count} success, {len(failed_servers)} errors"
                     )
 
-                    return error_count == 0
+                    # 5. Notify admins if there were failures
+                    if failed_servers:
+                        await _notify_admins_disable_failed(user_id, failed_servers)
+
+                    return len(failed_servers) == 0
 
                 except Exception as e:
                     log.error(f"[Subscription] Failed to expire for user {user_id}: {e}")
