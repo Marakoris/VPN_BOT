@@ -2276,39 +2276,41 @@ async def outline_servers_page(token: str, request: Request):
 
         log.info(f"[Outline Servers] User {user_id} accessing page from {client_ip}, found {len(outline_servers)} servers")
 
-        # Function to extract country flag from server name
-        def get_country_flag(name):
-            import re
-            # Try to find emoji flag in name
-            flag_match = re.search(r'[\U0001F1E0-\U0001F1FF]{2}', name)
-            if flag_match:
-                return flag_match.group()
-            # Fallback mappings
+        # Function to get country code for flag image
+        def get_country_code(name):
             name_lower = name.lower()
             if 'russia' in name_lower or 'рос' in name_lower or 'moscow' in name_lower:
-                return '🇷🇺'
+                return 'ru'
+            elif 'kazakhstan' in name_lower or 'казах' in name_lower:
+                return 'kz'
             elif 'spain' in name_lower or 'madrid' in name_lower or 'испан' in name_lower:
-                return '🇪🇸'
+                return 'es'
             elif 'germany' in name_lower or 'frankfurt' in name_lower or 'герман' in name_lower:
-                return '🇩🇪'
+                return 'de'
             elif 'netherlands' in name_lower or 'amsterdam' in name_lower or 'нидерланд' in name_lower:
-                return '🇳🇱'
-            elif 'usa' in name_lower or 'united states' in name_lower or 'америк' in name_lower:
-                return '🇺🇸'
+                return 'nl'
+            elif 'usa' in name_lower or 'united states' in name_lower or 'америк' in name_lower or 'сша' in name_lower:
+                return 'us'
             elif 'uk' in name_lower or 'britain' in name_lower or 'london' in name_lower:
-                return '🇬🇧'
+                return 'gb'
             elif 'france' in name_lower or 'paris' in name_lower or 'франц' in name_lower:
-                return '🇫🇷'
+                return 'fr'
             elif 'turkey' in name_lower or 'турц' in name_lower:
-                return '🇹🇷'
+                return 'tr'
             elif 'finland' in name_lower or 'финлянд' in name_lower:
-                return '🇫🇮'
+                return 'fi'
+            return None
+
+        def get_flag_html(name):
+            code = get_country_code(name)
+            if code:
+                return f'<img src="https://flagcdn.com/w40/{code}.png" alt="{code}" class="flag-img">'
             return '🌐'
 
         # Build server cards HTML
         server_cards_html = ""
         for server in outline_servers:
-            flag = get_country_flag(server.name)
+            flag = get_flag_html(server.name)
             # Extract country name from server name (remove "Outline" suffix)
             country_name = server.name.replace('Outline', '').strip()
             server_cards_html += f"""
@@ -2477,6 +2479,12 @@ async def outline_servers_page(token: str, request: Request):
             align-items: center;
             justify-content: center;
             font-size: 32px;
+        }}
+        .flag-img {{
+            width: 40px;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }}
         .server-details {{
             display: flex;
