@@ -14,45 +14,6 @@ from pyxui_async import XUI
 from bot.misc.VPN.BaseVpn import BaseVpn
 
 
-# ========== Relaxed JSON Parser for x-ui 2.4.0+ ==========
-
-def relaxed_to_json(s: str) -> str:
-    """Convert x-ui 2.4.0+ relaxed JSON to standard JSON.
-
-    x-ui 2.4.0+ stores settings in relaxed JSON format without quotes around keys:
-    {clients: [{email: test, enable: true}]}
-
-    This converts it to standard JSON:
-    {"clients": [{"email": "test", "enable": true}]}
-    """
-    # Add quotes around unquoted keys
-    s = re.sub(r'(?<=[{\[,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', s)
-    # Handle special value 'none' -> null
-    s = re.sub(r':\s*none\s*([,}\]])', r': null\1', s)
-    # Handle empty values (key: ,) -> "key": ""
-    s = re.sub(r':\s*,', r': "",', s)
-    s = re.sub(r':\s*\}', r': ""}', s)
-    s = re.sub(r':\s*\]', r': ""]', s)
-    # Add quotes to unquoted string values (careful with true/false/null/numbers)
-    def quote_string_values(match):
-        key, val, end = match.groups()
-        if val in ('true', 'false', 'null') or val.replace('-','').replace('.','').isdigit():
-            return f'{key}: {val}{end}'
-        return f'{key}: "{val}"{end}'
-    s = re.sub(r'("[\w]+"):\s*([a-zA-Z0-9_\-\.]+)\s*([,}\]])', quote_string_values, s)
-    return s
-
-
-def safe_json_loads(s: str) -> dict:
-    """Parse JSON with fallback to relaxed JSON for x-ui 2.4.0+ compatibility"""
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        # Try relaxed JSON conversion
-        fixed = relaxed_to_json(s)
-        return json.loads(fixed)
-
-
 class XuiBase(BaseVpn, ABC):
 
     NAME_VPN: str
@@ -128,7 +89,7 @@ class XuiBase(BaseVpn, ABC):
             self._run_ssh_command,
             f'sqlite3 /etc/x-ui/x-ui.db "SELECT settings FROM inbounds WHERE id={self.inbound_id};"'
         )
-        return safe_json_loads(output.strip())
+        return json.loads(output.strip())
 
     async def _ssh_get_client(self, email: str) -> dict:
         """Get client by email via SSH"""
