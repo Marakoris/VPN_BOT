@@ -6,12 +6,120 @@ Configurations are compatible with V2RayNG, Shadowrocket, and other clients.
 """
 import json
 import logging
+import re
 from typing import Optional, Dict
 from urllib.parse import quote
+import aiohttp
 
 from bot.misc.VPN.ServerManager import ServerManager
 
 log = logging.getLogger(__name__)
+
+
+# ==================== RELAXED JSON PARSER FOR x-ui 2.4.0+ ====================
+
+def relaxed_to_json(s: str) -> str:
+    """Convert x-ui 2.4.0+ relaxed JSON to standard JSON.
+
+    x-ui 2.4.0+ stores settings in relaxed JSON format without quotes around keys:
+    {clients: [{email: test, enable: true}]}
+
+    This converts it to standard JSON:
+    {"clients": [{"email": "test", "enable": true}]}
+    """
+    # Add quotes around unquoted keys
+    s = re.sub(r'(?<=[{\[,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', s)
+    # Handle special value 'none' -> null
+    s = re.sub(r':\s*none\s*([,}\]])', r': null\1', s)
+    # Handle empty values (key: ,) -> "key": ""
+    s = re.sub(r':\s*,', r': "",', s)
+    s = re.sub(r':\s*\}', r': ""}', s)
+    s = re.sub(r':\s*\]', r': ""]', s)
+    # Add quotes to unquoted string values (careful with true/false/null/numbers)
+    def quote_string_values(match):
+        key, val, end = match.groups()
+        if val in ('true', 'false', 'null') or val.replace('-','').replace('.','').isdigit():
+            return f'{key}: {val}{end}'
+        return f'{key}: "{val}"{end}'
+    s = re.sub(r'("[\w]+"):\s*([a-zA-Z0-9_\-\.]+)\s*([,}\]])', quote_string_values, s)
+    return s
+
+
+def safe_json_loads(s: str) -> dict:
+    """Parse JSON with fallback to relaxed JSON for x-ui 2.4.0+ compatibility"""
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        # Try relaxed JSON conversion
+        fixed = relaxed_to_json(s)
+        return json.loads(fixed)
+
+
+# ==================== HTTP FALLBACK FOR 3x-ui ====================
+
+async def generate_vless_config_http(server, telegram_id: int, server_name: str = None):
+    """HTTP fallback for 3x-ui panels that dont work with pyxui"""
+    import json as json_mod
+    try:
+        ip_port = server.ip.split("/")[0]
+        base_url = f"http://{ip_port}"
+        inbound_id = getattr(server, "inbound_id", 1)
+        
+        jar = aiohttp.CookieJar(unsafe=True)
+        async with aiohttp.ClientSession(cookie_jar=jar) as session:
+            async with session.post(f"{base_url}/login", data={"username": server.login, "password": server.password}) as resp:
+                login_data = await resp.json()
+                if not login_data.get("success"):
+                    return None
+            
+            async with session.get(f"{base_url}/panel/api/inbounds/list") as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                if not data.get("success"):
+                    return None
+                
+                inbound = None
+                for ib in data.get("obj", []):
+                    if ib.get("id") == inbound_id:
+                        inbound = ib
+                        break
+                if not inbound:
+                    return None
+                
+                settings = safe_json_loads(inbound.get("settings", "{}"))
+                stream_settings = safe_json_loads(inbound.get("streamSettings", "{}"))
+                
+                client = None
+                tgid_str = str(telegram_id)
+                for c in settings.get("clients", []):
+                    if c.get("email", "").startswith(tgid_str):
+                        client = c
+                        break
+                if not client:
+                    return None
+                
+                reality_settings = stream_settings.get("realitySettings", {})
+                settings_data = reality_settings.get("settings", {})
+                fp = settings_data.get("fingerprint") or reality_settings.get("fingerprint", "chrome")
+                pbk = settings_data.get("publicKey") or reality_settings.get("publicKey", "")
+                sni = (reality_settings.get("serverNames", []) or [""])[0]
+                sid = (reality_settings.get("shortIds", []) or [""])[0]
+                
+                uuid = client.get("id")
+                host = server.ip.split(":")[0]
+                port = inbound.get("port")
+                flow = client.get("flow", "")
+                remark = quote(server_name or server.name)
+                
+                url = f"vless://{uuid}@{host}:{port}?type=tcp&security=reality&"
+                if flow:
+                    url += f"flow={flow}&"
+                url += f"fp={fp}&pbk={pbk}&sni={sni}&sid={sid}&spx=%2F#{remark}"
+                return url
+    except:
+        return None
+
 
 
 # ==================== VLESS CONFIG GENERATOR ====================
@@ -46,7 +154,13 @@ async def generate_vless_config(
         # Get client info
         client = await server_manager.get_user(telegram_id)
         if not client or client == 'User not found':
-            log.error(f"[VLESS Generator] Client not found for user {telegram_id}")
+            log.warning(f"[VLESS Generator] Client not found via pyxui for user {telegram_id}, trying HTTP fallback")
+            # Try HTTP fallback for x-ui 2.4.0+ which has relaxed JSON format
+            http_result = await generate_vless_config_http(server, telegram_id, server_name)
+            if http_result:
+                log.info(f"[VLESS Generator] ✅ HTTP fallback succeeded for {server.name}")
+                return http_result
+            log.error(f"[VLESS Generator] HTTP fallback also failed for user {telegram_id}")
             return None
 
         # Get inbound info (stream settings)
@@ -55,8 +169,8 @@ async def generate_vless_config(
             log.error(f"[VLESS Generator] Failed to get inbound info")
             return None
 
-        # Parse stream settings
-        stream_settings = json.loads(inbound_info['streamSettings'])
+        # Parse stream settings (use safe_json_loads for x-ui 2.4.0+ relaxed JSON)
+        stream_settings = safe_json_loads(inbound_info['streamSettings'])
 
         # Extract Reality settings
         reality_settings = stream_settings.get("realitySettings", {})
@@ -132,9 +246,14 @@ async def generate_vless_config(
         return vless_url
 
     except Exception as e:
-        log.error(f"[VLESS Generator] Error generating config: {e}")
-        import traceback
-        traceback.print_exc()
+        log.error(f"[VLESS Generator] Error generating config with pyxui: {e}, trying HTTP fallback")
+        try:
+            http_result = await generate_vless_config_http(server, telegram_id, server_name)
+            if http_result:
+                log.info(f"[VLESS Generator] ✅ HTTP fallback succeeded for {server.name}")
+                return http_result
+        except Exception as http_err:
+            log.error(f"[VLESS Generator] HTTP fallback also failed: {http_err}")
         return None
 
 
