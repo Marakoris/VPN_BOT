@@ -2246,8 +2246,8 @@ async def outline_servers_page(token: str, request: Request):
             result = await db.execute(statement)
             user = result.scalar_one_or_none()
 
-            # Get all Outline servers (type_vpn=0)
-            servers_statement = select(Servers).filter(Servers.type_vpn == 0)
+            # Get all Outline servers (type_vpn=0), sorted by name
+            servers_statement = select(Servers).filter(Servers.type_vpn == 0).order_by(Servers.name)
             servers_result = await db.execute(servers_statement)
             outline_servers = servers_result.scalars().all()
 
@@ -2471,14 +2471,12 @@ async def outline_servers_page(token: str, request: Request):
             gap: 12px;
         }}
         .server-icon {{
-            width: 44px;
-            height: 44px;
-            background: rgba(0, 200, 83, 0.2);
-            border-radius: 12px;
+            width: 48px;
+            height: 48px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
+            font-size: 32px;
         }}
         .server-details {{
             display: flex;
