@@ -289,12 +289,13 @@ async def get_subscription(token: str, request: Request):
                     return None
 
             async def check_server_with_timeout(server):
-                """Wrap check_server with per-server timeout"""
+                """Wrap check_server with per-server timeout, return (server_id, is_bypass, result) for sorting"""
                 try:
-                    return await asyncio.wait_for(check_server(server), timeout=SERVER_TIMEOUT)
+                    result = await asyncio.wait_for(check_server(server), timeout=SERVER_TIMEOUT)
+                    return (server.id, server.is_bypass, result)
                 except asyncio.TimeoutError:
                     log.warning(f"[Subscription API] Timeout for server {server.id} ({server.name})")
-                    return None
+                    return (server.id, server.is_bypass, None)
 
             # Run all server checks with TOTAL timeout - return what we get
             tasks = [asyncio.create_task(check_server_with_timeout(server)) for server in all_servers]
@@ -308,28 +309,34 @@ async def get_subscription(token: str, request: Request):
                     task.cancel()
                     log.warning(f"[Subscription API] Cancelled slow task")
 
-                # Get results from completed tasks
-                results = []
+                # Get results from completed tasks (format: (server_id, is_bypass, config))
+                results_with_ids = []
                 for task in done:
                     try:
-                        result = task.result()
+                        server_id, is_bypass, result = task.result()
                         if result:
-                            results.append(result)
+                            results_with_ids.append((server_id, is_bypass, result))
                     except Exception:
                         pass
+                # Sort: regular servers first (is_bypass=False), then bypass servers, by server_id within each group
+                results_with_ids.sort(key=lambda x: (x[1], x[0]))  # (is_bypass, server_id)
+                results = [r[2] for r in results_with_ids]
 
             except asyncio.TimeoutError:
                 # Total timeout - get what we have
                 log.warning(f"[Subscription API] Total timeout reached, returning partial results")
-                results = []
+                results_with_ids = []
                 for task in tasks:
                     if task.done() and not task.cancelled():
                         try:
-                            result = task.result()
+                            server_id, is_bypass, result = task.result()
                             if result:
-                                results.append(result)
+                                results_with_ids.append((server_id, is_bypass, result))
                         except Exception:
                             pass
+                # Sort: regular servers first (is_bypass=False), then bypass servers, by server_id within each group
+                results_with_ids.sort(key=lambda x: (x[1], x[0]))  # (is_bypass, server_id)
+                results = [r[2] for r in results_with_ids]
 
             # Use results directly (already filtered)
             config_lines = results
