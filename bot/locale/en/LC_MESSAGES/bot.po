@@ -99,13 +99,13 @@ msgid "instruction_walletpay"
 msgstr "https://heavy-weight-a87.notion.site/18d2ac7dfb0780799e3cf14ba49b15e0"
 
 msgid "referral_message"
-msgstr "Invite a friend👥 and for each invited friend, you will receive 3 days of VPN as a gift 🎁"
+msgstr "Invite a friend👥 and when they pay for subscription, you will receive +3 days of VPN as a gift 🎁"
 
 msgid "referral_error"
 msgstr "You cannot invite yourself ❌"
 
 msgid "referral_new_user"
-msgstr "Thank you for inviting a friend 😊😘 \nAs a token of appreciation, we give you 3 days of free VPN access 🫡"
+msgstr "🎉 Your friend paid for subscription!\nAs a token of appreciation, we added +3 days to your subscription 🫡"
 
 msgid "referral_promo_code"
 msgstr "Another way to get VPN access is promo codes, enter if you have one"
