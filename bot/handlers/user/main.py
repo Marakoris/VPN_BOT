@@ -234,11 +234,10 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
                 reference = int(reference)
             else:
                 reference = None
-            if reference != m.from_user.id:
-                await give_bonus_invitee(m, reference, lang)
-            else:
+            if reference == m.from_user.id:
                 await m.answer(_('referral_error', lang))
                 reference = None
+            # Бонус за реферала начисляется при первой оплате, не при регистрации
         # Регистрируем с subscription=0 (пробный период активируется отдельно)
         await add_new_person(
             m.from_user,

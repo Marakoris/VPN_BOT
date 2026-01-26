@@ -157,6 +157,17 @@ class PaymentSystem:
                                               total_amount,
                                               CONFIG.referral_percent,
                                               referral_balance)
+
+            # Бонусные дни за реферала - только при первой оплате
+            if person.retention == 0 and CONFIG.referral_day > 0:
+                bonus_days = CONFIG.referral_day
+                await add_time_person(referral_user, bonus_days * CONFIG.COUNT_SECOND_DAY)
+                await self.message.bot.send_message(
+                    referral_user,
+                    _('referral_new_user', await get_lang(referral_user))
+                )
+                log.info(f"Referral bonus: +{bonus_days} days to user {referral_user} for inviting {self.user_id}")
+
             await self.message.bot.send_message(
                 referral_user,
                 _('reff_add_balance', await get_lang(referral_user)).format(
