@@ -9,7 +9,7 @@ early_detect_env() {
   LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
   # Check by IP first (most reliable)
-  if [ "$LOCAL_IP" = "193.124.182.161" ]; then
+  if [ "$LOCAL_IP" = "109.69.56.185" ]; then
     echo "PRODUCTION"
   elif [ "$LOCAL_IP" = "185.58.204.196" ]; then
     echo "TEST"
@@ -49,7 +49,7 @@ detect_environment() {
   LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
   # Check by IP first (most reliable)
-  if [ "$LOCAL_IP" = "193.124.182.161" ]; then
+  if [ "$LOCAL_IP" = "109.69.56.185" ]; then
     echo "PRODUCTION"
   elif [ "$LOCAL_IP" = "185.58.204.196" ]; then
     echo "TEST"
@@ -84,6 +84,11 @@ else
 cat << 'EOF'
 
 # 🟢 TEST SERVER - VPN Bot Project
+
+## ⚠️ ВАЖНО: СМОТРИ ДОКУМЕНТАЦИЮ ПЕРВЫМ ДЕЛОМ!
+При работе с проектом **СНАЧАЛА читай документацию**, а не гадай:
+- **@/root/claude-docs/projects/vpn-bot/VPN-SUPPORT-CONTEXT.md** — поддержка клиентов, серверы, credentials
+- **@/root/github_repos/VPN_BOT/.claude/CLAUDE.md** — продакшн доступы, архитектура
 
 ## 📍 Текущий проект
 **VPN Bot** - Telegram бот для управления VPN подписками

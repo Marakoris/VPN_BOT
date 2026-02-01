@@ -561,10 +561,19 @@ async def reset_monthly_traffic() -> Dict[str, int]:
                     user.traffic_offset_bytes = current_total
                     user.traffic_reset_date = now
                     user.traffic_warning_sent = False  # Сбрасываем флаг предупреждения
+
+                    # Синхронно сбрасываем bypass трафик
+                    bypass_total = user.bypass_traffic_bytes or 0
+                    user.bypass_offset_bytes = bypass_total
+                    user.bypass_reset_date = now
+                    user.bypass_warning_50_sent = False
+                    user.bypass_warning_70_sent = False
+                    user.bypass_warning_90_sent = False
+
                     stats['reset'] += 1
                     log.info(
                         f"[Traffic] Monthly reset for user {user.tgid}: "
-                        f"offset set to {format_bytes(current_total)}"
+                        f"traffic offset={format_bytes(current_total)}, bypass offset={format_bytes(bypass_total)}"
                     )
 
             except Exception as e:
