@@ -9,27 +9,32 @@
 ### ⚠️ ПРОДАКШН СЕРВЕР - АКТУАЛЬНЫЙ КОД
 
 ```
-Сервер: 193.124.182.161
-Порт SSH: 2222
+Сервер: 109.69.56.185 (Amsterdam, NL)
+Порт SSH: 22 (стандартный)
 Путь: /root/VPNHubBot/
-Доступ: sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161
+Доступ: sshpass -p 'vP175ycn4N80' ssh -o StrictHostKeyChecking=no root@109.69.56.185
+```
+
+### ❌ СТАРЫЙ СЕРВЕР (ОТКЛЮЧЕН 2026-01-28)
+```
+193.124.182.161:2222 — НЕ ИСПОЛЬЗОВАТЬ!
 ```
 
 ### ⚠️ ПЕРЕД КОПИРОВАНИЕМ ФАЙЛОВ НА ПРОД:
 
 1. **ВСЕГДА проверяй git status на ПРОДЕ** - там могут быть незакоммиченные изменения!
 2. **ВСЕГДА делай бэкап перед копированием!**
-3. **НЕТ volume mount на проде** - нужен `docker compose build` после изменений!
+3. **Есть volume mount** - достаточно `docker restart` после изменений bot/
 
 ```bash
 # Проверить статус на проде
-sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161 "cd /root/VPNHubBot && git status"
+sshpass -p 'vP175ycn4N80' ssh -o StrictHostKeyChecking=no root@109.69.56.185 "cd /root/VPNHubBot && git status"
 
 # Сделать бэкап
-sshpass -f /root/.ssh/.prod_password ssh -p 2222 root@193.124.182.161 "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
+sshpass -p 'vP175ycn4N80' ssh -o StrictHostKeyChecking=no root@109.69.56.185 "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
 ```
 
-**Подробнее**: `/root/claude-docs/knowledge/repository-locations.md`
+**Подробнее**: `/root/claude-docs/projects/vpn-bot/repository-locations.md`
 
 ---
 
@@ -278,5 +283,5 @@ sops -d /root/claude-docs/projects/vpn-servers/vpn-servers-credentials.enc.md
 
 ---
 
-**Последнее обновление**: 2026-01-19
+**Последнее обновление**: 2026-01-29
 **Версия проекта**: 2.0 (Subscription System Complete)
