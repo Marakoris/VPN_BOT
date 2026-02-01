@@ -2241,39 +2241,31 @@ async def check_servers_health(bot) -> Dict[str, any]:
             # Server came back online
             if not prev_status:
                 log.info(f"[HealthCheck] ✅ Server {base_ip} is back ONLINE")
-                # Send recovery alert
-                for admin_id in CONFIG.admins_ids:
-                    try:
-                        await bot.send_message(
-                            admin_id,
-                            f"✅ <b>Сервер снова онлайн!</b>\n\n"
-                            f"🖥 {display_name}\n"
-                            f"🌐 {base_ip}\n"
-                            f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}"
-                        )
-                        stats['alerts_sent'] += 1
-                    except Exception as e:
-                        log.error(f"[HealthCheck] Failed to send recovery alert to {admin_id}: {e}")
+                # Send recovery alert via alerts bot
+                from bot.misc.alerts import send_admin_alert
+                await send_admin_alert(
+                    f"✅ <b>Сервер снова онлайн!</b>\n\n"
+                    f"🖥 {display_name}\n"
+                    f"🌐 {base_ip}\n"
+                    f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}"
+                )
+                stats['alerts_sent'] += 1
         else:
             stats['offline'] += 1
 
             # Server went down
             if prev_status:
                 log.warning(f"[HealthCheck] 🚨 Server {base_ip} is DOWN!")
-                # Send alert
-                for admin_id in CONFIG.admins_ids:
-                    try:
-                        await bot.send_message(
-                            admin_id,
-                            f"🚨 <b>СЕРВЕР НЕДОСТУПЕН!</b>\n\n"
-                            f"🖥 {display_name}\n"
-                            f"🌐 {base_ip}\n"
-                            f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n\n"
-                            f"⚠️ Проверьте сервер!"
-                        )
-                        stats['alerts_sent'] += 1
-                    except Exception as e:
-                        log.error(f"[HealthCheck] Failed to send alert to {admin_id}: {e}")
+                # Send alert via alerts bot
+                from bot.misc.alerts import send_admin_alert
+                await send_admin_alert(
+                    f"🚨 <b>СЕРВЕР НЕДОСТУПЕН!</b>\n\n"
+                    f"🖥 {display_name}\n"
+                    f"🌐 {base_ip}\n"
+                    f"⏰ {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n\n"
+                    f"⚠️ Проверьте сервер!"
+                )
+                stats['alerts_sent'] += 1
             else:
                 # Still offline, log but don't spam
                 log.debug(f"[HealthCheck] Server {base_ip} still offline")
