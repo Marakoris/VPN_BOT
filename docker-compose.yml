@@ -1,0 +1,110 @@
+version: '3'
+
+services:
+
+  db_postgres:
+    image: postgres:16
+    container_name: postgres_db_container
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_db_vol:/var/lib/postgresql/data
+      - ./backups:/app/backups  # Монтируем директорию для бэкапов
+
+  pgadmin:
+    user: "0:0"
+    container_name: pgadmin_container
+    image: dpage/pgadmin4:8.6
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    volumes:
+      - ./pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "127.0.0.1:5050:80"
+    restart: unless-stopped
+
+  vpn_hub_bot:
+    restart: unless-stopped
+    build: ./
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - ADMIN_TG_ID
+      - CRYPTO_BOT_API
+      - CRYPTOMUS_KEY
+      - CRYPTOMUS_UUID
+      - LAVA_ID_PROJECT
+      - LAVA_TOKEN_SECRET
+      - NAME
+      - TG_TOKEN
+      - WALLET_PAY_TOKEN
+      - YOOKASSA_SECRET_KEY
+      - YOOKASSA_SHOP_ID
+      - YOOMONEY_TOKEN
+      - YOOMONEY_WALLET
+      - MAX_PEOPLE_SERVER
+      - ALERTS_BOT_TOKEN
+      - ALERTS_CHAT_ID
+    volumes:
+      - ./bot:/app/bot  # Монтируем весь код бота для быстрой разработки
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
+      - ./backups:/app/backups  # Монтируем директорию для бэкапов
+      - /root/VPN Clients:/app/vpn_clients  # Монтируем клиенты VPN
+
+  subscription_checker:
+    restart: unless-stopped
+    build: ./
+    container_name: subscription_checker_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - SUBSCRIPTION_CHECK_INTERVAL=300  # Check every 5 minutes (300 seconds)
+    volumes:
+      - ./bot:/app/bot
+      - ./subscription_api:/app/subscription_api
+      - ./subscription_expiry_checker.py:/app/subscription_expiry_checker.py
+      - ./run_subscription_checker.sh:/app/run_subscription_checker.sh
+      - ./logs:/app/logs
+    command: /bin/bash /app/run_subscription_checker.sh
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase_container
+    restart: unless-stopped
+    depends_on:
+      - db_postgres
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./metabase-data:/metabase-data
+    environment:
+      - MB_DB_FILE=/metabase-data/metabase.db
+      - MB_SITE_NAME=VPN Analytics
+      - JAVA_TIMEZONE=Europe/Moscow
+      - JAVA_OPTS=-Xms128m -Xmx256m
+
+  subscription_api:
+    restart: unless-stopped
+    build: ./
+    container_name: subscription_api_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./bot:/app/bot
+      - ./subscription_api:/app/subscription_api
+      - ./logs:/app/logs
+    command: ["uvicorn", "subscription_api.main:app", "--host", "0.0.0.0", "--port", "8003"]

@@ -1,0 +1,38 @@
+{
+  "autoApproveToolUse": [
+    "Bash(*)"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/VPNHubBot/.claude/hooks/restore-context.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/VPNHubBot/.claude/hooks/session-end.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/root/VPNHubBot/.claude/hooks/tooluse-combined.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
