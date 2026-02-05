@@ -130,12 +130,6 @@ class KassaSmart(PaymentSystem):
             "capture": True,
             "description": _('description_payment', lang_user),
             "save_payment_method": True,
-            "metadata": {
-                "user_id": str(self.user_id),
-                "days_count": str(self.days_count),
-                "price_on_db": str(self.price_on_db) if self.price_on_db else str(self.price),
-                "source": "manual"
-            }
         }, self.ID)
         self.ID = payment.id
         return payment.confirmation.confirmation_url

@@ -34,10 +34,8 @@ from subscription_api.security import (
     check_suspicious_activity,
     get_security_stats,
     unban_ip,
-    security_manager,
-    is_yookassa_ip
+    security_manager
 )
-from subscription_api.yookassa_webhook import process_payment_webhook
 
 # Configure logging
 logging.basicConfig(
@@ -487,70 +485,6 @@ async def unban_ip_endpoint(ip: str):
             content={"error": str(e)},
             status_code=500
         )
-
-
-# ==================== YOOKASSA WEBHOOK ====================
-
-@app.post("/webhooks/yookassa", tags=["Webhooks"])
-async def yookassa_webhook(request: Request):
-    """
-    YooKassa payment webhook endpoint.
-
-    Handles payment.succeeded events for delayed payments
-    that weren't caught by the 30-minute polling window.
-
-    Security:
-    - Verifies request IP is from YooKassa whitelist
-    - Processes payment and activates subscription
-    - Sends notifications to user and admins
-    """
-    client_ip = request.client.host
-
-    # Verify IP is from YooKassa
-    if not is_yookassa_ip(client_ip):
-        log.warning(f"[Webhook] Rejected request from non-YooKassa IP: {client_ip}")
-        return JSONResponse(
-            status_code=403,
-            content={"error": "Forbidden"}
-        )
-
-    try:
-        # Parse webhook data
-        webhook_data = await request.json()
-        log.info(f"[Webhook] Received webhook from {client_ip}: event={webhook_data.get('event')}")
-
-        # Process the webhook
-        result = await process_payment_webhook(webhook_data)
-
-        log.info(f"[Webhook] Processing result: {result}")
-
-        # Always return 200 OK to YooKassa (they will retry on non-2xx)
-        return JSONResponse(content={"status": "ok", "result": result})
-
-    except Exception as e:
-        log.error(f"[Webhook] Error processing webhook: {e}")
-        import traceback
-        traceback.print_exc()
-        # Still return 200 to prevent YooKassa retries on our errors
-        return JSONResponse(content={"status": "error", "message": str(e)})
-
-
-@app.get("/webhooks/yookassa/test", tags=["Webhooks"])
-async def yookassa_webhook_test(request: Request):
-    """
-    Test endpoint to verify webhook is accessible.
-    Returns client IP and whether it would be allowed.
-    """
-    client_ip = request.client.host
-    is_allowed = is_yookassa_ip(client_ip)
-
-    return JSONResponse(content={
-        "status": "ok",
-        "endpoint": "/webhooks/yookassa",
-        "client_ip": client_ip,
-        "is_yookassa_ip": is_allowed,
-        "message": "Webhook endpoint is active. POST payment.succeeded events here."
-    })
 
 
 # ==================== HELPER FUNCTIONS ====================
