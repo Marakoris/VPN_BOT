@@ -57,16 +57,27 @@ async def get_referral_link(message):
     )
 
 
-async def send_admins(bot: Bot, amount):
+async def send_admins(bot: Bot, amount, person, payment_info, communication):
+    """Отправка уведомления админам о запросе на вывод средств"""
+    username_str = f"@{person.username.replace('@', '')}" if person.username and person.username != '@None' else f"ID: {person.tgid}"
+
+    text = (
+        f"💸 <b>Запрос на вывод средств</b>\n\n"
+        f"👤 <b>От кого:</b> {person.fullname} ({username_str})\n"
+        f"🆔 <b>Telegram ID:</b> <code>{person.tgid}</code>\n"
+        f"💰 <b>Сумма:</b> {amount} ₽\n\n"
+        f"🏦 <b>Куда переводить:</b>\n{payment_info}\n\n"
+        f"📞 <b>Связь:</b>\n{communication}\n\n"
+        f"💼 <b>Остаток баланса:</b> {person.referral_balance - amount} ₽"
+    )
+
     for admin_id in CONFIG.admins_ids:
-        text = _(
-            'withdrawal_funds_has_been',
-            await get_lang(admin_id)
-        ).format(amount=amount)
         try:
-            await bot.send_message(text=text,
-                                   chat_id=admin_id,
-                                   )
+            await bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                parse_mode="HTML"
+            )
         except Exception as e:
             log.error(f"Can't send message to the admin with tg_id {admin_id}: {e}")
 
@@ -221,7 +232,7 @@ async def save_payment_method(message: Message, state: FSMContext):
             _('referral_system_success', lang),
             reply_markup=await user_menu(person, lang)
         )
-        await send_admins(message.bot, amount)
+        await send_admins(message.bot, amount, person, payment_info, communication)
     else:
         await message.answer(
             _('error_withdrawal_funds_not_balance', lang),
