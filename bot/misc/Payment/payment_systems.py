@@ -164,18 +164,24 @@ class PaymentSystem:
             if person.retention == 0 and CONFIG.referral_day > 0:
                 bonus_days = CONFIG.referral_day
                 await add_time_person(referral_user, bonus_days * CONFIG.COUNT_SECOND_DAY)
-                await self.message.bot.send_message(
-                    referral_user,
-                    _('referral_new_user', await get_lang(referral_user))
-                )
+                try:
+                    await self.message.bot.send_message(
+                        referral_user,
+                        _('referral_new_user', await get_lang(referral_user))
+                    )
+                except Exception as e:
+                    log.error(f"Can't send referral bonus message to {referral_user}: {e}")
                 log.info(f"Referral bonus: +{bonus_days} days to user {referral_user} for inviting {self.user_id}")
 
-            await self.message.bot.send_message(
-                referral_user,
-                _('reff_add_balance', await get_lang(referral_user)).format(
-                    referral_balance=referral_balance
+            try:
+                await self.message.bot.send_message(
+                    referral_user,
+                    _('reff_add_balance', await get_lang(referral_user)).format(
+                        referral_balance=referral_balance
+                    )
                 )
-            )
+            except Exception as e:
+                log.error(f"Can't send referral balance message to {referral_user}: {e}")
         await person_one_day_true(self.user_id)
 
         # Отметить промокод как использованный

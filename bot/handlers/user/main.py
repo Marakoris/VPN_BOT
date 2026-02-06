@@ -237,6 +237,10 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             if reference == m.from_user.id:
                 await m.answer(_('referral_error', lang))
                 reference = None
+            # Проверка: реферал не должен быть ID бота
+            if reference == m.bot.id:
+                log.warning(f"Attempted to set bot ID {m.bot.id} as referral for user {m.from_user.id}")
+                reference = None
             # Бонус за реферала начисляется при первой оплате, не при регистрации
         # Регистрируем с subscription=0 (пробный период активируется отдельно)
         await add_new_person(
