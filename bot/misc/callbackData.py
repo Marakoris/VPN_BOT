@@ -160,3 +160,10 @@ class AdminMenuNav(CallbackData, prefix='admin_nav'):
 
 class TrafficSourceSurvey(CallbackData, prefix='traffic_src'):
     source: str  # telegram_search, friend, forum, ads, other
+
+
+class WithdrawalConfirm(CallbackData, prefix='withdrawal'):
+    """Confirm withdrawal payment by admin"""
+    action: str  # 'confirm' or 'reject'
+    withdrawal_id: int
+    user_tgid: int

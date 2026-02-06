@@ -49,6 +49,11 @@ class WithdrawalFunds(StatesGroup):
     input_message_admin = State()
 
 
+class WithdrawalReceipt(StatesGroup):
+    """State for admin to upload payment receipt"""
+    waiting_receipt = State()
+
+
 async def get_referral_link(message):
     return await create_start_link(
         message.bot,
@@ -57,8 +62,11 @@ async def get_referral_link(message):
     )
 
 
-async def send_admins(bot: Bot, amount, person, payment_info, communication):
+async def send_admins(bot: Bot, amount, person, payment_info, communication, withdrawal_id: int):
     """Отправка уведомления админам о запросе на вывод средств"""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from bot.misc.callbackData import WithdrawalConfirm
+
     username_str = f"@{person.username.replace('@', '')}" if person.username and person.username != '@None' else f"ID: {person.tgid}"
 
     text = (
@@ -71,12 +79,21 @@ async def send_admins(bot: Bot, amount, person, payment_info, communication):
         f"💼 <b>Остаток баланса:</b> {person.referral_balance - amount} ₽"
     )
 
+    # Кнопка подтверждения выплаты
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text="✅ Выплачено (прикрепить чек)",
+        callback_data=WithdrawalConfirm(action='confirm', withdrawal_id=withdrawal_id, user_tgid=person.tgid)
+    )
+    kb.adjust(1)
+
     for admin_id in CONFIG.admins_ids:
         try:
             await bot.send_message(
                 chat_id=admin_id,
                 text=text,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
             )
         except Exception as e:
             log.error(f"Can't send message to the admin with tg_id {admin_id}: {e}")
@@ -216,8 +233,9 @@ async def save_payment_method(message: Message, state: FSMContext):
     payment_info = data['payment_info']
     amount = data['amount']
     person = await get_person(message.from_user.id)
+    withdrawal_id = None
     try:
-        await add_withdrawal(
+        withdrawal_id = await add_withdrawal(
             amount=amount,
             payment_info=payment_info,
             tgid=message.from_user.id,
@@ -232,7 +250,7 @@ async def save_payment_method(message: Message, state: FSMContext):
             _('referral_system_success', lang),
             reply_markup=await user_menu(person, lang)
         )
-        await send_admins(message.bot, amount, person, payment_info, communication)
+        await send_admins(message.bot, amount, person, payment_info, communication, withdrawal_id)
     else:
         await message.answer(
             _('error_withdrawal_funds_not_balance', lang),
@@ -455,3 +473,142 @@ async def download_withdrawal_statistics(call: CallbackQuery):
     except Exception as e:
         log.error(f"Error generating withdrawal stats: {e}")
         await call.message.answer("❌ Ошибка при генерации файла. Попробуйте позже.")
+
+
+# ==================== ADMIN: WITHDRAWAL CONFIRMATION ====================
+
+@referral_router.callback_query(lambda c: c.data and c.data.startswith('withdrawal:'))
+async def withdrawal_confirm_callback(call: CallbackQuery, state: FSMContext):
+    """Админ нажал кнопку 'Выплачено' - запрашиваем чек"""
+    from bot.misc.callbackData import WithdrawalConfirm
+
+    # Проверяем что это админ
+    if call.from_user.id not in CONFIG.admins_ids:
+        await call.answer("❌ Только для администраторов", show_alert=True)
+        return
+
+    # Парсим callback data
+    data = WithdrawalConfirm.unpack(call.data)
+
+    # Сохраняем данные в state
+    await state.update_data(
+        withdrawal_id=data.withdrawal_id,
+        user_tgid=data.user_tgid,
+        original_message_id=call.message.message_id
+    )
+
+    await call.message.answer(
+        "📎 <b>Прикрепите скриншот чека об оплате</b>\n\n"
+        "Отправьте фото чека, и он будет переслан пользователю как подтверждение выплаты.",
+        parse_mode="HTML"
+    )
+    await state.set_state(WithdrawalReceipt.waiting_receipt)
+    await call.answer()
+
+
+@referral_router.message(WithdrawalReceipt.waiting_receipt, F.photo)
+async def withdrawal_receipt_received(message: Message, state: FSMContext):
+    """Админ прислал чек - обрабатываем выплату"""
+    from bot.database.methods.update import reduce_referral_balance_person
+
+    data = await state.get_data()
+    withdrawal_id = data.get('withdrawal_id')
+    user_tgid = data.get('user_tgid')
+    original_message_id = data.get('original_message_id')
+
+    if not withdrawal_id or not user_tgid:
+        await message.answer("❌ Ошибка: данные о выплате не найдены")
+        await state.clear()
+        return
+
+    try:
+        # Получаем информацию о выплате из БД
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from sqlalchemy import select, update
+        from bot.database.main import engine
+        from bot.database.models.main import WithdrawalRequests
+        from datetime import datetime
+
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            stmt = select(WithdrawalRequests).filter(WithdrawalRequests.id == withdrawal_id)
+            result = await db.execute(stmt)
+            withdrawal = result.scalar_one_or_none()
+
+            if not withdrawal:
+                await message.answer("❌ Заявка на вывод не найдена")
+                await state.clear()
+                return
+
+            if withdrawal.check_payment:
+                await message.answer("⚠️ Эта выплата уже была подтверждена ранее")
+                await state.clear()
+                return
+
+            amount = withdrawal.amount
+
+            # Отмечаем выплату как выполненную
+            stmt = update(WithdrawalRequests).where(
+                WithdrawalRequests.id == withdrawal_id
+            ).values(
+                check_payment=True,
+                payment_date=datetime.now()
+            )
+            await db.execute(stmt)
+            await db.commit()
+
+        # Отправляем чек пользователю
+        photo = message.photo[-1]  # Берём фото в лучшем качестве
+        try:
+            await message.bot.send_photo(
+                chat_id=user_tgid,
+                photo=photo.file_id,
+                caption=(
+                    f"✅ <b>Выплата выполнена!</b>\n\n"
+                    f"💰 Сумма: {amount} ₽\n\n"
+                    f"Спасибо за участие в партнёрской программе! 🎉"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            log.error(f"Failed to send receipt to user {user_tgid}: {e}")
+            await message.answer(f"⚠️ Не удалось отправить чек пользователю: {e}")
+
+        # Редактируем оригинальное сообщение админу
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=original_message_id,
+                text=message.reply_to_message.text if message.reply_to_message else "💸 Запрос на вывод средств",
+                parse_mode="HTML"
+            )
+            await message.bot.edit_message_reply_markup(
+                chat_id=message.chat.id,
+                message_id=original_message_id,
+                reply_markup=None
+            )
+        except Exception:
+            pass  # Сообщение могло быть удалено
+
+        await message.answer(
+            f"✅ <b>Выплата подтверждена!</b>\n\n"
+            f"💰 Сумма: {amount} ₽\n"
+            f"👤 Пользователь: {user_tgid}\n"
+            f"📎 Чек отправлен пользователю",
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        log.error(f"Error processing withdrawal confirmation: {e}")
+        await message.answer(f"❌ Ошибка при обработке: {e}")
+
+    await state.clear()
+
+
+@referral_router.message(WithdrawalReceipt.waiting_receipt)
+async def withdrawal_receipt_wrong_format(message: Message, state: FSMContext):
+    """Админ прислал не фото"""
+    await message.answer(
+        "⚠️ Пожалуйста, отправьте <b>фото</b> чека об оплате.\n\n"
+        "Или напишите /cancel для отмены.",
+        parse_mode="HTML"
+    )

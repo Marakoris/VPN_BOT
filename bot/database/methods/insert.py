@@ -78,7 +78,8 @@ async def add_promo(text_promo, add_days, expires_at=None):
         await db.commit()
 
 
-async def add_withdrawal(tgid, amount, payment_info, communication):
+async def add_withdrawal(tgid, amount, payment_info, communication) -> int:
+    """Add withdrawal request and return its ID"""
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         withdrawal = WithdrawalRequests(
             amount=amount,
@@ -88,6 +89,8 @@ async def add_withdrawal(tgid, amount, payment_info, communication):
         )
         db.add(withdrawal)
         await db.commit()
+        await db.refresh(withdrawal)
+        return withdrawal.id
 
 
 async def add_group(group_name):
