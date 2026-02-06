@@ -491,6 +491,19 @@ async def unban_ip_endpoint(ip: str):
 
 # ==================== YOOKASSA WEBHOOK ====================
 
+def get_real_ip(request: Request) -> str:
+    """Get real client IP from X-Real-IP or X-Forwarded-For headers."""
+    # Try X-Real-IP first (set by nginx)
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    # Try X-Forwarded-For (first IP in the chain)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    # Fallback to direct connection IP
+    return request.client.host
+
 @app.post("/webhooks/yookassa", tags=["Webhooks"])
 async def yookassa_webhook(request: Request):
     """
@@ -504,7 +517,7 @@ async def yookassa_webhook(request: Request):
     - Processes payment and activates subscription
     - Sends notifications to user and admins
     """
-    client_ip = request.client.host
+    client_ip = get_real_ip(request)
 
     # Verify IP is from YooKassa
     if not is_yookassa_ip(client_ip):
@@ -541,7 +554,7 @@ async def yookassa_webhook_test(request: Request):
     Test endpoint to verify webhook is accessible.
     Returns client IP and whether it would be allowed.
     """
-    client_ip = request.client.host
+    client_ip = get_real_ip(request)
     is_allowed = is_yookassa_ip(client_ip)
 
     return JSONResponse(content={
