@@ -320,3 +320,48 @@ def get_security_stats(ip: Optional[str] = None) -> Dict:
 def unban_ip(ip: str) -> bool:
     """Helper: Unban IP address"""
     return security_manager.unban_ip(ip)
+
+
+# ==================== YOOKASSA IP WHITELIST ====================
+
+import ipaddress
+
+# Official YooKassa IP addresses for webhook notifications
+# Source: https://yookassa.ru/developers/using-api/webhooks
+YOOKASSA_IP_WHITELIST = [
+    "185.71.76.0/27",
+    "185.71.77.0/27",
+    "77.75.153.0/25",
+    "77.75.156.11",
+    "77.75.156.35",
+    "77.75.154.128/25",
+]
+
+
+def is_yookassa_ip(ip: str) -> bool:
+    """
+    Check if IP address belongs to YooKassa webhook servers.
+
+    Args:
+        ip: IP address to check
+
+    Returns:
+        True if IP is in YooKassa whitelist, False otherwise
+    """
+    try:
+        check_ip = ipaddress.ip_address(ip)
+
+        for allowed in YOOKASSA_IP_WHITELIST:
+            if '/' in allowed:
+                # CIDR notation
+                if check_ip in ipaddress.ip_network(allowed, strict=False):
+                    return True
+            else:
+                # Single IP
+                if check_ip == ipaddress.ip_address(allowed):
+                    return True
+
+        return False
+    except ValueError:
+        log.error(f"[Security] Invalid IP address format: {ip}")
+        return False
