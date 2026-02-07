@@ -46,6 +46,7 @@ class Config:
     offer_url: str
     BACKUP_INTERVAL: int
     UPLOAD_INTERVAL: int
+    SFTP_ENABLED: bool
     SFTP_HOST: str
     SFTP_USER: str
     subscription_api_url: str
@@ -182,6 +183,7 @@ class Config:
 
         self.BACKUP_INTERVAL = int(os.getenv('BACKUP_INTERVAL', 3))
         self.UPLOAD_INTERVAL = int(os.getenv('UPLOAD_INTERVAL', 90))
+        self.SFTP_ENABLED = os.getenv('SFTP_ENABLED', 'false').lower() in ('true', '1', 'yes')
         self.SFTP_HOST = os.getenv('SFTP_HOST', '')
         # SFTP is optional for test environment
         self.SFTP_USER = os.getenv('SFTP_USER', '')

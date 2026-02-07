@@ -83,11 +83,15 @@ async def backup_and_upload_task(bot: Bot):
         # Создаём бэкап
         db_backup, config_backup = await create_backup()
 
+        # Загружаем на SFTP только если включено в .env
+        if not CONFIG.SFTP_ENABLED:
+            logger.info('SFTP disabled (SFTP_ENABLED != true), skipping upload')
+            return
+
         # Загружаем бэкап БД на SFTP
         if db_backup:
             try:
                 await upload_to_sftp(db_backup)
-                # await mail_admins(bot, f'Бэкап БД успешно загружен на сервер в папку {CONFIG.SFTP_DIR}')
             except Exception as e:
                 await mail_admins(bot, f'Не получилось загрузить бэкап БД {db_backup} на сервер: {e}')
 
@@ -95,7 +99,6 @@ async def backup_and_upload_task(bot: Bot):
         if config_backup:
             try:
                 await upload_to_sftp(config_backup)
-                # await mail_admins(bot, f'Бэкап конфиг-файла успешно загружен на сервер в папку {CONFIG.SFTP_DIR}')
             except Exception as e:
                 await mail_admins(bot, f'Не получилось загрузить бэкап конфиг-файла {config_backup} на сервер: {e}')
 

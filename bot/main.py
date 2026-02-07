@@ -93,7 +93,8 @@ async def start_bot():
         replace_existing=True
     )
 
-    # Добавляем задачу для бэкапа БД + загрузки на SFTP (ежедневно в 14:00 MSK)
+    # Добавляем задачу для бэкапа БД (ежедневно в 14:00 MSK)
+    # SFTP загрузка управляется через SFTP_ENABLED в .env
     scheduler.add_job(
         backup_and_upload_task,
         trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=14, minute=0),
