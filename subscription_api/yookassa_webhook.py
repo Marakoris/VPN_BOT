@@ -254,12 +254,7 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
         await reset_user_traffic(user_id)
         await reset_bypass_traffic(user_id)
 
-        # Record payment in database
-        try:
-            await add_payment(user_id, amount, "YooKassa_Webhook")
-        except Exception as e:
-            log.error(f"[Webhook] Failed to record payment: {e}")
-            # Don't fail the whole process - subscription is already activated
+        # Payment recording handled by bot's KassaSmart flow — no duplicate here
 
         # Send notifications
         await _send_user_notification(user_id, days_count, amount)
