@@ -1,14 +1,13 @@
 """
 YooKassa Webhook Handler for VPN Bot
 
-Handles delayed payments that weren't caught by polling.
-When a payment is completed after the 30-minute polling window,
-YooKassa sends a webhook notification that this handler processes.
+Handles payment.succeeded events from YooKassa.
+All actual payment processing (subscription extension, traffic reset,
+notifications) is handled by the bot's KassaSmart polling flow.
+This webhook only logs events for monitoring.
 """
-import os
 import logging
-import aiohttp
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 from datetime import datetime
 
 from sqlalchemy import select
@@ -16,16 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.main import engine
 from bot.database.models.main import Persons, Payments
-from bot.database.methods.update import add_time_person
-from bot.database.methods.insert import add_payment
-from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
-from bot.misc.util import CONFIG
 
 log = logging.getLogger(__name__)
-
-# Telegram Bot token for sending notifications
-TG_TOKEN = os.getenv("TG_TOKEN")
-ADMINS_IDS = os.getenv("ADMINS_IDS", "")
 
 
 async def _is_payment_processed(user_id: int, amount: float, payment_id: str) -> bool:
@@ -53,7 +44,6 @@ async def _is_payment_processed(user_id: int, amount: float, payment_id: str) ->
                 return False
 
             # Check for recent payment with same amount (within last hour)
-            # This is a simple deduplication - payment_id could be stored for exact match
             from datetime import timedelta
             one_hour_ago = datetime.now() - timedelta(hours=1)
 
@@ -76,115 +66,13 @@ async def _is_payment_processed(user_id: int, amount: float, payment_id: str) ->
         return False
 
 
-async def _send_user_notification(user_id: int, days: int, amount: float) -> bool:
-    """
-    Send Telegram notification to user about successful payment.
-
-    Args:
-        user_id: Telegram user ID
-        days: Number of days added
-        amount: Payment amount
-
-    Returns:
-        True if notification sent successfully
-    """
-    if not TG_TOKEN:
-        log.error("[Webhook] TG_TOKEN not set, cannot send notification")
-        return False
-
-    try:
-        # Get user to show subscription end date
-        async with AsyncSession(autoflush=False, bind=engine()) as db:
-            stmt = select(Persons).filter(Persons.tgid == user_id)
-            result = await db.execute(stmt)
-            person = result.scalar_one_or_none()
-
-            if not person:
-                log.error(f"[Webhook] User {user_id} not found for notification")
-                return False
-
-            subscription_end = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y')
-
-        message = (
-            f"<b>Платёж обработан!</b>\n\n"
-            f"Сумма: {amount:.0f} руб.\n"
-            f"Подписка продлена на {days} дн.\n\n"
-            f"Подписка активна до: <b>{subscription_end}</b>\n\n"
-            f"Если VPN уже настроен — ничего делать не нужно, всё работает"
-        )
-
-        url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-
-        async with aiohttp.ClientSession() as session:
-            resp = await session.post(url, json={
-                "chat_id": user_id,
-                "text": message,
-                "parse_mode": "HTML"
-            })
-            data = await resp.json()
-
-            if data.get("ok"):
-                log.info(f"[Webhook] Notification sent to user {user_id}")
-                return True
-            else:
-                log.error(f"[Webhook] Failed to send notification: {data}")
-                return False
-
-    except Exception as e:
-        log.error(f"[Webhook] Error sending user notification: {e}")
-        return False
-
-
-async def _send_admin_notifications(user_id: int, days: int, amount: float, payment_id: str) -> None:
-    """
-    Send Telegram notifications to admins about webhook payment.
-
-    Args:
-        user_id: Telegram user ID
-        days: Number of days added
-        amount: Payment amount
-        payment_id: YooKassa payment ID
-    """
-    if not TG_TOKEN or not ADMINS_IDS:
-        return
-
-    try:
-        admin_ids = [int(x.strip()) for x in ADMINS_IDS.split(",") if x.strip()]
-
-        message = (
-            f"<b>Webhook платёж обработан</b>\n\n"
-            f"User ID: <code>{user_id}</code>\n"
-            f"Сумма: {amount:.0f} руб.\n"
-            f"Дней: {days}\n"
-            f"Payment ID: <code>{payment_id}</code>\n\n"
-            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-        url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-
-        async with aiohttp.ClientSession() as session:
-            for admin_id in admin_ids:
-                try:
-                    await session.post(url, json={
-                        "chat_id": admin_id,
-                        "text": message,
-                        "parse_mode": "HTML"
-                    })
-                except Exception as e:
-                    log.error(f"[Webhook] Failed to notify admin {admin_id}: {e}")
-
-        log.info(f"[Webhook] Admin notifications sent for payment {payment_id}")
-
-    except Exception as e:
-        log.error(f"[Webhook] Error sending admin notifications: {e}")
-
-
 async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Process YooKassa payment webhook.
 
     This function handles the payment.succeeded event from YooKassa.
-    It activates the user's subscription and sends notifications.
+    All actual payment processing (subscription, notifications) is done
+    by the bot's KassaSmart polling flow. Webhook only logs for monitoring.
 
     Args:
         webhook_data: Parsed JSON from YooKassa webhook
@@ -238,27 +126,12 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
                 "user_id": user_id
             }
 
-        # Activate subscription
-        seconds_to_add = days_count * CONFIG.COUNT_SECOND_DAY
-
-        success = await add_time_person(user_id, seconds_to_add)
-        if not success:
-            log.error(f"[Webhook] Failed to add time for user {user_id}")
-            return {
-                "status": "error",
-                "reason": "add_time_failed",
-                "user_id": user_id
-            }
-
-        # Reset traffic counters
-        await reset_user_traffic(user_id)
-        await reset_bypass_traffic(user_id)
-
-        # Payment recording handled by bot's KassaSmart flow — no duplicate here
-
-        # Send notifications
-        await _send_user_notification(user_id, days_count, amount)
-        # Admin notification removed — duplicates the main bot payment notification
+        # All payment processing handled by bot's KassaSmart flow:
+        # - add_time_person (subscription extension)
+        # - traffic reset
+        # - user notification
+        # - admin notification
+        # Webhook only logs the event for monitoring
 
         log.info(
             f"[Webhook] Successfully processed payment {payment_id}: "
