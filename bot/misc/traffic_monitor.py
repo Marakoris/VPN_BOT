@@ -60,7 +60,7 @@ async def get_user_traffic_from_log(telegram_id: int, db: AsyncSession, reset_da
     result = await db.execute(query)
     total = result.scalar() or 0
 
-    return total
+    return int(total)
 
 
 async def get_user_traffic_from_server(server: Servers, telegram_id: int) -> int:
@@ -719,6 +719,7 @@ def format_bytes(bytes_value: int) -> str:
     if bytes_value is None:
         return "0 B"
 
+    bytes_value = float(bytes_value)
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if abs(bytes_value) < 1024.0:
             return f"{bytes_value:.1f} {unit}"
