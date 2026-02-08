@@ -431,9 +431,9 @@ async def check_and_block_exceeded_users(bot) -> List[int]:
             try:
                 limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
 
-                # Use daily_traffic_log instead of real-time data (more reliable)
-                # Traffic from log doesn't get lost when servers are reinstalled
-                current = await get_user_traffic_from_log(user.tgid, db, user.traffic_reset_date)
+                # Use total_traffic_bytes - offset (consistent with update_all_user_traffic)
+                offset = user.traffic_offset_bytes or 0
+                current = max(0, (user.total_traffic_bytes or 0) - offset)
                 percent = (current / limit * 100) if limit > 0 else 0
 
                 # Check if 100% exceeded - block user
@@ -657,8 +657,9 @@ async def get_user_traffic_info(telegram_id: int) -> Dict:
         limit = user.traffic_limit_bytes or DEFAULT_TRAFFIC_LIMIT
         total = user.total_traffic_bytes or 0  # Raw total from servers (for reference)
 
-        # Use daily_traffic_log for current period (more reliable)
-        current = await get_user_traffic_from_log(telegram_id, db, user.traffic_reset_date)
+        # Use total_traffic_bytes - offset (consistent with update_all_user_traffic)
+        offset = user.traffic_offset_bytes or 0
+        current = max(0, (user.total_traffic_bytes or 0) - offset)
         remaining = max(0, limit - current)
         percent_used = (current / limit * 100) if limit > 0 else 0
 
