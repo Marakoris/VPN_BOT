@@ -337,27 +337,42 @@ async def update_all_users_traffic(bot=None) -> Dict[str, int]:
                 # === BYPASS NOTIFICATIONS (if bot provided) ===
                 if bot and bypass_traffic > 0:
                     try:
-                        # 100% - blocked
-                        if bypass_percent >= 100:
-                            log.warning(f"[Traffic] User {user.tgid} bypass 100%: {format_bytes(current_bypass)}")
+                        # 100% - block bypass servers and notify (once)
+                        if bypass_percent >= 100 and not user.bypass_blocked_sent:
+                            log.warning(f"[Traffic] User {user.tgid} bypass 100%: {format_bytes(current_bypass)} — disabling bypass keys")
+
+                            # Disable keys on all bypass servers
+                            for bs in bypass_servers:
+                                try:
+                                    sm = ServerManager(bs)
+                                    await sm.login()
+                                    result = await sm.disable_client(user.tgid)
+                                    if result:
+                                        log.info(f"[Traffic] Disabled bypass key for {user.tgid} on server {bs.id} ({bs.name})")
+                                    else:
+                                        log.warning(f"[Traffic] Failed to disable bypass key for {user.tgid} on server {bs.id}")
+                                except Exception as e:
+                                    log.error(f"[Traffic] Error disabling bypass key for {user.tgid} on server {bs.id}: {e}")
+
                             await bot.send_message(
                                 user.tgid,
-                                f"🚫 <b>Лимит трафика на сервере Обхода исчерпан!</b>\n\n"
+                                f"🚫 <b>Лимит трафика на сервере Обхода белых списков исчерпан!</b>\n\n"
                                 f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} (100%)\n\n"
-                                f"Доступ к серверу Обхода отключён.\n\n"
+                                f"Доступ к серверу Обхода белых списков отключён.\n\n"
                                 f"✅ <b>Основные VPN серверы — продолжают работать!</b>\n\n"
                                 f"💡 Оплатите подписку чтобы сбросить лимит."
                             )
+                            user.bypass_blocked_sent = True
                             stats['bypass_blocked'] += 1
 
                         # 90% warning
                         elif bypass_percent >= 90 and not user.bypass_warning_90_sent:
                             await bot.send_message(
                                 user.tgid,
-                                f"🚨 <b>Критично! Лимит почти исчерпан</b>\n\n"
+                                f"🚨 <b>Лимит трафика на сервере Обхода белых списков почти исчерпан!</b>\n\n"
                                 f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n"
                                 f"Осталось: {format_bytes(remaining_bypass)}\n\n"
-                                f"При исчерпании лимита сервер Обхода будет отключён.\n\n"
+                                f"При исчерпании лимита сервер Обхода белых списков будет отключён.\n\n"
                                 f"💡 Оплатите подписку или подождите {days_until_reset} дней."
                             )
                             user.bypass_warning_90_sent = True
@@ -367,7 +382,7 @@ async def update_all_users_traffic(bot=None) -> Dict[str, int]:
                         elif bypass_percent >= 70 and not user.bypass_warning_70_sent:
                             await bot.send_message(
                                 user.tgid,
-                                f"⚠️ <b>Внимание! Лимит почти израсходован</b>\n\n"
+                                f"⚠️ <b>Лимит трафика на сервере Обхода белых списков</b>\n\n"
                                 f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n"
                                 f"Осталось: {format_bytes(remaining_bypass)}\n\n"
                                 f"Основные VPN серверы — без ограничений.\n\n"
@@ -380,7 +395,7 @@ async def update_all_users_traffic(bot=None) -> Dict[str, int]:
                         elif bypass_percent >= 50 and not user.bypass_warning_50_sent:
                             await bot.send_message(
                                 user.tgid,
-                                f"📊 <b>Лимит трафика на сервере Обхода</b>\n\n"
+                                f"📊 <b>Лимит трафика на сервере Обхода белых списков</b>\n\n"
                                 f"Использовано: {format_bytes(current_bypass)} / {format_bytes(BYPASS_LIMIT_BYTES)} ({bypass_percent:.0f}%)\n\n"
                                 f"Основные серверы VPN — без ограничений.\n\n"
                                 f"Сброс через {days_until_reset} дней или при оплате."
@@ -602,6 +617,7 @@ async def reset_monthly_traffic() -> Dict[str, int]:
                     user.bypass_warning_50_sent = False
                     user.bypass_warning_70_sent = False
                     user.bypass_warning_90_sent = False
+                    user.bypass_blocked_sent = False
 
                     stats['reset'] += 1
                     log.info(
@@ -1838,7 +1854,7 @@ async def get_bypass_traffic(telegram_id: int) -> Dict:
 
 # Bypass server constants (module level for notifications)
 # Bypass servers are now loaded from DB (servers with traffic_limit IS NOT NULL)
-BYPASS_LIMIT_GB = 10  # 10 GB limit (sum across all bypass servers)
+BYPASS_LIMIT_GB = 20  # 20 GB limit (sum across all bypass servers)
 BYPASS_LIMIT_BYTES = BYPASS_LIMIT_GB * 1024 * 1024 * 1024  # 10737418240 bytes
 BYPASS_RESET_DAYS = 30  # Reset every 30 days
 
@@ -2063,13 +2079,30 @@ async def reset_bypass_traffic(telegram_id: int) -> bool:
 
             if user:
                 current_total = user.bypass_traffic_bytes or 0
+                was_blocked = user.bypass_blocked_sent
+
                 user.bypass_offset_bytes = current_total
                 user.bypass_reset_date = datetime.now(timezone.utc)
                 # Reset warning flags
                 user.bypass_warning_50_sent = False
                 user.bypass_warning_70_sent = False
                 user.bypass_warning_90_sent = False
+                user.bypass_blocked_sent = False
                 await db.commit()
+
+                # Re-enable bypass keys if they were blocked
+                if was_blocked:
+                    bypass_stmt = select(Servers).filter(Servers.work == True, Servers.is_bypass == True)
+                    bypass_result = await db.execute(bypass_stmt)
+                    bypass_servers = bypass_result.scalars().all()
+                    for bs in bypass_servers:
+                        try:
+                            sm = ServerManager(bs)
+                            await sm.login()
+                            await sm.enable_client(telegram_id)
+                            log.info(f"[bypass_traffic] Re-enabled bypass key for {telegram_id} on server {bs.id}")
+                        except Exception as e:
+                            log.error(f"[bypass_traffic] Error re-enabling bypass for {telegram_id} on server {bs.id}: {e}")
 
                 log.info(f"[bypass_traffic] Reset for user {telegram_id}: offset set to {format_bytes(current_total)}")
                 return True
@@ -2108,14 +2141,31 @@ async def reset_monthly_bypass_traffic() -> Dict[str, int]:
                 # Reset if: no reset date OR reset was more than 30 days ago
                 if last_reset is None or (last_reset.replace(tzinfo=None) if last_reset.tzinfo else last_reset) < reset_threshold:
                     current_total = user.bypass_traffic_bytes or 0
+                    was_blocked = user.bypass_blocked_sent
+
                     user.bypass_offset_bytes = current_total
                     user.bypass_reset_date = now
                     # Reset warning flags
                     user.bypass_warning_50_sent = False
                     user.bypass_warning_70_sent = False
                     user.bypass_warning_90_sent = False
+                    user.bypass_blocked_sent = False
                     stats['reset'] += 1
                     log.info(f"[bypass_traffic] Monthly reset for user {user.tgid}: offset set to {format_bytes(current_total)}")
+
+                    # Re-enable bypass keys if they were blocked
+                    if was_blocked:
+                        bypass_stmt = select(Servers).filter(Servers.work == True, Servers.is_bypass == True)
+                        bypass_result = await db.execute(bypass_stmt)
+                        bypass_svrs = bypass_result.scalars().all()
+                        for bs in bypass_svrs:
+                            try:
+                                sm = ServerManager(bs)
+                                await sm.login()
+                                await sm.enable_client(user.tgid)
+                                log.info(f"[bypass_traffic] Monthly re-enabled bypass for {user.tgid} on server {bs.id}")
+                            except Exception as e:
+                                log.error(f"[bypass_traffic] Error re-enabling bypass for {user.tgid} on server {bs.id}: {e}")
 
             except Exception as e:
                 log.error(f"[bypass_traffic] Error in monthly reset for user {user.tgid}: {e}")

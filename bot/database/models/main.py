@@ -78,6 +78,7 @@ class Persons(Base):
     bypass_warning_50_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 50%
     bypass_warning_70_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 70%
     bypass_warning_90_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90%
+    bypass_blocked_sent = Column(Boolean, default=False)  # Отправлено ли уведомление о блокировке bypass (100%)
     server = Column(
         Integer,
         ForeignKey("servers.id", ondelete='SET NULL'),
