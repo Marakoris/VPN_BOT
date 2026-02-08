@@ -263,7 +263,7 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
 
         # Send notifications
         await _send_user_notification(user_id, days_count, amount)
-        await _send_admin_notifications(user_id, days_count, amount, payment_id)
+        # Admin notification removed — duplicates the main bot payment notification
 
         log.info(
             f"[Webhook] Successfully processed payment {payment_id}: "
