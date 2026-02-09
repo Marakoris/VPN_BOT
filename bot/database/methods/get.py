@@ -630,10 +630,10 @@ async def get_subscriptions_needing_action():
                     Persons.subscription_expired == False,
                     Persons.payment_method_id.is_(None)  # Нет автоплатежа
                 ),
-                # 4. УВЕДОМЛЕНИЕ: Подписка истекает в ближайшие 3 дня, нет автоплатежа
+                # 4. УВЕДОМЛЕНИЕ: Подписка истекает в ближайшие 24ч, нет автоплатежа
                 and_(
                     Persons.subscription.isnot(None),
-                    Persons.subscription <= three_days_later,
+                    Persons.subscription <= one_day_later,
                     Persons.subscription > current_time,
                     Persons.payment_method_id.is_(None),
                     Persons.notion_oneday == True
