@@ -112,7 +112,17 @@ async def api_withdraw(request: Request, user: Persons = Depends(require_user_ap
     return result
 
 
+@router.post("/autopay/disable")
+async def api_disable_autopay(user: Persons = Depends(require_user_api)):
+    """Disable autopayment."""
+    from bot.database.methods.update import delete_payment_method_id_person
+    if await delete_payment_method_id_person(user.tgid):
+        log.info(f"[Dashboard] User {user.tgid} disabled autopay")
+        return {"success": True, "message": "Автоплатёж отключён"}
+    return JSONResponse({"success": False, "error": "Ошибка"}, status_code=500)
+
+
 @router.get("/plans")
 async def api_plans():
     """Get available subscription plans."""
-    return {"plans": services.get_plans(), "deposits": services.get_deposit_amounts()}
+    return {"plans": services.get_plans()}

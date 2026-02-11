@@ -92,6 +92,58 @@
     </template>
 </div>
 
+<!-- Promo Code -->
+<div class="card" x-data="{ code: '', loading: false }">
+    <div class="card-title" style="margin-bottom:10px">Промокод</div>
+    <div style="display:flex;gap:10px">
+        <input type="text" class="form-input" placeholder="Введите промокод"
+               x-model="code" style="flex:1">
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:14px 20px"
+                :disabled="loading || !code"
+                @click="
+                    loading = true;
+                    fetch('/api/v1/promo/apply', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({code: code})
+                    })
+                    .then(r => r.json())
+                    .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">OK</span>
+            <span x-show="loading">...</span>
+        </button>
+    </div>
+</div>
+
+<!-- Autopay -->
+{% if sub.autopay_enabled %}
+<div class="card" x-data="{ loading: false, disabled: false }">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <div style="font-weight:500;font-size:15px">Автоплатёж</div>
+            <div style="font-size:13px;color:var(--success);margin-top:2px" x-show="!disabled">Подключён</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:2px" x-show="disabled">Отключён</div>
+        </div>
+        <button class="btn btn-danger btn-sm" style="width:auto;padding:10px 16px"
+                x-show="!disabled"
+                :disabled="loading"
+                @click="
+                    if(!confirm('Отключить автоплатёж?')) return;
+                    loading = true;
+                    fetch('/api/v1/autopay/disable', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => { loading = false; if(d.success) { disabled = true; showToast(d.message); } else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">Отключить</span>
+            <span x-show="loading">...</span>
+        </button>
+    </div>
+</div>
+{% endif %}
+
 <!-- Payment History -->
 {% if payments %}
 <div class="section-header">
