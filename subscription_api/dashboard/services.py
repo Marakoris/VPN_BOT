@@ -16,7 +16,7 @@ from bot.database.main import engine
 from bot.database.models.main import (
     Persons, Servers, Payments, PromoCode,
     AffiliateStatistics, WithdrawalRequests,
-    message_button_association
+    DashboardLogs, message_button_association
 )
 from bot.misc.traffic_monitor import (
     get_user_traffic_info,
@@ -465,3 +465,32 @@ async def create_withdrawal(user: Persons, amount: int, payment_info: str, commu
         await db.commit()
 
     return {"success": True, "message": "Заявка на вывод создана"}
+
+
+async def log_dashboard_action(
+    action: str,
+    request=None,
+    user: Persons = None,
+    details: str = None,
+):
+    """Log a dashboard action for analytics."""
+    try:
+        ip = None
+        ua = None
+        if request:
+            ip = request.headers.get("x-real-ip") or request.client.host
+            ua = (request.headers.get("user-agent") or "")[:500]
+
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            entry = DashboardLogs(
+                user_id=user.id if user else None,
+                tgid=user.tgid if user else None,
+                action=action,
+                details=details,
+                ip_address=ip,
+                user_agent=ua,
+            )
+            db.add(entry)
+            await db.commit()
+    except Exception as e:
+        log.error(f"[DashboardLog] Error logging {action}: {e}")

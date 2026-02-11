@@ -27,6 +27,7 @@ from subscription_api.dashboard.auth import (
 )
 from subscription_api.dashboard.dependencies import get_current_user
 from subscription_api.dashboard import services
+from subscription_api.dashboard.services import log_dashboard_action
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ async def login_email(request: Request, email: str = Form(""), password: str = F
         samesite="strict",
     )
     log.info(f"[Dashboard] User {user.tgid} logged in via email")
+    await log_dashboard_action("login_email", request, user)
     return response
 
 
@@ -138,6 +140,7 @@ async def auth_telegram_callback(request: Request):
         samesite="strict",
     )
     log.info(f"[Dashboard] User {tgid} logged in via Telegram Widget")
+    await log_dashboard_action("login_telegram", request, user)
     return response
 
 
@@ -173,6 +176,7 @@ async def auth_token(request: Request, t: str = ""):
         samesite="strict",
     )
     log.info(f"[Dashboard] User {user.tgid} logged in via subscription token")
+    await log_dashboard_action("login_token", request, user)
     return response
 
 
@@ -193,6 +197,7 @@ async def dashboard_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_home", request, user)
     sub = await services.get_subscription_status(user)
     traffic = await services.get_traffic_data(user.tgid)
     bypass = await services.get_bypass_data(user.tgid)
@@ -214,6 +219,7 @@ async def traffic_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_traffic", request, user)
     traffic = await services.get_traffic_data(user.tgid)
     bypass = await services.get_bypass_data(user.tgid)
 
@@ -233,6 +239,7 @@ async def connection_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_connection", request, user)
     sub = await services.get_subscription_status(user)
     sub_url = ""
     connect_url = ""
@@ -257,6 +264,7 @@ async def subscription_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_subscription", request, user)
     sub = await services.get_subscription_status(user)
     plans = services.get_plans()
 
@@ -276,6 +284,7 @@ async def payment_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_payment", request, user)
     plans = services.get_plans()
     payments = await services.get_payment_history(user.id)
     sub = await services.get_subscription_status(user)
@@ -297,6 +306,7 @@ async def referral_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_referral", request, user)
     referral = await services.get_referral_info(user)
 
     return templates.TemplateResponse("referral.html", {
@@ -314,6 +324,7 @@ async def settings_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
+    await log_dashboard_action("page_settings", request, user)
     sub = await services.get_subscription_status(user)
 
     return templates.TemplateResponse("settings.html", {
@@ -377,6 +388,7 @@ async def settings_email(
             db_user.password_hash = hash_password(password)
             await db.commit()
             log.info(f"[Dashboard] User {user.tgid} bound email {email}")
+            await log_dashboard_action("email_bind", request, user, f"email={email}")
 
     # Re-fetch user to get updated email
     user = await get_current_user(request)

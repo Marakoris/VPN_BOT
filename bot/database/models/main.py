@@ -305,6 +305,20 @@ class WinbackPromoUsage(Base):
     promo = relationship("WinbackPromo", back_populates="usages")
 
 
+class DashboardLogs(Base):
+    """Логи действий в веб-кабинете."""
+    __tablename__ = "dashboard_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    tgid = Column(BigInteger, nullable=True)
+    action = Column(String(50), nullable=False, index=True)
+    details = Column(String(500), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
+
+
 async def create_all_table():
     async_engine = engine()
     async with async_engine.begin() as conn:

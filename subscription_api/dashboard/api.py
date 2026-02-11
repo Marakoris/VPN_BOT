@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from bot.database.models.main import Persons
 from subscription_api.dashboard.dependencies import require_user_api
 from subscription_api.dashboard import services
+from subscription_api.dashboard.services import log_dashboard_action
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,8 @@ async def api_create_payment(request: Request, user: Persons = Depends(require_u
         return JSONResponse({"success": False, "error": "Invalid amount"}, status_code=400)
 
     result = await services.create_payment(user, int(amount), payment_system, months)
+    if result.get("success"):
+        await log_dashboard_action("payment_create", request, user, f"{payment_system} {amount}₽ {months}мес")
     return result
 
 
@@ -78,6 +81,8 @@ async def api_apply_promo(request: Request, user: Persons = Depends(require_user
         return JSONResponse({"success": False, "error": "Введите промокод"}, status_code=400)
 
     result = await services.apply_promo_code(user, code)
+    if result.get("success"):
+        await log_dashboard_action("promo_apply", request, user, f"code={code}")
     return result
 
 
@@ -85,6 +90,8 @@ async def api_apply_promo(request: Request, user: Persons = Depends(require_user
 async def api_activate_trial(user: Persons = Depends(require_user_api)):
     """Activate free trial."""
     result = await services.activate_trial(user)
+    if result.get("success"):
+        await log_dashboard_action("trial_activate", request, user)
     return result
 
 
@@ -109,15 +116,18 @@ async def api_withdraw(request: Request, user: Persons = Depends(require_user_ap
         return JSONResponse({"success": False, "error": "Укажите реквизиты"}, status_code=400)
 
     result = await services.create_withdrawal(user, int(amount), payment_info, communication)
+    if result.get("success"):
+        await log_dashboard_action("withdrawal_create", request, user, f"{amount}₽")
     return result
 
 
 @router.post("/autopay/disable")
-async def api_disable_autopay(user: Persons = Depends(require_user_api)):
+async def api_disable_autopay(request: Request, user: Persons = Depends(require_user_api)):
     """Disable autopayment."""
     from bot.database.methods.update import delete_payment_method_id_person
     if await delete_payment_method_id_person(user.tgid):
         log.info(f"[Dashboard] User {user.tgid} disabled autopay")
+        await log_dashboard_action("autopay_disable", request, user)
         return {"success": True, "message": "Автоплатёж отключён"}
     return JSONResponse({"success": False, "error": "Ошибка"}, status_code=500)
 
