@@ -51,7 +51,7 @@
     </div>
 
     <template x-if="selected !== null">
-        <a :href="'/dashboard/payment?amount=' + [{% for p in plans %}{{ p.price }}{% if not loop.last %},{% endif %}{% endfor %}][selected] + '&months=' + [{% for p in plans %}{{ p.months }}{% if not loop.last %},{% endif %}{% endfor %}][selected]"
+        <a :href="'/dashboard/payment?months=' + [{% for p in plans %}{{ p.months }}{% if not loop.last %},{% endif %}{% endfor %}][selected]"
            class="btn btn-primary" style="margin-top:16px">
             Оплатить
         </a>

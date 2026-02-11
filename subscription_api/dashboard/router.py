@@ -276,14 +276,16 @@ async def payment_page(request: Request):
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
 
-    deposits = services.get_deposit_amounts()
+    plans = services.get_plans()
     payments = await services.get_payment_history(user.id)
+    sub = await services.get_subscription_status(user)
 
     return templates.TemplateResponse("payment.html", {
         "request": request,
         "user": user,
-        "deposits": deposits,
+        "plans": plans,
         "payments": payments,
+        "sub": sub,
         "page": "payment",
     })
 

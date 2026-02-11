@@ -2,82 +2,94 @@
 {% block title %}Оплата - NoBorder VPN{% endblock %}
 
 {% block content %}
-<h1 class="page-title">Пополнение</h1>
+<h1 class="page-title">Оплата подписки</h1>
+
+{% if sub.active %}
+<div class="card" style="padding:14px 20px;margin-bottom:16px">
+    <div style="font-size:14px;color:var(--text-secondary)">
+        Подписка активна до <span style="color:var(--success);font-weight:500">{{ sub.expiry_date }}</span>
+        {% if sub.days_remaining is not none %}
+        ({{ sub.days_remaining }} дн.)
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div x-data="{
-    amount: {{ request.query_params.get('amount', '0') or '0' }},
-    months: {{ request.query_params.get('months', '0') or '0' }},
+    selectedPlan: {{ request.query_params.get('months', '0') | int }},
     system: 'kassa',
     loading: false,
-    customAmount: ''
+    plans: [{% for p in plans %}{ months: {{ p.months }}, days: {{ p.days }}, price: {{ p.price }}, name: '{{ p.name }}', per_month: {{ p.per_month }} }{% if not loop.last %},{% endif %}{% endfor %}],
+    get selectedPrice() { let p = this.plans.find(p => p.months === this.selectedPlan); return p ? p.price : 0; },
+    get selectedDays() { let p = this.plans.find(p => p.months === this.selectedPlan); return p ? p.days : 0; }
 }">
 
-    <!-- Amount Selection -->
-    <div class="card">
-        <div class="card-title" style="margin-bottom:12px">Сумма</div>
-        <div class="deposit-chips">
-            {% for d in deposits %}
-            <button class="deposit-chip" :class="{ 'selected': amount === {{ d }} }" @click="amount = {{ d }}; months = 0">{{ d }}₽</button>
-            {% endfor %}
+    <!-- Plan Selection -->
+    <div class="section-header" style="margin-top:0">
+        <span class="section-title">Выберите тариф</span>
+    </div>
+
+    <div class="plans-grid">
+        {% for plan in plans %}
+        <div class="plan-card {% if loop.index == 2 %}popular{% endif %}"
+             :class="{ 'selected': selectedPlan === {{ plan.months }} }"
+             @click="selectedPlan = {{ plan.months }}">
+            <div class="plan-months">{{ plan.months }} мес.</div>
+            <div class="plan-price">{{ plan.price }}₽</div>
+            <div class="plan-per-month">{{ plan.per_month }}₽/мес</div>
         </div>
-        <div style="margin-top:10px;display:flex;gap:10px">
-            <input type="number" class="form-input" placeholder="Своя сумма"
-                   x-model="customAmount"
-                   @input="amount = parseInt(customAmount) || 0; months = 0"
-                   style="flex:1">
-        </div>
-        <template x-if="amount > 0">
-            <div style="margin-top:10px;font-size:14px;color:var(--accent)">
-                Выбрано: <span x-text="amount"></span>₽
-            </div>
-        </template>
+        {% endfor %}
     </div>
 
     <!-- Payment System -->
-    <div class="section-header">
-        <span class="section-title">Способ оплаты</span>
-    </div>
-
-    <div class="payment-method" :class="{ 'selected': system === 'kassa' }" @click="system = 'kassa'">
-        <div class="payment-method-icon">💳</div>
+    <template x-if="selectedPlan > 0">
         <div>
-            <div class="payment-method-name">Банковская карта</div>
-            <div class="payment-method-desc">Visa, MasterCard, МИР</div>
-        </div>
-    </div>
+            <div class="section-header">
+                <span class="section-title">Способ оплаты</span>
+            </div>
 
-    <div class="payment-method" :class="{ 'selected': system === 'cryptobot' }" @click="system = 'cryptobot'">
-        <div class="payment-method-icon">₿</div>
-        <div>
-            <div class="payment-method-name">CryptoBot</div>
-            <div class="payment-method-desc">USDT, BTC, TON</div>
-        </div>
-    </div>
+            <div class="payment-method" :class="{ 'selected': system === 'kassa' }" @click="system = 'kassa'">
+                <div class="payment-method-icon">💳</div>
+                <div>
+                    <div class="payment-method-name">Банковская карта</div>
+                    <div class="payment-method-desc">Visa, MasterCard, МИР</div>
+                </div>
+            </div>
 
-    <!-- Pay Button -->
-    <button class="btn btn-primary" style="margin-top:20px"
-            :disabled="loading || amount < 1"
-            @click="
-                loading = true;
-                fetch('/api/v1/payment/create', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({amount: amount, payment_system: system, months: months})
-                })
-                .then(r => r.json())
-                .then(d => {
-                    loading = false;
-                    if(d.success && d.payment_url) {
-                        window.location.href = d.payment_url;
-                    } else {
-                        showToast(d.error || 'Ошибка создания платежа', true);
-                    }
-                })
-                .catch(() => { loading = false; showToast('Ошибка соединения', true); })
-            ">
-        <span x-show="!loading">Оплатить <span x-text="amount > 0 ? amount + '₽' : ''"></span></span>
-        <span x-show="loading">Создание платежа...</span>
-    </button>
+            <div class="payment-method" :class="{ 'selected': system === 'cryptobot' }" @click="system = 'cryptobot'">
+                <div class="payment-method-icon">₿</div>
+                <div>
+                    <div class="payment-method-name">CryptoBot</div>
+                    <div class="payment-method-desc">USDT, BTC, TON</div>
+                </div>
+            </div>
+
+            <!-- Pay Button -->
+            <button class="btn btn-primary" style="margin-top:20px"
+                    :disabled="loading"
+                    @click="
+                        loading = true;
+                        fetch('/api/v1/payment/create', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({amount: selectedPrice, payment_system: system, months: selectedPlan})
+                        })
+                        .then(r => r.json())
+                        .then(d => {
+                            loading = false;
+                            if(d.success && d.payment_url) {
+                                window.location.href = d.payment_url;
+                            } else {
+                                showToast(d.error || 'Ошибка создания платежа', true);
+                            }
+                        })
+                        .catch(() => { loading = false; showToast('Ошибка соединения', true); })
+                    ">
+                <span x-show="!loading">Оплатить <span x-text="selectedPrice + '₽'"></span></span>
+                <span x-show="loading">Создание платежа...</span>
+            </button>
+        </div>
+    </template>
 </div>
 
 <!-- Payment History -->
