@@ -84,7 +84,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files directory
+# ==================== DASHBOARD ROUTERS ====================
+from subscription_api.dashboard.router import router as dashboard_router
+from subscription_api.dashboard.api import router as dashboard_api_router
+
+app.include_router(dashboard_router)
+app.include_router(dashboard_api_router)
+
+# Mount static files directory (must be AFTER router includes)
 static_dir = os.path.join(os.path.dirname(__file__), 'static')
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")

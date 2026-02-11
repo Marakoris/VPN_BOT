@@ -741,6 +741,9 @@ msgstr "About VPN 🤔"
 msgid "help_btn"
 msgstr "🆘 Support"
 
+msgid "personal_cabinet_btn"
+msgstr "🌐 Personal Cabinet"
+
 msgid "renew_subscription_btn"
 msgstr "📅 Renew subscription"
 

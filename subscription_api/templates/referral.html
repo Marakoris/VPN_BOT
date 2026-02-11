@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Реферальная программа - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Реферальная программа</h1>
+<p class="page-subtitle">Приглашайте друзей и зарабатывайте</p>
+
+<!-- Referral Link -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:12px">Ваша реферальная ссылка</div>
+    <div class="url-box" onclick="copyText('{{ referral.referral_link }}')">{{ referral.referral_link }}</div>
+    <button class="btn btn-primary btn-sm" onclick="copyText('{{ referral.referral_link }}')">Скопировать ссылку</button>
+</div>
+
+<!-- Stats -->
+<div class="card">
+    <div class="stat-row">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <div class="stat-label">Приглашено друзей</div>
+            <div class="stat-value">{{ referral.total_invited }}</div>
+        </div>
+    </div>
+    <div class="stat-row">
+        <div class="stat-icon">💰</div>
+        <div class="stat-info">
+            <div class="stat-label">Заработано всего</div>
+            <div class="stat-value">{{ referral.total_earned }}₽</div>
+        </div>
+    </div>
+    <div class="stat-row">
+        <div class="stat-icon">💎</div>
+        <div class="stat-info">
+            <div class="stat-label">Доступно для вывода</div>
+            <div class="stat-value" style="color:var(--accent)">{{ referral.referral_balance }}₽</div>
+        </div>
+    </div>
+</div>
+
+<!-- How it works -->
+<div class="card" style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+    <div style="font-weight:600;color:var(--text-primary);margin-bottom:8px">Как это работает</div>
+    1. Поделитесь реферальной ссылкой с другом<br>
+    2. Друг регистрируется и оплачивает подписку<br>
+    3. Вы получаете {{ referral.minimum_withdrawal // 100 * 50 // 20 }}% от каждой оплаты<br>
+    4. Выводите от {{ referral.minimum_withdrawal }}₽
+</div>
+
+<!-- Withdrawal -->
+{% if referral.referral_balance >= referral.minimum_withdrawal %}
+<div class="section-header">
+    <span class="section-title">Вывод средств</span>
+</div>
+
+<div class="card" x-data="{ amount: {{ referral.referral_balance }}, info: '', comm: '', loading: false }">
+    <div class="form-group">
+        <label class="form-label">Сумма вывода (мин. {{ referral.minimum_withdrawal }}₽)</label>
+        <input type="number" class="form-input" x-model="amount" min="{{ referral.minimum_withdrawal }}" max="{{ referral.referral_balance }}">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Реквизиты для перевода</label>
+        <input type="text" class="form-input" x-model="info" placeholder="Номер карты, кошелек и т.д.">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Контакт для связи (необязательно)</label>
+        <input type="text" class="form-input" x-model="comm" placeholder="Telegram, email">
+    </div>
+    <button class="btn btn-primary"
+            :disabled="loading || !info || amount < {{ referral.minimum_withdrawal }}"
+            @click="
+                loading = true;
+                fetch('/api/v1/referral/withdraw', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({amount: parseInt(amount), payment_info: info, communication: comm})
+                })
+                .then(r => r.json())
+                .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                .catch(() => { loading = false; showToast('Ошибка', true); })
+            ">
+        <span x-show="!loading">Отправить заявку</span>
+        <span x-show="loading">Отправка...</span>
+    </button>
+</div>
+{% endif %}
+{% endblock %}

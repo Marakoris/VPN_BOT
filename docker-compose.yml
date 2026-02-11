@@ -91,7 +91,7 @@ services:
       - MB_DB_FILE=/metabase-data/metabase.db
       - MB_SITE_NAME=VPN Analytics
       - JAVA_TIMEZONE=Europe/Moscow
-      - JAVA_OPTS=-Xms128m -Xmx256m
+      - JAVA_OPTS=-Xms256m -Xmx512m
 
   subscription_api:
     restart: unless-stopped

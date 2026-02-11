@@ -1,0 +1,17 @@
+<a href="/dashboard/payment" class="card card-clickable">
+    <div class="card-header">
+        <span class="card-title">Баланс</span>
+    </div>
+    <div style="display:flex;gap:24px">
+        <div>
+            <div class="card-value">{{ user.balance or 0 }}₽</div>
+            <div class="card-label">основной</div>
+        </div>
+        {% if user.referral_balance and user.referral_balance > 0 %}
+        <div>
+            <div class="card-value card-value-sm" style="color:var(--accent)">{{ user.referral_balance }}₽</div>
+            <div class="card-label">реферальный</div>
+        </div>
+        {% endif %}
+    </div>
+</a>

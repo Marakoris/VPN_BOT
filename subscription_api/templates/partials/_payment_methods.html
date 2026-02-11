@@ -1,0 +1,15 @@
+<div class="payment-method" :class="{ 'selected': system === 'kassa' }" @click="system = 'kassa'">
+    <div class="payment-method-icon">💳</div>
+    <div>
+        <div class="payment-method-name">Банковская карта</div>
+        <div class="payment-method-desc">Visa, MasterCard, МИР</div>
+    </div>
+</div>
+
+<div class="payment-method" :class="{ 'selected': system === 'cryptobot' }" @click="system = 'cryptobot'">
+    <div class="payment-method-icon">₿</div>
+    <div>
+        <div class="payment-method-name">CryptoBot</div>
+        <div class="payment-method-desc">USDT, BTC, TON</div>
+    </div>
+</div>

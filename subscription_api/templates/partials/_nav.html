@@ -1,0 +1,20 @@
+<nav class="bottom-nav">
+    <div class="nav-inner">
+        <a href="/dashboard/" class="nav-item {% if page == 'home' %}active{% endif %}">
+            <span class="nav-icon">🏠</span>
+            <span>Главная</span>
+        </a>
+        <a href="/dashboard/connection" class="nav-item {% if page == 'connection' %}active{% endif %}">
+            <span class="nav-icon">🔗</span>
+            <span>VPN</span>
+        </a>
+        <a href="/dashboard/payment" class="nav-item {% if page == 'payment' %}active{% endif %}">
+            <span class="nav-icon">💳</span>
+            <span>Оплата</span>
+        </a>
+        <a href="/dashboard/referral" class="nav-item {% if page == 'referral' %}active{% endif %}">
+            <span class="nav-icon">👥</span>
+            <span>Друзья</span>
+        </a>
+    </div>
+</nav>

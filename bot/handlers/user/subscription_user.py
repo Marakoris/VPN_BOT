@@ -25,6 +25,60 @@ btn_text = Localization.get_reply_button
 subscription_router = Router()
 
 
+# ==================== PERSONAL CABINET HANDLER ====================
+
+@subscription_router.message(F.text.in_(["🌐 Личный кабинет", "🌐 Personal Cabinet"]))
+async def personal_cabinet_handler(message: Message, state: FSMContext) -> None:
+    """Send personal dashboard auth link to user."""
+    lang = await get_lang(message.from_user.id, state)
+    person = await get_person(message.from_user.id)
+
+    if not person:
+        await message.answer("❌ User not found")
+        return
+
+    # Get or generate subscription token
+    from bot.misc.subscription import generate_subscription_token
+    status = await get_user_subscription_status(person.tgid)
+    token = status.get('token') if status else None
+
+    if not token:
+        # Generate and save token
+        from sqlalchemy import select as sa_select
+        from sqlalchemy.ext.asyncio import AsyncSession as AS
+        from bot.database.main import engine as db_engine
+        from bot.database.models.main import Persons as PersonsModel
+        token = generate_subscription_token(person.id)
+        async with AS(autoflush=False, bind=db_engine()) as db:
+            stmt = sa_select(PersonsModel).filter(PersonsModel.tgid == person.tgid)
+            result = await db.execute(stmt)
+            u = result.scalar_one_or_none()
+            if u:
+                u.subscription_token = token
+                await db.commit()
+
+    encoded_token = urllib.parse.quote(token, safe='')
+    cabinet_url = f"{CONFIG.subscription_api_url}/dashboard/auth/token?t={encoded_token}"
+
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(
+        text="🌐 Открыть личный кабинет",
+        url=cabinet_url
+    ))
+
+    await message.answer(
+        "🌐 <b>Личный кабинет</b>\n\n"
+        "Нажмите кнопку ниже, чтобы открыть личный кабинет "
+        "в браузере.\n\n"
+        "Там вы можете:\n"
+        "• Просмотреть статус подписки\n"
+        "• Проверить трафик\n"
+        "• Пополнить баланс\n"
+        "• Получить ссылку подключения",
+        reply_markup=kb.as_markup()
+    )
+
+
 # ==================== SUBSCRIPTION URL HANDLER ====================
 
 @subscription_router.message(F.text.in_(["🔌 Подключить VPN", "📲 Subscription URL", "📲 Subscription", "Subscription"]))

@@ -735,6 +735,9 @@ msgstr "Узнать о VPN 🤔"
 msgid "help_btn"
 msgstr "🆘 Помощь"
 
+msgid "personal_cabinet_btn"
+msgstr "🌐 Личный кабинет"
+
 msgid "renew_subscription_btn"
 msgstr "📅 Продлить подписку"
 

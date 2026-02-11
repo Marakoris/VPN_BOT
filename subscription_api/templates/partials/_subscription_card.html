@@ -1,0 +1,22 @@
+<a href="/dashboard/subscription" class="card card-clickable">
+    <div class="card-header">
+        <span class="card-title">Подписка</span>
+        {% if sub.active %}
+            <span class="card-badge badge-active">Активна</span>
+        {% elif sub.expired %}
+            <span class="card-badge badge-expired">Истекла</span>
+        {% else %}
+            <span class="card-badge badge-expired">Нет подписки</span>
+        {% endif %}
+    </div>
+    {% if sub.active %}
+        <div class="card-value">{{ sub.days_remaining }} дн.</div>
+        <div class="card-label">до {{ sub.expiry_date }}{% if sub.autopay_enabled %} &middot; автоплатеж{% endif %}</div>
+    {% elif sub.expired %}
+        <div class="card-value card-value-sm" style="color:var(--danger)">Подписка истекла</div>
+        <div class="card-label">Продлите для доступа к VPN</div>
+    {% else %}
+        <div class="card-value card-value-sm">Нет подписки</div>
+        <div class="card-label">Активируйте для доступа к VPN</div>
+    {% endif %}
+</a>

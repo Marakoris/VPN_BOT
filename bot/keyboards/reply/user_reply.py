@@ -57,9 +57,10 @@ async def user_menu(person, lang) -> ReplyKeyboardMarkup:
         keyBtn(text=_('language_btn', lang))
     )
 
-    # 6. Help
+    # 6. Help + Personal cabinet
     kb.row(
-        keyBtn(text=_('help_btn', lang))
+        keyBtn(text=_('help_btn', lang)),
+        keyBtn(text=_('personal_cabinet_btn', lang))
     )
 
     # 7. Admin panel

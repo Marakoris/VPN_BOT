@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f0f1a">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>">
+    <title>{% block title %}NoBorder VPN{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Header with nav -->
+    <div class="header">
+        <a href="/dashboard/" class="header-logo" style="text-decoration:none;color:inherit">
+            <div class="header-logo-icon">🛡</div>
+            <div class="header-logo-text">NoBorder VPN</div>
+        </a>
+        <nav class="header-nav">
+            <a href="/dashboard/" class="header-nav-item {% if page == 'home' %}active{% endif %}">
+                <span class="header-nav-icon">🏠</span><span class="header-nav-label">Главная</span>
+            </a>
+            <a href="/dashboard/connection" class="header-nav-item {% if page == 'connection' %}active{% endif %}">
+                <span class="header-nav-icon">🔗</span><span class="header-nav-label">VPN</span>
+            </a>
+            <a href="/dashboard/payment" class="header-nav-item {% if page == 'payment' %}active{% endif %}">
+                <span class="header-nav-icon">💳</span><span class="header-nav-label">Оплата</span>
+            </a>
+            <a href="/dashboard/referral" class="header-nav-item {% if page == 'referral' %}active{% endif %}">
+                <span class="header-nav-icon">👥</span><span class="header-nav-label">Друзья</span>
+            </a>
+            <a href="/dashboard/settings" class="header-nav-item {% if page == 'settings' %}active{% endif %}">
+                <span class="header-nav-icon">⚙️</span><span class="header-nav-label">Ещё</span>
+            </a>
+            <a href="https://t.me/VPN_YouSupport_bot" target="_blank" class="header-nav-item">
+                <span class="header-nav-icon">💬</span><span class="header-nav-label">Помощь</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <div class="page fade-in">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/alpine.min.js" defer></script>
+    <script>
+        function showToast(msg, isError) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast'; }, 2500);
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Скопировано!');
+            }).catch(() => {
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('Скопировано!');
+            });
+        }
+
+        // Handle HTMX errors
+        document.body.addEventListener('htmx:responseError', function(e) {
+            if (e.detail.xhr.status === 401) {
+                window.location.href = '/dashboard/login';
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

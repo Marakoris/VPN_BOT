@@ -344,7 +344,15 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         callback_data=MainMenuAction(action='bonuses')
     )
 
-    # 5. Помощь
+    # 5. Личный кабинет (web dashboard)
+    if person.subscription_token:
+        cabinet_url = f"{CONFIG.subscription_api_url}/dashboard/auth/token?t={quote(person.subscription_token, safe='')}"
+        kb.button(
+            text="🌐 Личный кабинет",
+            url=cabinet_url
+        )
+
+    # 5b. Помощь
     kb.button(
         text="❓ Помощь и поддержка",
         url="https://t.me/VPN_YouSupport_bot"

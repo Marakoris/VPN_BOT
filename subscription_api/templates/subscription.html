@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Подписка - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Подписка</h1>
+
+<!-- Current status -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Текущий статус</span>
+        {% if sub.active %}
+            <span class="card-badge badge-active">Активна</span>
+        {% else %}
+            <span class="card-badge badge-expired">Неактивна</span>
+        {% endif %}
+    </div>
+    {% if sub.active %}
+    <div class="card-row">
+        <span class="card-row-label">Действует до</span>
+        <span class="card-row-value">{{ sub.expiry_date }}</span>
+    </div>
+    <div class="card-row">
+        <span class="card-row-label">Осталось дней</span>
+        <span class="card-row-value">{{ sub.days_remaining }}</span>
+    </div>
+    {% if sub.autopay_enabled %}
+    <div class="card-row">
+        <span class="card-row-label">Автоплатеж</span>
+        <span class="card-row-value" style="color:var(--success)">Подключен</span>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+
+<!-- Plans -->
+<div class="section-header">
+    <span class="section-title">Тарифы</span>
+</div>
+
+<div x-data="{ selected: null }">
+    <div class="plans-grid">
+        {% for plan in plans %}
+        <div class="plan-card {% if loop.index == 2 %}popular{% endif %}"
+             :class="{ 'selected': selected === {{ loop.index0 }} }"
+             @click="selected = {{ loop.index0 }}">
+            <div class="plan-months">{{ plan.name }}</div>
+            <div class="plan-price">{{ plan.price }}₽</div>
+            <div class="plan-per-month">{{ plan.per_month }}₽/мес</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <template x-if="selected !== null">
+        <a :href="'/dashboard/payment?amount=' + [{% for p in plans %}{{ p.price }}{% if not loop.last %},{% endif %}{% endfor %}][selected] + '&months=' + [{% for p in plans %}{{ p.months }}{% if not loop.last %},{% endif %}{% endfor %}][selected]"
+           class="btn btn-primary" style="margin-top:16px">
+            Оплатить
+        </a>
+    </template>
+</div>
+
+<!-- Promo Code -->
+<div class="section-header">
+    <span class="section-title">Промокод</span>
+</div>
+
+<div class="card" x-data="{ code: '', loading: false, result: null }">
+    <div style="display:flex;gap:10px">
+        <input type="text" class="form-input" placeholder="Введите промокод"
+               x-model="code" style="flex:1">
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:14px 20px"
+                :disabled="loading || !code"
+                @click="
+                    loading = true; result = null;
+                    fetch('/api/v1/promo/apply', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({code: code})
+                    })
+                    .then(r => r.json())
+                    .then(d => { result = d; loading = false; if(d.success) showToast(d.message); else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">OK</span>
+            <span x-show="loading">...</span>
+        </button>
+    </div>
+</div>
+
+<!-- Free Trial -->
+{% if not sub.free_trial_used and not sub.active %}
+<div class="card" style="border-color: rgba(0,255,136,0.2)">
+    <div style="text-align:center" x-data="{ loading: false }">
+        <div style="font-size:32px;margin-bottom:12px">🎁</div>
+        <div style="font-weight:600;margin-bottom:8px">Бесплатный пробный период</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">3 дня бесплатного доступа к VPN</div>
+        <button class="btn btn-primary"
+                :disabled="loading"
+                @click="
+                    loading = true;
+                    fetch('/api/v1/trial/activate', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">Активировать бесплатно</span>
+            <span x-show="loading">Активация...</span>
+        </button>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+<a href="/dashboard/traffic" class="card card-clickable">
+    <div class="card-header">
+        <span class="card-title">Трафик</span>
+        {% if traffic.percent_used >= 90 %}
+            <span class="card-badge badge-warning">{{ traffic.percent_used }}%</span>
+        {% elif traffic.exceeded %}
+            <span class="card-badge badge-expired">Исчерпан</span>
+        {% endif %}
+    </div>
+    <div class="card-value card-value-sm">{{ traffic.used_formatted }} / {{ traffic.limit_formatted }}</div>
+    <div class="progress-bar">
+        <div class="progress-fill {% if traffic.percent_used >= 90 %}warning{% elif traffic.exceeded %}danger{% endif %}"
+             style="width: {{ [traffic.percent_used, 100] | min }}%"></div>
+    </div>
+    <div class="progress-labels">
+        <span>{{ traffic.percent_used }}% использовано</span>
+        <span>сброс через {{ traffic.days_until_reset }} дн.</span>
+    </div>
+</a>

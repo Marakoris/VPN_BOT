@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Оплата - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Пополнение</h1>
+
+<div x-data="{
+    amount: {{ request.query_params.get('amount', '0') or '0' }},
+    months: {{ request.query_params.get('months', '0') or '0' }},
+    system: 'kassa',
+    loading: false,
+    customAmount: ''
+}">
+
+    <!-- Amount Selection -->
+    <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Сумма</div>
+        <div class="deposit-chips">
+            {% for d in deposits %}
+            <button class="deposit-chip" :class="{ 'selected': amount === {{ d }} }" @click="amount = {{ d }}; months = 0">{{ d }}₽</button>
+            {% endfor %}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:10px">
+            <input type="number" class="form-input" placeholder="Своя сумма"
+                   x-model="customAmount"
+                   @input="amount = parseInt(customAmount) || 0; months = 0"
+                   style="flex:1">
+        </div>
+        <template x-if="amount > 0">
+            <div style="margin-top:10px;font-size:14px;color:var(--accent)">
+                Выбрано: <span x-text="amount"></span>₽
+            </div>
+        </template>
+    </div>
+
+    <!-- Payment System -->
+    <div class="section-header">
+        <span class="section-title">Способ оплаты</span>
+    </div>
+
+    <div class="payment-method" :class="{ 'selected': system === 'kassa' }" @click="system = 'kassa'">
+        <div class="payment-method-icon">💳</div>
+        <div>
+            <div class="payment-method-name">Банковская карта</div>
+            <div class="payment-method-desc">Visa, MasterCard, МИР</div>
+        </div>
+    </div>
+
+    <div class="payment-method" :class="{ 'selected': system === 'cryptobot' }" @click="system = 'cryptobot'">
+        <div class="payment-method-icon">₿</div>
+        <div>
+            <div class="payment-method-name">CryptoBot</div>
+            <div class="payment-method-desc">USDT, BTC, TON</div>
+        </div>
+    </div>
+
+    <!-- Pay Button -->
+    <button class="btn btn-primary" style="margin-top:20px"
+            :disabled="loading || amount < 1"
+            @click="
+                loading = true;
+                fetch('/api/v1/payment/create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({amount: amount, payment_system: system, months: months})
+                })
+                .then(r => r.json())
+                .then(d => {
+                    loading = false;
+                    if(d.success && d.payment_url) {
+                        window.location.href = d.payment_url;
+                    } else {
+                        showToast(d.error || 'Ошибка создания платежа', true);
+                    }
+                })
+                .catch(() => { loading = false; showToast('Ошибка соединения', true); })
+            ">
+        <span x-show="!loading">Оплатить <span x-text="amount > 0 ? amount + '₽' : ''"></span></span>
+        <span x-show="loading">Создание платежа...</span>
+    </button>
+</div>
+
+<!-- Payment History -->
+{% if payments %}
+<div class="section-header">
+    <span class="section-title">История платежей</span>
+</div>
+
+{% for p in payments %}
+<div class="card" style="padding:14px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <div style="font-weight:500">{{ p.amount }}₽</div>
+            <div style="font-size:12px;color:var(--text-secondary)">{{ p.payment_system }}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text-muted)">{{ p.date or '' }}</div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
