@@ -71,6 +71,9 @@ class Persons(Base):
     traffic_last_change = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда последний раз менялся трафик
     traffic_warning_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90% трафика
     setup_reminder_sent = Column(Boolean, default=False)  # Отправлено ли напоминание о настройке VPN
+    # Email auth fields
+    email = Column(String(255), nullable=True, unique=True, index=True)
+    password_hash = Column(String(255), nullable=True)
     # Bypass server traffic monitoring fields
     bypass_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик bypass серверов
     bypass_offset_bytes = Column(BigInteger, default=0)  # Offset для сброса bypass трафика

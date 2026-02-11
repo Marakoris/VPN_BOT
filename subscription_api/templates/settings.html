@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Настройки - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Настройки</h1>
+
+<!-- Account Info -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:14px">Аккаунт</div>
+
+    <div class="card-row">
+        <span class="card-row-label">Telegram ID</span>
+        <span class="card-row-value" style="font-family:monospace">{{ user.tgid }}</span>
+    </div>
+    {% if user.username %}
+    <div class="card-row">
+        <span class="card-row-label">Username</span>
+        <span class="card-row-value">@{{ user.username }}</span>
+    </div>
+    {% endif %}
+    {% if user.fullname %}
+    <div class="card-row">
+        <span class="card-row-label">Имя</span>
+        <span class="card-row-value">{{ user.fullname }}</span>
+    </div>
+    {% endif %}
+    {% if user.first_interaction %}
+    <div class="card-row">
+        <span class="card-row-label">Дата регистрации</span>
+        <span class="card-row-value">{{ user.first_interaction.strftime('%d.%m.%Y') if user.first_interaction else '-' }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Subscription Details -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:14px">Подписка</div>
+
+    <div class="card-row">
+        <span class="card-row-label">Статус</span>
+        {% if sub.active %}
+            <span class="card-row-value" style="color:var(--success)">Активна</span>
+        {% else %}
+            <span class="card-row-value" style="color:var(--danger)">Неактивна</span>
+        {% endif %}
+    </div>
+    {% if sub.expiry_date %}
+    <div class="card-row">
+        <span class="card-row-label">Действует до</span>
+        <span class="card-row-value">{{ sub.expiry_date }}</span>
+    </div>
+    {% endif %}
+    <div class="card-row">
+        <span class="card-row-label">Автоплатеж</span>
+        {% if sub.autopay_enabled %}
+            <span class="card-row-value" style="color:var(--success)">Подключен</span>
+        {% else %}
+            <span class="card-row-value" style="color:var(--text-muted)">Не подключен</span>
+        {% endif %}
+    </div>
+    <div class="card-row">
+        <span class="card-row-label">Пробный период</span>
+        {% if sub.free_trial_used %}
+            <span class="card-row-value" style="color:var(--text-muted)">Использован</span>
+        {% else %}
+            <span class="card-row-value" style="color:var(--success)">Доступен</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Email Auth -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:14px">Email для входа</div>
+
+    {% if email_success %}
+    <div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:12px 16px;color:var(--success);font-size:14px;margin-bottom:14px">
+        {{ email_success }}
+    </div>
+    {% endif %}
+
+    {% if email_error %}
+    <div style="background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:8px;padding:12px 16px;color:var(--danger);font-size:14px;margin-bottom:14px">
+        {{ email_error }}
+    </div>
+    {% endif %}
+
+    {% if user.email %}
+    <div class="card-row">
+        <span class="card-row-label">Email</span>
+        <span class="card-row-value">{{ user.email }}</span>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin:12px 0 8px">Сменить пароль:</p>
+    <form method="post" action="/dashboard/settings/email">
+        <input type="hidden" name="email" value="{{ user.email }}">
+        <div class="form-group">
+            <input type="password" name="password" class="form-input" placeholder="Новый пароль" required minlength="6">
+        </div>
+        <div class="form-group">
+            <input type="password" name="password_confirm" class="form-input" placeholder="Подтвердите пароль" required minlength="6">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm">Сменить пароль</button>
+    </form>
+    {% else %}
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+        Привяжите email, чтобы входить в личный кабинет без Telegram
+    </p>
+    <form method="post" action="/dashboard/settings/email">
+        <div class="form-group">
+            <input type="email" name="email" class="form-input" placeholder="Email" required>
+        </div>
+        <div class="form-group">
+            <input type="password" name="password" class="form-input" placeholder="Пароль (мин. 6 символов)" required minlength="6">
+        </div>
+        <div class="form-group">
+            <input type="password" name="password_confirm" class="form-input" placeholder="Подтвердите пароль" required minlength="6">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Привязать email</button>
+    </form>
+    {% endif %}
+</div>
+
+<!-- Support -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:14px">Поддержка</div>
+    <a href="https://t.me/NoBorderVPN_bot" target="_blank" class="btn btn-secondary" style="margin-bottom:10px">
+        Написать в бота
+    </a>
+</div>
+
+<!-- Logout -->
+<a href="/dashboard/logout" class="btn btn-danger" style="margin-top:20px">
+    Выйти из аккаунта
+</a>
+{% endblock %}
