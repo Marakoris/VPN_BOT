@@ -16,4 +16,21 @@
         <span>{{ traffic.percent_used }}% использовано</span>
         <span>сброс через {{ traffic.days_until_reset }} дн.</span>
     </div>
+
+    <!-- Bypass traffic -->
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:13px;color:var(--text-secondary)">Белые списки</span>
+            {% if bypass.exceeded %}
+                <span class="card-badge badge-expired" style="font-size:11px;padding:2px 8px">Исчерпан</span>
+            {% elif bypass.percent >= 90 %}
+                <span class="card-badge badge-warning" style="font-size:11px;padding:2px 8px">{{ bypass.percent }}%</span>
+            {% endif %}
+        </div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:6px">{{ bypass.total_formatted }} / {{ bypass.limit_formatted }}</div>
+        <div class="progress-bar" style="height:6px;margin:0">
+            <div class="progress-fill {% if bypass.percent >= 90 %}warning{% elif bypass.exceeded %}danger{% endif %}"
+                 style="width: {{ [bypass.percent, 100] | min }}%"></div>
+        </div>
+    </div>
 </a>

@@ -401,9 +401,11 @@ async def partial_traffic_card(request: Request):
         return HTMLResponse("", status_code=401)
 
     traffic = await services.get_traffic_data(user.tgid)
+    bypass = await services.get_bypass_data(user.tgid)
     return templates.TemplateResponse("partials/_traffic_card.html", {
         "request": request,
         "traffic": traffic,
+        "bypass": bypass,
     })
 
 
