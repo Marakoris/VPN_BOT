@@ -97,7 +97,7 @@ async def login_email(request: Request, email: str = Form(""), password: str = F
         max_age=30 * 24 * 3600,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="lax",
     )
     log.info(f"[Dashboard] User {user.tgid} logged in via email")
     await log_dashboard_action("login_email", request, user)
@@ -137,7 +137,7 @@ async def auth_telegram_callback(request: Request):
         max_age=30 * 24 * 3600,  # 30 days
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="lax",
     )
     log.info(f"[Dashboard] User {tgid} logged in via Telegram Widget")
     await log_dashboard_action("login_telegram", request, user)
@@ -173,7 +173,7 @@ async def auth_token(request: Request, t: str = ""):
         max_age=30 * 24 * 3600,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="lax",
     )
     log.info(f"[Dashboard] User {user.tgid} logged in via subscription token")
     await log_dashboard_action("login_token", request, user)
