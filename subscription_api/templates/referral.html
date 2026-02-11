@@ -3,13 +3,27 @@
 
 {% block content %}
 <h1 class="page-title">Реферальная программа</h1>
-<p class="page-subtitle">Приглашайте друзей и зарабатывайте</p>
+<p class="page-subtitle">Приглашайте друзей и зарабатывайте {{ referral.referral_percent }}% от их оплат</p>
 
 <!-- Referral Link -->
 <div class="card">
     <div class="card-title" style="margin-bottom:12px">Ваша реферальная ссылка</div>
     <div class="url-box" onclick="copyText('{{ referral.referral_link }}')">{{ referral.referral_link }}</div>
-    <button class="btn btn-primary btn-sm" onclick="copyText('{{ referral.referral_link }}')">Скопировать ссылку</button>
+
+    <!-- Share buttons -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <a href="https://t.me/share/url?url={{ referral.referral_link | urlencode }}&text=Быстрый%20и%20надёжный%20VPN%20—%20NoBorder%20VPN"
+           target="_blank" class="btn btn-sm btn-secondary" style="flex:1;min-width:0">
+            Telegram
+        </a>
+        <a href="https://api.whatsapp.com/send?text=Быстрый%20и%20надёжный%20VPN%20—%20NoBorder%20VPN%20{{ referral.referral_link | urlencode }}"
+           target="_blank" class="btn btn-sm btn-secondary" style="flex:1;min-width:0">
+            WhatsApp
+        </a>
+        <button class="btn btn-sm btn-primary" style="flex:1;min-width:0" onclick="copyText('{{ referral.referral_link }}')">
+            Скопировать
+        </button>
+    </div>
 </div>
 
 <!-- Stats -->
@@ -37,12 +51,55 @@
     </div>
 </div>
 
+<!-- Invited Clients -->
+{% if referral.clients %}
+<div class="section-header">
+    <span class="section-title">Привлечённые клиенты</span>
+</div>
+
+{% for c in referral.clients %}
+<div class="card" style="padding:14px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:500;font-size:15px">{{ c.name }}</div>
+        <div style="font-size:12px;color:var(--text-muted)">{{ c.first_payment_date or '' }}</div>
+    </div>
+    <div style="display:flex;gap:16px;font-size:13px;color:var(--text-secondary)">
+        <span>Оплат: <span style="color:var(--text-primary);font-weight:500">{{ c.payments_count }}</span></span>
+        <span>Сумма: <span style="color:var(--text-primary);font-weight:500">{{ c.total_paid }}₽</span></span>
+        <span>Награда: <span style="color:var(--success);font-weight:500">{{ c.total_reward }}₽</span></span>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Recent Rewards -->
+{% if referral.rewards %}
+<div class="section-header">
+    <span class="section-title">Последние начисления</span>
+</div>
+
+{% for r in referral.rewards %}
+<div class="card" style="padding:12px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <div style="font-size:14px">{{ r.client_name }}</div>
+            <div style="font-size:12px;color:var(--text-muted)">Оплата {{ r.payment_amount }}₽ → {{ r.reward_percent }}%</div>
+        </div>
+        <div style="text-align:right">
+            <div style="font-weight:600;color:var(--success)">+{{ r.reward_amount }}₽</div>
+            <div style="font-size:12px;color:var(--text-muted)">{{ r.date }}</div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
 <!-- How it works -->
-<div class="card" style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+<div class="card" style="font-size:14px;color:var(--text-secondary);line-height:1.8;margin-top:8px">
     <div style="font-weight:600;color:var(--text-primary);margin-bottom:8px">Как это работает</div>
     1. Поделитесь реферальной ссылкой с другом<br>
     2. Друг регистрируется и оплачивает подписку<br>
-    3. Вы получаете {{ referral.minimum_withdrawal // 100 * 50 // 20 }}% от каждой оплаты<br>
+    3. Вы получаете {{ referral.referral_percent }}% от каждой оплаты<br>
     4. Выводите от {{ referral.minimum_withdrawal }}₽
 </div>
 

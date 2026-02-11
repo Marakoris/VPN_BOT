@@ -142,6 +142,60 @@ async def get_referral_info(user: Persons) -> dict:
         result = await db.execute(stmt_earned)
         total_earned = result.scalar() or 0
 
+        # Detailed referral clients
+        stmt_clients = (
+            select(
+                AffiliateStatistics.client_fullname,
+                AffiliateStatistics.client_tg_id,
+                AffiliateStatistics.attraction_date,
+                AffiliateStatistics.payment_date,
+                AffiliateStatistics.payment_amount,
+                AffiliateStatistics.reward_percent,
+                AffiliateStatistics.reward_amount,
+            )
+            .filter(AffiliateStatistics.referral_tg_id == user.tgid)
+            .order_by(AffiliateStatistics.payment_date.desc())
+        )
+        result = await db.execute(stmt_clients)
+        raw_clients = result.all()
+
+        # Group by client
+        clients_map: Dict[int, dict] = {}
+        for row in raw_clients:
+            tg_id = row.client_tg_id
+            if tg_id not in clients_map:
+                clients_map[tg_id] = {
+                    "name": row.client_fullname or "Пользователь",
+                    "tg_id": tg_id,
+                    "first_payment_date": row.payment_date,
+                    "total_paid": 0,
+                    "total_reward": 0,
+                    "payments_count": 0,
+                }
+            c = clients_map[tg_id]
+            c["total_paid"] += row.payment_amount or 0
+            c["total_reward"] += row.reward_amount or 0
+            c["payments_count"] += 1
+            # Track earliest payment
+            if row.payment_date and (not c["first_payment_date"] or row.payment_date < c["first_payment_date"]):
+                c["first_payment_date"] = row.payment_date
+
+        clients = sorted(clients_map.values(), key=lambda x: x["first_payment_date"] or datetime.min, reverse=True)
+        for c in clients:
+            if c["first_payment_date"]:
+                c["first_payment_date"] = c["first_payment_date"].strftime("%d.%m.%Y")
+
+        # Recent reward history (individual payments)
+        rewards = []
+        for row in raw_clients[:20]:
+            rewards.append({
+                "client_name": row.client_fullname or "Пользователь",
+                "date": row.payment_date.strftime("%d.%m.%Y") if row.payment_date else "-",
+                "payment_amount": row.payment_amount or 0,
+                "reward_amount": row.reward_amount or 0,
+                "reward_percent": row.reward_percent or 0,
+            })
+
     referral_link = f"https://t.me/{BOT_USERNAME}?start=ref{user.tgid}"
 
     return {
@@ -149,7 +203,10 @@ async def get_referral_info(user: Persons) -> dict:
         "total_invited": total_invited,
         "total_earned": total_earned,
         "referral_link": referral_link,
+        "referral_percent": REFERRAL_PERCENT,
         "minimum_withdrawal": MINIMUM_WITHDRAWAL,
+        "clients": clients,
+        "rewards": rewards,
     }
 
 
