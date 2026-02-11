@@ -222,17 +222,19 @@ def get_connect_url(token: str) -> str:
 
 def get_plans() -> List[dict]:
     """Return available subscription plans."""
-    plan_names = ["1 month", "3 months", "6 months", "12 months"]
+    plan_months = [1, 3, 6, 12]
     plan_days = [31, 93, 186, 365]
 
     plans = []
     for i, cost in enumerate(MONTH_COSTS):
+        months = plan_months[i] if i < len(plan_months) else i + 1
+        days = plan_days[i] if i < len(plan_days) else 31
         plans.append({
-            "months": plan_days[i] // 31 if i < len(plan_days) else 1,
-            "days": plan_days[i] if i < len(plan_days) else 31,
+            "months": months,
+            "days": days,
             "price": int(cost),
-            "name": plan_names[i] if i < len(plan_names) else f"{i+1} months",
-            "per_month": round(int(cost) / (plan_days[i] / 31)) if i < len(plan_days) else int(cost),
+            "name": f"{months} months",
+            "per_month": round(int(cost) / months),
         })
     return plans
 
