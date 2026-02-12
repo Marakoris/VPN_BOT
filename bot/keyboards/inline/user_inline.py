@@ -371,5 +371,20 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         except Exception:
             pass  # Если не удалось создать ссылку - не показываем кнопку
 
+    # 7. Proxy для Telegram (MTProto)
+    proxy_url = "tg://proxy?server=109.69.59.158&port=2096&secret=ee5561d3c771fcaacc21997a06d78b070b7777772e676f6f676c652e636f6d"
+    kb.button(
+        text="📡 Proxy для Telegram",
+        url=proxy_url
+    )
+
+    # 8. Поделиться Proxy
+    share_proxy_text = "📡 Бесплатный Proxy для Telegram! Подключись одним кликом:\n\n🚀 А для полноценного VPN заходи в @NoBorderVPN_bot — быстрый VPN без границ!"
+    share_proxy_url = f"https://t.me/share/url?url={quote(proxy_url)}&text={quote(share_proxy_text)}"
+    kb.button(
+        text="📤 Поделиться Proxy",
+        url=share_proxy_url
+    )
+
     kb.adjust(1)
     return kb.as_markup()
