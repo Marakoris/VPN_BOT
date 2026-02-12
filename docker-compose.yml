@@ -57,6 +57,7 @@ services:
       - ./logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker-сокет
       - ./backups:/app/backups  # Монтируем директорию для бэкапов
+      - ./metabase-data:/app/metabase-data:ro  # Metabase DB для бэкапов
       - /root/VPN Clients:/app/vpn_clients  # Монтируем клиенты VPN
 
   subscription_checker:
@@ -92,6 +93,24 @@ services:
       - MB_SITE_NAME=VPN Analytics
       - JAVA_TIMEZONE=Europe/Moscow
       - JAVA_OPTS=-Xms256m -Xmx512m
+
+  mtproto_stats_collector:
+    restart: unless-stopped
+    build: ./
+    container_name: mtproto_stats_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - MTPROTO_COLLECT_INTERVAL=300
+    volumes:
+      - ./bot:/app/bot
+      - ./mtproto_stats_collector.py:/app/mtproto_stats_collector.py
+      - ./run_mtproto_stats_collector.sh:/app/run_mtproto_stats_collector.sh
+      - ./logs:/app/logs
+      - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+    command: /bin/bash /app/run_mtproto_stats_collector.sh
 
   subscription_api:
     restart: unless-stopped

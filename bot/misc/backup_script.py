@@ -52,7 +52,21 @@ async def create_backup():
             env_backup_file = ''
             logger.warning(f'File {env_file_path} not found, skipping .env backup')
 
-        logger.info(f'Created backup: {backup_file}, {env_backup_file}')
+        # Бэкап Metabase H2 базы
+        metabase_backup_file = ''
+        try:
+            metabase_src = '/app/metabase-data/metabase.db/metabase.db.mv.db'
+            metabase_dst = f'{CONFIG.BACKUP_DIR}/metabase_{timestamp}.mv.db'
+            if os.path.exists(metabase_src):
+                shutil.copy2(metabase_src, metabase_dst)
+                metabase_backup_file = metabase_dst
+                logger.info(f'Created Metabase backup: {metabase_dst}')
+            else:
+                logger.warning(f'Metabase DB not found at {metabase_src}, skipping')
+        except Exception as e:
+            logger.error(f'Error backing up Metabase: {e}')
+
+        logger.info(f'Created backup: {backup_file}, {env_backup_file}, {metabase_backup_file}')
         return backup_file, env_backup_file
     except Exception as e:
         logger.error(f'Error creating backup: {e}')

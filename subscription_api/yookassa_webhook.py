@@ -217,6 +217,16 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
             f"user={user_id}, days={days_count}, amount={amount}, source={source}"
         )
 
+        # Skip non-dashboard payments (autopay/manual handle their own notifications)
+        if source != "dashboard":
+            log.info(f"[Webhook] Skipping {source} payment {payment_id} (handled by {source} flow)")
+            return {
+                "status": "skipped",
+                "reason": f"source={source}, handled by {source} flow",
+                "payment_id": payment_id,
+                "user_id": user_id,
+            }
+
         # Check for duplicate
         if await _is_payment_processed(user_id, amount, payment_id):
             log.info(f"[Webhook] Payment {payment_id} already processed, skipping")

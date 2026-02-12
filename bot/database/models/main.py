@@ -319,6 +319,30 @@ class DashboardLogs(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
 
 
+class MtprotoProxyStats(Base):
+    __tablename__ = "mtproto_proxy_stats"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collected_at = Column(TIMESTAMP(timezone=True), nullable=False, default=func.now(), index=True)
+    server_host = Column(String(50), nullable=False)
+    proxy_name = Column(String(50), nullable=False)
+    total_connects = Column(Integer, nullable=False, default=0)
+    current_connects = Column(Integer, nullable=False, default=0)
+    traffic_mb = Column(Float, nullable=False, default=0.0)
+    total_msgs = Column(Integer, nullable=False, default=0)
+
+
+class MtprotoProxyIps(Base):
+    __tablename__ = "mtproto_proxy_ips"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    first_seen_at = Column(TIMESTAMP(timezone=True), nullable=False, default=func.now())
+    date = Column(Date, nullable=False, default=func.current_date(), index=True)
+    server_host = Column(String(50), nullable=False)
+    ip_address = Column(String(45), nullable=False)
+    __table_args__ = (
+        UniqueConstraint('date', 'server_host', 'ip_address', name='uq_mtproto_ip_date_server'),
+    )
+
+
 async def create_all_table():
     async_engine = engine()
     async with async_engine.begin() as conn:

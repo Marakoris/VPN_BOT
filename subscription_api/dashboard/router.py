@@ -42,6 +42,32 @@ BOT_USERNAME = "NoBorderVPN_bot"
 SUBSCRIPTION_API_URL = os.getenv("SUBSCRIPTION_API_URL", "https://vpnnoborder.sytes.net")
 
 
+def _auth_redirect_response(token: str, redirect_url: str = "/dashboard/") -> HTMLResponse:
+    """
+    Return HTML page that sets cookie and redirects via JS.
+    Telegram's in-app browser doesn't persist cookies on 302 redirects,
+    so we return 200 + Set-Cookie + JS redirect instead.
+    """
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redirecting...</title></head>
+<body style="background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif">
+<p>Загрузка...</p>
+<script>window.location.replace("{redirect_url}");</script>
+</body></html>"""
+    response = HTMLResponse(html)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=30 * 24 * 3600,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return response
+
+
 # ==================== AUTH ROUTES ====================
 
 @router.get("/login", response_class=HTMLResponse)
@@ -90,18 +116,9 @@ async def login_email(request: Request, email: str = Form(""), password: str = F
         })
 
     token = create_jwt_token(user.id, user.tgid)
-    response = RedirectResponse("/dashboard/", status_code=302)
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        max_age=30 * 24 * 3600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
     log.info(f"[Dashboard] User {user.tgid} logged in via email")
     await log_dashboard_action("login_email", request, user)
-    return response
+    return _auth_redirect_response(token)
 
 
 @router.get("/auth/telegram")
@@ -130,18 +147,9 @@ async def auth_telegram_callback(request: Request):
 
     # Create JWT and set cookie
     token = create_jwt_token(user.id, user.tgid)
-    response = RedirectResponse("/dashboard/", status_code=302)
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        max_age=30 * 24 * 3600,  # 30 days
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
     log.info(f"[Dashboard] User {tgid} logged in via Telegram Widget")
     await log_dashboard_action("login_telegram", request, user)
-    return response
+    return _auth_redirect_response(token)
 
 
 @router.get("/auth/token")
@@ -166,18 +174,9 @@ async def auth_token(request: Request, t: str = ""):
         return RedirectResponse("/dashboard/login?error=not_found", status_code=302)
 
     token = create_jwt_token(user.id, user.tgid)
-    response = RedirectResponse("/dashboard/", status_code=302)
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        max_age=30 * 24 * 3600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
     log.info(f"[Dashboard] User {user.tgid} logged in via subscription token")
     await log_dashboard_action("login_token", request, user)
-    return response
+    return _auth_redirect_response(token)
 
 
 @router.get("/logout")

@@ -220,7 +220,8 @@ class KassaSmart(PaymentSystem):
             },
             "metadata": {
                 "user_id": self.user_id,
-                "days_count": self.days_count
+                "days_count": self.days_count,
+                "source": "autopay"
             }
         }
 
