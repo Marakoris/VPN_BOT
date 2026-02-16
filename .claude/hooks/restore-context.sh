@@ -159,15 +159,34 @@ if [ "$ENVIRONMENT" = "TEST" ]; then
   echo ""
   echo "## 📝 Последняя сессия"
 
-  LATEST_SESSION=$(ls -t /root/claude-docs/sessions/*.md 2>/dev/null | head -1)
+  # Sort by filename (contains date YYYY-MM-DD) instead of mtime (mtime breaks after mass edits)
+  LATEST_SESSION=$(ls /root/claude-docs/sessions/*.md 2>/dev/null | sort -t/ -k6 -r | head -1)
   if [ -n "$LATEST_SESSION" ]; then
     SESSION_NAME=$(basename "$LATEST_SESSION" .md)
-    echo "**Файл**: $SESSION_NAME"
+    echo "**Сессия**: $SESSION_NAME"
     echo ""
 
     # Extract first few lines after the title
     echo "**Краткое содержание:**"
     grep -A 3 "^**Тема:**\|^**Проблема:**\|^**Статус:**" "$LATEST_SESSION" 2>/dev/null | head -10 | sed 's/^/  /'
+  fi
+
+  # Also show latest work-log (may be more recent than sessions)
+  LATEST_WORKLOG=$(ls /root/claude-docs/checkpoints/*-work-log.md 2>/dev/null | sort -t/ -k6 -r | head -1)
+  if [ -n "$LATEST_WORKLOG" ]; then
+    WORKLOG_NAME=$(basename "$LATEST_WORKLOG" .md)
+    WORKLOG_DATE="${WORKLOG_NAME%-work-log}"
+    SESSION_DATE="${SESSION_NAME:0:10}"
+    # Show work-log only if it's more recent than the session file
+    if [[ "$WORKLOG_DATE" > "$SESSION_DATE" ]]; then
+      echo ""
+      echo "**Последний work-log**: $WORKLOG_NAME"
+      # Extract last task from work-log
+      LAST_TASK=$(grep "### Задача:\|### Task:" "$LATEST_WORKLOG" 2>/dev/null | tail -1 | sed 's/^### [^:]*: //')
+      if [ -n "$LAST_TASK" ]; then
+        echo "  Задача: $LAST_TASK"
+      fi
+    fi
   fi
 fi
 
@@ -223,16 +242,14 @@ vpn-edit <alias>            # Редактировать конфиг
 ```
 
 
-## 🔐 Зашифрованные пароли (SOPS + age)
+## 🔐 Credentials (Vaultwarden)
 
-Все credentials хранятся в зашифрованных файлах:
-- `projects/infrastructure/server-connections.enc.md` — SSH доступы (MikroTik, Proxmox, Ubuntu)
-- `projects/vpn-servers/vpn-servers-credentials.enc.md` — Доступы к VPN серверам
-
-**Расшифровка:**
-\`\`\`bash
-cd /root/claude-docs && sops -d projects/infrastructure/server-connections.enc.md
-\`\`\`
+Все пароли и доступы хранятся в **Vaultwarden**: https://vault.friendadmin.ru
+```bash
+creds list              # Все записи
+creds get "SSH Германия-1"  # Конкретная запись
+```
+Подробнее: `/root/claude-docs/projects/infrastructure/credentials-management.md`
 
 ## 🔧 Полезные slash команды
 - **/restore** - Восстановить контекст вручную (показать последние сессии)
@@ -262,6 +279,13 @@ vpn-info <alias>            # Полная информация
 vpn-password <alias> <pass> # Обновить пароль
 ```
 
+## 🔐 Credentials (Vaultwarden)
+
+Все пароли и доступы хранятся в **Vaultwarden**: https://vault.friendadmin.ru
+```bash
+creds list              # Все записи
+creds get "SSH Германия-1"  # Конкретная запись
+```
 
 ### Подключение к тестовому серверу (для разработки)
 ```bash

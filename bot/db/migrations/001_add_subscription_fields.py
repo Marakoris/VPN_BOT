@@ -29,7 +29,7 @@ async def run_migration():
         host='localhost',
         port=5432,
         user='postgres',
-        password='postgres',
+        password=os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         database='VPNHubBotDB_TEST'
     )
 
@@ -110,7 +110,7 @@ async def verify_migration():
         host='localhost',
         port=5432,
         user='postgres',
-        password='postgres',
+        password=os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         database='VPNHubBotDB_TEST'
     )
 
@@ -189,7 +189,7 @@ async def rollback_migration():
         host='localhost',
         port=5432,
         user='postgres',
-        password='postgres',
+        password=os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         database='VPNHubBotDB_TEST'
     )
 

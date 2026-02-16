@@ -372,7 +372,7 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
             pass  # Если не удалось создать ссылку - не показываем кнопку
 
     # 7. Proxy для Telegram (MTProto)
-    proxy_url = "tg://proxy?server=109.69.59.158&port=2096&secret=ee5561d3c771fcaacc21997a06d78b070b7777772e676f6f676c652e636f6d"
+    proxy_url = "tg://proxy?server=109.69.59.158&port=2096&secret=ee5561d3c771fcaacc21997a06d78b070b7777772e636c6f7564666c6172652e636f6d"
     kb.button(
         text="📡 Proxy для Telegram",
         url=proxy_url

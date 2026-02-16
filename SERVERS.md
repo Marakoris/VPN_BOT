@@ -16,7 +16,7 @@
 
 #### Конфигурация:
 - **База данных:** PostgreSQL с 3000+ реальными пользователями
-- **Бот токен:** `7433064342:AAHFI9KgJnSwYql7vjau6q8ffDg2ylNb9U8`
+- **Бот токен:** `[REDACTED — see Vaultwarden]`
 - **Название бота:** NoBorder VPN
 - **Docker контейнер:** `vpnhubbot-vpn_hub_bot-1`
 - **БД контейнер:** `postgres_db_container` (postgres:16)
@@ -45,7 +45,7 @@
 
 #### Конфигурация:
 - **База данных:** VPNHubBotDB_TEST (отдельная тестовая БД!)
-- **Бот токен:** `7501968261:AAFFQhRO8YLWB71rrm4zmCiixJgzy1zqwvU` ✅ **Отдельный токен!**
+- **Бот токен:** `[REDACTED — see .env]` ✅ **Отдельный токен!**
 - **Название бота:** NoBorder VPN TEST
 - **Пользователей:** 9 тестовых пользователей
 - **Docker контейнер:** `postgres_db_container` (когда запущен)

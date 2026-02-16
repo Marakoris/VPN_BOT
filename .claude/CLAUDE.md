@@ -32,7 +32,7 @@ sops -d /root/claude-docs/projects/infrastructure/server-connections.enc.md
 Сервер: 109.69.56.185
 Порт SSH: 22
 Путь: /root/VPNHubBot/
-Доступ: sshpass -p vP175ycn4N80 ssh root@109.69.56.185
+Доступ: creds get "SSH VPN Bot Production"
 ```
 
 ### ⚠️ ПЕРЕД КОПИРОВАНИЕМ ФАЙЛОВ НА ПРОД:
@@ -42,11 +42,12 @@ sops -d /root/claude-docs/projects/infrastructure/server-connections.enc.md
 3. **НЕТ volume mount на проде** - нужен `docker compose build` после изменений!
 
 ```bash
+# Доступ к серверу — пароль в Vaultwarden: "SSH VPN Bot Production"
 # Проверить статус на проде
-sshpass -p vP175ycn4N80 ssh root@109.69.56.185 "cd /root/VPNHubBot && git status"
+vpn-ssh vpn-prod "cd /root/VPNHubBot && git status"
 
 # Сделать бэкап
-sshpass -p vP175ycn4N80 ssh root@109.69.56.185 "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
+vpn-ssh vpn-prod "cp -r /root/VPNHubBot/bot /root/bot_backup_$(date +%Y%m%d_%H%M)"
 ```
 
 **Подробнее**: `/root/claude-docs/knowledge/repository-locations.md`

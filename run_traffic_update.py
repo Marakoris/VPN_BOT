@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import os
 import sys
 sys.path.insert(0, "/app")
 
@@ -8,7 +9,7 @@ async def run():
     from aiogram import Bot
 
     user_id = int(sys.argv[1]) if len(sys.argv) > 1 else 870499087
-    bot = Bot(token="7501968261:AAFFQhRO8YLWB71rrm4zmCiixJgzy1zqwvU")
+    bot = Bot(token=os.environ.get("TG_TOKEN", ""))
 
     try:
         await bot.send_message(user_id, "🔄 Начинаю обновление трафика...")
