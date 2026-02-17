@@ -745,3 +745,85 @@ async def get_daily_statistics_aggregated():
             'referral_balance_persons_count': row[5] or 0,
             'referral_balance_sum': int(row[6] or 0)
         }
+
+
+async def get_referral_funnel_data(tgid: int) -> dict:
+    """Получить данные воронки рефералов для пользователя с разбивкой по UTM-меткам."""
+    import time as _time
+    current_time = int(_time.time())
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Получаем всех рефералов
+        stmt = select(Persons).filter(Persons.referral_user_tgid == tgid)
+        result = await db.execute(stmt)
+        referrals_list = result.scalars().all()
+
+        # Получаем статистику начислений по каждому рефералу
+        stmt_aff = select(
+            AffiliateStatistics.client_tg_id,
+            func.sum(AffiliateStatistics.payment_amount).label('total_paid'),
+            func.sum(AffiliateStatistics.reward_amount).label('total_reward'),
+        ).filter(
+            AffiliateStatistics.referral_tg_id == tgid
+        ).group_by(AffiliateStatistics.client_tg_id)
+        result_aff = await db.execute(stmt_aff)
+        aff_map = {row.client_tg_id: {'total_paid': row.total_paid or 0, 'total_reward': row.total_reward or 0}
+                    for row in result_aff}
+
+    # Собираем данные
+    funnel = {'registered': 0, 'trial_activated': 0, 'paid': 0}
+    utm_funnels = {}
+    referrals = []
+
+    for r in referrals_list:
+        # Определяем статус
+        if r.retention and r.retention > 0:
+            status = 'paid'
+        elif r.free_trial_used:
+            status = 'trial'
+        else:
+            status = 'registered'
+
+        utm = r.referral_utm  # может быть None
+
+        # Общая воронка
+        funnel['registered'] += 1
+        if status in ('trial', 'paid'):
+            funnel['trial_activated'] += 1
+        if status == 'paid':
+            funnel['paid'] += 1
+
+        # Воронка по UTM
+        if utm not in utm_funnels:
+            utm_funnels[utm] = {'registered': 0, 'trial_activated': 0, 'paid': 0}
+        utm_funnels[utm]['registered'] += 1
+        if status in ('trial', 'paid'):
+            utm_funnels[utm]['trial_activated'] += 1
+        if status == 'paid':
+            utm_funnels[utm]['paid'] += 1
+
+        aff_data = aff_map.get(r.tgid, {'total_paid': 0, 'total_reward': 0})
+
+        referrals.append({
+            'fullname': r.fullname or 'Пользователь',
+            'tgid': r.tgid,
+            'username': r.username,
+            'first_interaction': r.first_interaction,
+            'free_trial_used': r.free_trial_used,
+            'retention': r.retention or 0,
+            'status': status,
+            'total_paid': aff_data['total_paid'],
+            'total_reward': aff_data['total_reward'],
+            'referral_utm': utm,
+        })
+
+    # Сортируем: сначала оплатившие, потом триал, потом зарег
+    status_order = {'paid': 0, 'trial': 1, 'registered': 2}
+    referrals.sort(key=lambda x: (status_order.get(x['status'], 3),
+                                   -(x['first_interaction'].timestamp() if x['first_interaction'] else 0)))
+
+    return {
+        'funnel': funnel,
+        'referrals': referrals,
+        'utm_funnels': utm_funnels,
+    }

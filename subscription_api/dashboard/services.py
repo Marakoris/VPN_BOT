@@ -126,14 +126,17 @@ async def get_payment_history(user_id: int) -> List[dict]:
 
 
 async def get_referral_info(user: Persons) -> dict:
-    """Get referral statistics."""
+    """Get referral statistics with funnel and UTM breakdown."""
+    import time as _time
+    current_time = int(_time.time())
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        # Count invited users
-        stmt_count = select(func.count()).select_from(Persons).filter(
-            Persons.referral_user_tgid == user.tgid
-        )
-        result = await db.execute(stmt_count)
-        total_invited = result.scalar() or 0
+        # Get all referrals from users table
+        stmt_referrals = select(Persons).filter(Persons.referral_user_tgid == user.tgid)
+        result = await db.execute(stmt_referrals)
+        all_referrals_db = result.scalars().all()
+
+        total_invited = len(all_referrals_db)
 
         # Total earned from referrals
         stmt_earned = select(func.coalesce(func.sum(AffiliateStatistics.reward_amount), 0)).filter(
@@ -142,7 +145,7 @@ async def get_referral_info(user: Persons) -> dict:
         result = await db.execute(stmt_earned)
         total_earned = result.scalar() or 0
 
-        # Detailed referral clients
+        # Detailed referral clients (from affiliate_statistics — payment data)
         stmt_clients = (
             select(
                 AffiliateStatistics.client_fullname,
@@ -159,44 +162,129 @@ async def get_referral_info(user: Persons) -> dict:
         result = await db.execute(stmt_clients)
         raw_clients = result.all()
 
-        # Group by client
+        # Group payment data by client
         clients_map: Dict[int, dict] = {}
         for row in raw_clients:
             tg_id = row.client_tg_id
             if tg_id not in clients_map:
                 clients_map[tg_id] = {
-                    "name": row.client_fullname or "Пользователь",
-                    "tg_id": tg_id,
-                    "first_payment_date": row.payment_date,
                     "total_paid": 0,
                     "total_reward": 0,
                     "payments_count": 0,
+                    "first_payment_date": row.payment_date,
                 }
             c = clients_map[tg_id]
             c["total_paid"] += row.payment_amount or 0
             c["total_reward"] += row.reward_amount or 0
             c["payments_count"] += 1
-            # Track earliest payment
             if row.payment_date and (not c["first_payment_date"] or row.payment_date < c["first_payment_date"]):
                 c["first_payment_date"] = row.payment_date
 
-        clients = sorted(clients_map.values(), key=lambda x: x["first_payment_date"] or datetime.min, reverse=True)
-        for c in clients:
-            if c["first_payment_date"]:
-                c["first_payment_date"] = c["first_payment_date"].strftime("%d.%m.%Y")
+        # Build funnel data and all_referrals list
+        funnel = {'registered': 0, 'trial_activated': 0, 'paid': 0}
+        utm_funnels: Dict[Optional[str], dict] = {}
+        all_referrals = []
 
-        # Recent reward history (individual payments)
+        for r in all_referrals_db:
+            # Determine status
+            if r.retention and r.retention > 0:
+                status = 'paid'
+            elif r.free_trial_used:
+                status = 'trial'
+            else:
+                status = 'registered'
+
+            utm = r.referral_utm
+
+            # Overall funnel
+            funnel['registered'] += 1
+            if status in ('trial', 'paid'):
+                funnel['trial_activated'] += 1
+            if status == 'paid':
+                funnel['paid'] += 1
+
+            # UTM funnel
+            if utm not in utm_funnels:
+                utm_funnels[utm] = {'registered': 0, 'trial_activated': 0, 'paid': 0}
+            utm_funnels[utm]['registered'] += 1
+            if status in ('trial', 'paid'):
+                utm_funnels[utm]['trial_activated'] += 1
+            if status == 'paid':
+                utm_funnels[utm]['paid'] += 1
+
+            payment_data = clients_map.get(r.tgid, {})
+
+            all_referrals.append({
+                "name": r.fullname or "Пользователь",
+                "tg_id": r.tgid,
+                "status": status,
+                "referral_utm": utm,
+                "first_interaction": r.first_interaction.strftime("%d.%m.%Y") if r.first_interaction else None,
+                "total_paid": payment_data.get("total_paid", 0),
+                "total_reward": payment_data.get("total_reward", 0),
+                "payments_count": payment_data.get("payments_count", 0),
+                "first_payment_date": payment_data.get("first_payment_date", "").strftime("%d.%m.%Y") if payment_data.get("first_payment_date") else None,
+            })
+
+        # Sort: paid first, then trial, then registered
+        status_order = {'paid': 0, 'trial': 1, 'registered': 2}
+        all_referrals.sort(key=lambda x: status_order.get(x['status'], 3))
+
+        # Build legacy clients list (only those who paid)
+        clients = []
+        for ref in all_referrals:
+            if ref['payments_count'] > 0:
+                clients.append({
+                    "name": ref["name"],
+                    "tg_id": ref["tg_id"],
+                    "first_payment_date": ref["first_payment_date"],
+                    "total_paid": ref["total_paid"],
+                    "total_reward": ref["total_reward"],
+                    "payments_count": ref["payments_count"],
+                })
+
+        # Reward history (all individual payments)
         rewards = []
-        for row in raw_clients[:20]:
+        for row in raw_clients:
             rewards.append({
                 "client_name": row.client_fullname or "Пользователь",
+                "client_tg_id": row.client_tg_id,
                 "date": row.payment_date.strftime("%d.%m.%Y") if row.payment_date else "-",
                 "payment_amount": row.payment_amount or 0,
                 "reward_amount": row.reward_amount or 0,
                 "reward_percent": row.reward_percent or 0,
             })
 
-    referral_link = f"https://t.me/{BOT_USERNAME}?start=ref{user.tgid}"
+        # Load UTM tag descriptions
+        from bot.database.models.main import ReferralUtmTag
+        stmt_tags = select(ReferralUtmTag).filter(ReferralUtmTag.user_tgid == user.tgid)
+        result = await db.execute(stmt_tags)
+        utm_tag_rows = result.scalars().all()
+        utm_descriptions = {t.tag: t.description for t in utm_tag_rows if t.description}
+
+        # Format UTM funnels for template (convert None key to string)
+        utm_funnels_formatted = {}
+        for k, v in utm_funnels.items():
+            conv = round(v['paid'] / v['registered'] * 100) if v['registered'] > 0 else 0
+            v['conversion'] = conv
+            v['description'] = utm_descriptions.get(k, '') if k else ''
+            utm_funnels_formatted[k if k is not None else '__none__'] = v
+
+    from base64 import urlsafe_b64encode
+    encoded = urlsafe_b64encode(str(user.tgid).encode()).decode().rstrip('=')
+    referral_link = f"https://t.me/{BOT_USERNAME}?start={encoded}"
+
+    # Build list of all created UTM links
+    utm_links = []
+    for t in utm_tag_rows:
+        tag_payload = f"{user.tgid}_{t.tag}"
+        tag_encoded = urlsafe_b64encode(tag_payload.encode()).decode().rstrip('=')
+        utm_links.append({
+            "tag": t.tag,
+            "description": t.description or t.tag,
+            "link": f"https://t.me/{BOT_USERNAME}?start={tag_encoded}",
+            "created_at": t.created_at.strftime("%d.%m.%Y") if t.created_at else "",
+        })
 
     return {
         "referral_balance": user.referral_balance or 0,
@@ -207,6 +295,12 @@ async def get_referral_info(user: Persons) -> dict:
         "minimum_withdrawal": MINIMUM_WITHDRAWAL,
         "clients": clients,
         "rewards": rewards,
+        "all_referrals": all_referrals,
+        "funnel": funnel,
+        "utm_funnels": utm_funnels_formatted,
+        "utm_links": utm_links,
+        "user_tgid": user.tgid,
+        "bot_username": BOT_USERNAME,
     }
 
 

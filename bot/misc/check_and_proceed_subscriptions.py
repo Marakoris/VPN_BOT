@@ -13,11 +13,12 @@ from bot.database.methods.get import (
     get_server_id, get_subscriptions_needing_action,
     get_daily_statistics_aggregated, MAX_AUTOPAY_RETRY, AUTOPAY_RETRY_HOURS
 )
-from bot.database.methods.insert import crate_or_update_stats, add_payment
+from bot.database.methods.insert import crate_or_update_stats, add_payment, create_affiliate_statistics
 from bot.database.methods.update import (
     add_time_person, server_space_update, person_one_day_false,
     person_one_day_true, add_retention_person, person_subscription_expired_true,
-    person_subscription_expired_false, increment_autopay_retry, reset_autopay_retry
+    person_subscription_expired_false, increment_autopay_retry, reset_autopay_retry,
+    add_referral_balance_person
 )
 from bot.misc.subscription import activate_subscription
 from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
@@ -279,6 +280,33 @@ async def process_subscriptions(bot: Bot, config):
                         log.info(f"[Autopay] Traffic reset for user {person.tgid}")
                     except Exception as e:
                         log.error(f"[Autopay] Failed to reset traffic for user {person.tgid}: {e}")
+
+                    # Реферальный бонус
+                    try:
+                        if person.referral_user_tgid is not None:
+                            referral_user = person.referral_user_tgid
+                            referral_balance = max(1, round(current_tariff_cost * (CONFIG.referral_percent * 0.01)))
+                            await add_referral_balance_person(referral_balance, referral_user)
+                            await create_affiliate_statistics(
+                                person.fullname,
+                                person.tgid,
+                                referral_user,
+                                current_tariff_cost,
+                                CONFIG.referral_percent,
+                                referral_balance
+                            )
+                            try:
+                                await bot.send_message(
+                                    referral_user,
+                                    _('reff_add_balance', await get_lang(referral_user)).format(
+                                        referral_balance=referral_balance
+                                    )
+                                )
+                            except Exception as e:
+                                log.error(f"[Autopay] Can't send referral balance message to {referral_user}: {e}")
+                            log.info(f"[Autopay] Referral bonus {referral_balance}₽ to user {referral_user} from autopay of {person.tgid}")
+                    except Exception as e:
+                        log.error(f"[Autopay] Failed to process referral bonus for user {person.tgid}: {e}")
 
                     # Уведомление пользователю
                     try:

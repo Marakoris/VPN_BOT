@@ -153,10 +153,22 @@ async def referral_system_handler(m: Message, state: FSMContext) -> None:
             link_paid_promotion="https://heavy-weight-a87.notion.site/NoBorderVPN-18e2ac7dfb078096a214cbe65782b386",
         )
     )
+
+    # Получаем токен для ссылки на ЛК → сразу на реферальную страницу
+    person = await get_person(m.from_user.id)
+    dashboard_url = None
+    if person and person.subscription_token:
+        from urllib.parse import quote
+        dashboard_url = (
+            f"{CONFIG.subscription_api_url}/dashboard/auth/token"
+            f"?t={quote(person.subscription_token, safe='')}"
+            f"&next=/dashboard/referral"
+        )
+
     await m.answer_photo(
         photo=FSInputFile('bot/img/referral_program.jpg'),
         caption=message_text,
-        reply_markup=await share_link(link_ref, lang, balance)
+        reply_markup=await share_link(link_ref, lang, balance, dashboard_url)
     )
 
 

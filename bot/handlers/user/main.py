@@ -229,18 +229,28 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             log.error(e)
             user_name = str(m.from_user.username)
         reference = decode_payload(command.args) if command.args else None
+        referral_utm = None
         if reference is not None:
-            if reference.isdigit():
+            if '_' in reference:
+                parts = reference.split('_', 1)
+                if parts[0].isdigit():
+                    reference = int(parts[0])
+                    referral_utm = parts[1][:50]  # обрезаем длинные метки
+                else:
+                    reference = None
+            elif reference.isdigit():
                 reference = int(reference)
             else:
                 reference = None
             if reference == m.from_user.id:
                 await m.answer(_('referral_error', lang))
                 reference = None
+                referral_utm = None
             # Проверка: реферал не должен быть ID бота
             if reference == m.bot.id:
                 log.warning(f"Attempted to set bot ID {m.bot.id} as referral for user {m.from_user.id}")
                 reference = None
+                referral_utm = None
             # Бонус за реферала начисляется при первой оплате, не при регистрации
         # Регистрируем с subscription=0 (пробный период активируется отдельно)
         await add_new_person(
@@ -248,7 +258,8 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
             user_name,
             0,  # Не даём подписку автоматически - пользователь активирует пробный период сам
             reference,
-            client_id  # Добавляем ClientID в базу данных
+            client_id,  # Добавляем ClientID в базу данных
+            referral_utm=referral_utm
         )
         await m.answer_photo(
             photo=FSInputFile('bot/img/hello_bot.jpg'),

@@ -202,7 +202,7 @@ async def instruction_manual(type_vpn, lang) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-async def share_link(ref_link, lang, ref_balance=None) -> InlineKeyboardMarkup:
+async def share_link(ref_link, lang, ref_balance=None, dashboard_url=None) -> InlineKeyboardMarkup:
     link = f'https://t.me/share/url?url={ref_link}'
     kb = InlineKeyboardBuilder()
     kb.button(text=_('user_share_btn', lang), url=link)
@@ -217,6 +217,13 @@ async def share_link(ref_link, lang, ref_balance=None) -> InlineKeyboardMarkup:
                 text=_('enough_funds_withdraw_btn', lang),
                 callback_data='none'
             )
+
+    # Ссылка на рефералку в ЛК
+    if dashboard_url:
+        kb.button(
+            text="📊 Рефералка — статистика и UTM-ссылки",
+            url=dashboard_url
+        )
 
     # Кнопки для скачивания статистики
     kb.button(
@@ -338,9 +345,9 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
             callback_data=MainMenuAction(action='my_keys')
         )
 
-    # 4. Бонусы и друзья (объединили referral + bonus)
+    # 4. Бонусы и рефералка
     kb.button(
-        text="💰 Бонусы и друзья",
+        text="💰 Бонусы и рефералка",
         callback_data=MainMenuAction(action='bonuses')
     )
 

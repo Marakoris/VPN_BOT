@@ -16,7 +16,7 @@ from bot.database.models.main import (
 )
 
 
-async def add_new_person(from_user, username, subscription, ref_user, client_id):
+async def add_new_person(from_user, username, subscription, ref_user, client_id, referral_utm=None):
     moscow_tz = ZoneInfo("Europe/Moscow")
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         # Если subscription > 0 - добавляем к текущему времени
@@ -29,6 +29,7 @@ async def add_new_person(from_user, username, subscription, ref_user, client_id)
             subscription=subscription_time,
             lang_tg=from_user.language_code or None,
             referral_user_tgid=ref_user or None,
+            referral_utm=referral_utm,
             client_id=client_id,
             first_interaction=datetime.datetime.now(moscow_tz),
             banned=False  # Новый пользователь не забанен

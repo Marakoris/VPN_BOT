@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>">
     <title>{% block title %}NoBorder VPN{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=6">
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -28,7 +28,7 @@
                 <span class="header-nav-icon">💳</span><span class="header-nav-label">Оплата</span>
             </a>
             <a href="/dashboard/referral" class="header-nav-item {% if page == 'referral' %}active{% endif %}">
-                <span class="header-nav-icon">👥</span><span class="header-nav-label">Друзья</span>
+                <span class="header-nav-icon">👥</span><span class="header-nav-label">Рефералка</span>
             </a>
             <a href="/dashboard/settings" class="header-nav-item {% if page == 'settings' %}active{% endif %}">
                 <span class="header-nav-icon">⚙️</span><span class="header-nav-label">Ещё</span>

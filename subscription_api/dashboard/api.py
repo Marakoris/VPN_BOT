@@ -4,7 +4,7 @@ Dashboard JSON API endpoints (/api/v1/*).
 
 import logging
 from fastapi import APIRouter, Request, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from bot.database.models.main import Persons
 from subscription_api.dashboard.dependencies import require_user_api
@@ -136,3 +136,137 @@ async def api_disable_autopay(request: Request, user: Persons = Depends(require_
 async def api_plans():
     """Get available subscription plans."""
     return {"plans": services.get_plans()}
+
+
+@router.post("/referral/create-utm-link")
+async def api_create_utm_link(request: Request, user: Persons = Depends(require_user_api)):
+    """Generate a referral link with UTM tag and save description."""
+    import re
+    from base64 import urlsafe_b64encode
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from bot.database.main import engine
+    from bot.database.models.main import ReferralUtmTag
+
+    body = await request.json()
+    tag = (body.get("tag") or "").strip()
+    description = (body.get("description") or "").strip()[:100]
+
+    if not tag or not re.match(r'^[a-zA-Z0-9_-]{1,30}$', tag):
+        return JSONResponse(
+            {"success": False, "error": "Метка должна содержать только латиницу, цифры, дефис и подчёркивание (1-30 символов)"},
+            status_code=400,
+        )
+
+    # Save tag with description
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(ReferralUtmTag).filter(
+            ReferralUtmTag.user_tgid == user.tgid,
+            ReferralUtmTag.tag == tag,
+        )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            if description:
+                existing.description = description
+        else:
+            db.add(ReferralUtmTag(user_tgid=user.tgid, tag=tag, description=description or None))
+        await db.commit()
+
+    payload = f"{user.tgid}_{tag}"
+    encoded = urlsafe_b64encode(payload.encode()).decode().rstrip('=')
+    bot_username = services.BOT_USERNAME
+    link = f"https://t.me/{bot_username}?start={encoded}"
+
+    await log_dashboard_action("utm_link_create", request, user, f"tag={tag}")
+    return {"success": True, "link": link, "tag": tag, "description": description}
+
+
+@router.get("/referral/export-excel")
+async def api_referral_export_excel(request: Request, user: Persons = Depends(require_user_api)):
+    """Export referral data as Excel file."""
+    import pandas as pd
+    from io import BytesIO
+    from zoneinfo import ZoneInfo
+
+    moscow_tz = ZoneInfo("Europe/Moscow")
+    info = await services.get_referral_info(user)
+
+    # Sheet 1: All referrals
+    referrals_data = []
+    for i, r in enumerate(info.get("all_referrals", [])):
+        status_map = {"paid": "Оплатил", "trial": "Триал", "registered": "Регистрация"}
+        referrals_data.append({
+            "№": i + 1,
+            "Имя": r["name"],
+            "Telegram ID": r["tg_id"],
+            "Статус": status_map.get(r["status"], r["status"]),
+            "UTM-метка": r.get("referral_utm") or "—",
+            "Дата регистрации": r.get("first_interaction") or "—",
+            "Кол-во оплат": r.get("payments_count", 0),
+            "Сумма оплат, ₽": r.get("total_paid", 0),
+            "Вознаграждение, ₽": r.get("total_reward", 0),
+        })
+    df_referrals = pd.DataFrame(referrals_data) if referrals_data else pd.DataFrame()
+
+    # Sheet 2: Rewards (recent)
+    rewards_data = []
+    for i, rw in enumerate(info.get("rewards", [])):
+        rewards_data.append({
+            "№": i + 1,
+            "Клиент": rw["client_name"],
+            "Дата оплаты": rw["date"],
+            "Сумма оплаты, ₽": rw["payment_amount"],
+            "Процент": f"{rw['reward_percent']}%",
+            "Вознаграждение, ₽": rw["reward_amount"],
+        })
+    df_rewards = pd.DataFrame(rewards_data) if rewards_data else pd.DataFrame()
+
+    # Sheet 3: UTM funnel stats
+    utm_data = []
+    for tag, f in info.get("utm_funnels", {}).items():
+        utm_data.append({
+            "UTM-метка": "Без метки" if tag == "__none__" else tag,
+            "Регистрации": f["registered"],
+            "Триал": f["trial_activated"],
+            "Оплаты": f["paid"],
+            "Конверсия, %": f.get("conversion", 0),
+        })
+    df_utm = pd.DataFrame(utm_data) if utm_data else pd.DataFrame()
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        if not df_referrals.empty:
+            df_referrals.to_excel(writer, sheet_name="Рефералы", index=False)
+            _format_excel_sheet(writer, df_referrals, "Рефералы")
+        if not df_rewards.empty:
+            df_rewards.to_excel(writer, sheet_name="Начисления", index=False)
+            _format_excel_sheet(writer, df_rewards, "Начисления")
+        if not df_utm.empty:
+            df_utm.to_excel(writer, sheet_name="UTM-источники", index=False)
+            _format_excel_sheet(writer, df_utm, "UTM-источники")
+
+    buffer.seek(0)
+    filename = f"referrals_{user.tgid}.xlsx"
+    await log_dashboard_action("referral_export_excel", request, user)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _format_excel_sheet(writer, df, sheet_name: str):
+    """Apply formatting to an Excel sheet."""
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    header_fmt = workbook.add_format({"bold": True, "align": "center", "valign": "vcenter", "border": 1})
+    currency_fmt = workbook.add_format({"num_format": "#,##0 ₽", "align": "right"})
+
+    for col_num, col in enumerate(df.columns):
+        max_len = max(df[col].astype(str).map(len).max(), len(col)) + 4
+        if "₽" in col:
+            worksheet.set_column(col_num, col_num, max_len, currency_fmt)
+        else:
+            worksheet.set_column(col_num, col_num, max_len)
+        worksheet.write(0, col_num, col, header_fmt)

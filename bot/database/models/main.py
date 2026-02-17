@@ -47,6 +47,7 @@ class Persons(Base):
     first_interaction = Column(TIMESTAMP(timezone=True), nullable=True)  # Дата первого взаимодействия
     last_interaction = Column(TIMESTAMP(timezone=True), nullable=True)  # Дата последнего взаимодействия
     referral_user_tgid = Column(BigInteger, nullable=True)
+    referral_utm = Column(String, nullable=True)  # UTM-метка реферальной ссылки
     referral_balance = Column(Integer, default=0)
     lang = Column(String, default=CONFIG.languages)
     lang_tg = Column(String, nullable=True)
@@ -317,6 +318,19 @@ class DashboardLogs(Base):
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(500), nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), index=True)
+
+
+class ReferralUtmTag(Base):
+    """UTM-метки рефералов с описаниями."""
+    __tablename__ = "referral_utm_tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_tgid = Column(BigInteger, nullable=False, index=True)
+    tag = Column(String(30), nullable=False)
+    description = Column(String(100), nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint('user_tgid', 'tag', name='uq_user_utm_tag'),)
 
 
 class MtprotoProxyStats(Base):

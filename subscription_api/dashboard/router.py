@@ -153,10 +153,10 @@ async def auth_telegram_callback(request: Request):
 
 
 @router.get("/auth/token")
-async def auth_token(request: Request, t: str = ""):
+async def auth_token(request: Request, t: str = "", next: str = ""):
     """
     Auth via subscription token from bot.
-    Bot sends URL: /dashboard/auth/token?t={subscription_token}
+    Bot sends URL: /dashboard/auth/token?t={subscription_token}&next=/dashboard/referral
     """
     if not t:
         return RedirectResponse("/dashboard/login?error=no_token", status_code=302)
@@ -173,10 +173,15 @@ async def auth_token(request: Request, t: str = ""):
     if not user:
         return RedirectResponse("/dashboard/login?error=not_found", status_code=302)
 
+    # Validate redirect URL — only allow local paths
+    redirect_url = "/dashboard/"
+    if next and next.startswith("/dashboard/"):
+        redirect_url = next
+
     token = create_jwt_token(user.id, user.tgid)
     log.info(f"[Dashboard] User {user.tgid} logged in via subscription token")
     await log_dashboard_action("login_token", request, user)
-    return _auth_redirect_response(token)
+    return _auth_redirect_response(token, redirect_url=redirect_url)
 
 
 @router.get("/logout")
