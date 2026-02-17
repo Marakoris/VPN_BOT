@@ -137,38 +137,37 @@ async def give_handler(m: Message, state: FSMContext) -> None:
 @referral_router.message(F.text.in_(btn_text('affiliate_btn')))
 async def referral_system_handler(m: Message, state: FSMContext) -> None:
     lang = await get_lang(m.from_user.id, state)
-    count_referral_user = await get_count_referral_user(m.from_user.id)
-    balance = await get_referral_balance(m.from_user.id)
-    link_ref = await get_referral_link(m)
-    message_text = (
-        _('referral_menu_text', lang)
-        .format(
-            link_ref=link_ref,
-            referral_percent=CONFIG.referral_percent,
-            minimum_amount=CONFIG.minimum_withdrawal_amount,
-            count_referral_user=count_referral_user,
-            balance=balance,
-            link_referral_conditions="https://heavy-weight-a87.notion.site/NoBorderVPN-18d2ac7dfb078050a322df104dcaa4c2",
-            link_free_promotion="https://heavy-weight-a87.notion.site/18e2ac7dfb0780728d6ddfa0c8f88410",
-            link_paid_promotion="https://heavy-weight-a87.notion.site/NoBorderVPN-18e2ac7dfb078096a214cbe65782b386",
-        )
-    )
+    from urllib.parse import quote
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    # Получаем токен для ссылки на ЛК → сразу на реферальную страницу
     person = await get_person(m.from_user.id)
-    dashboard_url = None
+    balance = await get_referral_balance(m.from_user.id)
+    count_referral_user = await get_count_referral_user(m.from_user.id)
+    link_ref = await get_referral_link(m)
+
+    kb = InlineKeyboardBuilder()
+
+    # Ссылка на ЛК
     if person and person.subscription_token:
-        from urllib.parse import quote
         dashboard_url = (
             f"{CONFIG.subscription_api_url}/dashboard/auth/token"
             f"?t={quote(person.subscription_token, safe='')}"
             f"&next=/dashboard/referral"
         )
+        kb.button(text="📊 Открыть личный кабинет", url=dashboard_url)
 
-    await m.answer_photo(
-        photo=FSInputFile('bot/img/referral_program.jpg'),
-        caption=message_text,
-        reply_markup=await share_link(link_ref, lang, balance, dashboard_url)
+    # Кнопка «Поделиться»
+    share_url = f"https://t.me/share/url?url={link_ref}"
+    kb.button(text=_('user_share_btn', lang), url=share_url)
+    kb.adjust(1)
+
+    await m.answer(
+        f"👥 <b>Реферальная программа</b>\n\n"
+        f"Ваша ссылка: <code>{link_ref}</code>\n"
+        f"Приглашено: <b>{count_referral_user}</b> | Баланс: <b>{balance}₽</b>\n\n"
+        f"Подробная статистика, воронка, UTM-метки и вывод средств — в личном кабинете 👇",
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
     )
 
 

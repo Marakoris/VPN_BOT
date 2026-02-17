@@ -1593,46 +1593,44 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'referral':
-        # Inline версия реферального меню
+        # Редирект на ЛК — реферальная программа теперь там
+        from urllib.parse import quote
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
         from bot.database.methods.get import get_count_referral_user, get_referral_balance
-        from bot.keyboards.inline.user_inline import share_link
-        from bot.misc.util import CONFIG
         from bot.handlers.user.referral_user import get_referral_link
 
-        count_referral_user = await get_count_referral_user(callback.from_user.id)
+        person = await get_person(callback.from_user.id)
         balance = await get_referral_balance(callback.from_user.id)
+        count_referral_user = await get_count_referral_user(callback.from_user.id)
         link_ref = await get_referral_link(callback.message)
 
-        message_text = (
-            _('referral_menu_text', lang)
-            .format(
-                link_ref=link_ref,
-                referral_percent=CONFIG.referral_percent,
-                minimum_amount=CONFIG.minimum_withdrawal_amount,
-                count_referral_user=count_referral_user,
-                balance=balance,
-                link_referral_conditions="https://heavy-weight-a87.notion.site/NoBorderVPN-18d2ac7dfb078050a322df104dcaa4c2",
-                link_free_promotion="https://heavy-weight-a87.notion.site/18e2ac7dfb0780728d6ddfa0c8f88410",
-                link_paid_promotion="https://heavy-weight-a87.notion.site/NoBorderVPN-18e2ac7dfb078096a214cbe65782b386",
+        kb = InlineKeyboardBuilder()
+        if person and person.subscription_token:
+            dashboard_url = (
+                f"{CONFIG.subscription_api_url}/dashboard/auth/token"
+                f"?t={quote(person.subscription_token, safe='')}"
+                f"&next=/dashboard/referral"
             )
-        )
+            kb.button(text="📊 Открыть личный кабинет", url=dashboard_url)
+        share_url = f"https://t.me/share/url?url={link_ref}"
+        kb.button(text="📤 Поделиться ссылкой", url=share_url)
+        kb.button(text="⬅️ Назад", callback_data=MainMenuAction(action='bonuses').pack())
+        kb.adjust(1)
 
-        # Отправляем текстовое сообщение вместо фото
+        text = (
+            f"👥 <b>Реферальная программа</b>\n\n"
+            f"Ваша ссылка: <code>{link_ref}</code>\n"
+            f"Приглашено: <b>{count_referral_user}</b> | Баланс: <b>{balance}₽</b>\n\n"
+            f"Подробная статистика, воронка, UTM-метки и вывод средств — в личном кабинете 👇"
+        )
         try:
-            await callback.message.edit_text(
-                text=message_text,
-                reply_markup=await share_link(link_ref, lang, balance)
-            )
+            await callback.message.edit_text(text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
         except:
             try:
                 await callback.message.delete()
             except:
                 pass
-            await bot.send_message(
-                chat_id=callback.from_user.id,
-                text=message_text,
-                reply_markup=await share_link(link_ref, lang, balance)
-            )
+            await bot.send_message(chat_id=callback.from_user.id, text=text, reply_markup=kb.as_markup(), parse_mode="HTML")
 
     elif action == 'bonus':
         # Сразу переходим в режим ввода промокода
@@ -2078,31 +2076,39 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     elif action == 'bonuses':
         # Объединенное меню бонусов и рефералов
         from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from urllib.parse import quote
+        from bot.misc.util import CONFIG
 
         person = await get_person(callback.from_user.id)
 
-        # Создаем меню с обеими опциями
+        # Ссылка на реферальную страницу в ЛК
         builder = InlineKeyboardBuilder()
-        builder.button(text="👥 Реферальная программа", callback_data=MainMenuAction(action='referral'))
+        if person and person.subscription_token:
+            dashboard_url = (
+                f"{CONFIG.subscription_api_url}/dashboard/auth/token"
+                f"?t={quote(person.subscription_token, safe='')}"
+                f"&next=/dashboard/referral"
+            )
+            builder.button(text="👥 Реферальная программа", url=dashboard_url)
         builder.button(text="🎁 Ввести промокод", callback_data=MainMenuAction(action='bonus'))
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
+        text = (
+            f"💰 <b>Бонусы и друзья</b>\n\n"
+            f"💵 Ваш баланс бонусов: {person.referral_balance or 0} руб.\n"
+            f"💳 Основной баланс: {person.balance or 0} руб.\n\n"
+            f"Выберите действие:"
+        )
         try:
             await callback.message.edit_text(
-                text=f"💰 <b>Бонусы и друзья</b>\n\n"
-                     f"💵 Ваш баланс бонусов: {person.referral_balance} руб.\n"
-                     f"💳 Основной баланс: {person.balance} руб.\n\n"
-                     f"Выберите действие:",
+                text=text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
         except:
             await callback.message.answer(
-                text=f"💰 <b>Бонусы и друзья</b>\n\n"
-                     f"💵 Ваш баланс бонусов: {person.referral_balance} руб.\n"
-                     f"💳 Основной баланс: {person.balance} руб.\n\n"
-                     f"Выберите действие:",
+                text=text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
