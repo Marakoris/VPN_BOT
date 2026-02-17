@@ -30,8 +30,6 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <a href="https://t.me/share/url?url={{ referral.referral_link | urlencode }}&text=Быстрый%20и%20надёжный%20VPN%20—%20NoBorder%20VPN"
            target="_blank" class="btn btn-sm btn-secondary" style="flex:1;min-width:0">Telegram</a>
-        <a href="https://api.whatsapp.com/send?text=Быстрый%20и%20надёжный%20VPN%20—%20NoBorder%20VPN%20{{ referral.referral_link | urlencode }}"
-           target="_blank" class="btn btn-sm btn-secondary" style="flex:1;min-width:0">WhatsApp</a>
         <button class="btn btn-sm btn-primary" style="flex:1;min-width:0" onclick="copyText('{{ referral.referral_link }}')">Скопировать</button>
     </div>
 </div>
