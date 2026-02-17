@@ -235,6 +235,11 @@
             🏷 UTM ({{ referral.utm_funnels | length }})
         </button>
         {% endif %}
+        {% if referral.withdrawals %}
+        <button class="tab-btn" :class="{ active: activeTab === 'withdrawals' }" @click="activeTab = 'withdrawals'">
+            💸 Выплаты ({{ referral.withdrawals | length }})
+        </button>
+        {% endif %}
         <div style="flex:1"></div>
         <a href="/api/v1/referral/export-excel" class="btn btn-sm btn-secondary" style="font-size:12px;align-self:center;margin-bottom:4px">📥 Excel</a>
     </div>
@@ -352,6 +357,45 @@
                     {% endif %}
                 </tbody>
             </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tab: Withdrawals -->
+    {% if referral.withdrawals %}
+    <div x-show="activeTab === 'withdrawals'" x-cloak>
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse;white-space:nowrap">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left">
+                        <th style="padding:8px 6px">Статус</th>
+                        <th style="padding:8px 6px;text-align:right">Сумма</th>
+                        <th style="padding:8px 6px">Реквизиты</th>
+                        <th style="padding:8px 6px">Дата заявки</th>
+                        <th style="padding:8px 6px">Дата выплаты</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in referral.withdrawals %}
+                    <tr style="border-bottom:1px solid var(--border-color)">
+                        <td style="padding:6px">
+                            {% if w.status == 'paid' %}
+                            <span style="background:rgba(61,255,154,0.12);color:#3dff9a;font-size:11px;padding:2px 8px;border-radius:8px">Выплачено</span>
+                            {% else %}
+                            <span style="background:rgba(245,158,11,0.12);color:#f5b731;font-size:11px;padding:2px 8px;border-radius:8px">В обработке</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:6px;text-align:right;font-weight:600">{{ w.amount }}₽</td>
+                        <td style="padding:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{{ w.payment_info }}</td>
+                        <td style="padding:6px;color:var(--text-muted)">{{ w.request_date }}</td>
+                        <td style="padding:6px;color:var(--text-muted)">{{ w.payment_date or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:12px;font-size:13px;color:var(--text-secondary)">
+            Всего выплачено: <span style="font-weight:600;color:var(--success)">{{ referral.total_withdrawn }}₽</span>
         </div>
     </div>
     {% endif %}

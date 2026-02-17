@@ -255,6 +255,25 @@ async def get_referral_info(user: Persons) -> dict:
                 "reward_percent": row.reward_percent or 0,
             })
 
+        # Load withdrawal history
+        stmt_withdrawals = (
+            select(WithdrawalRequests)
+            .filter(WithdrawalRequests.user_tgid == user.tgid)
+            .order_by(WithdrawalRequests.request_date.desc())
+        )
+        result = await db.execute(stmt_withdrawals)
+        withdrawal_rows = result.scalars().all()
+
+        withdrawals = []
+        for w in withdrawal_rows:
+            withdrawals.append({
+                "amount": w.amount,
+                "payment_info": w.payment_info or "",
+                "status": "paid" if w.check_payment else "pending",
+                "request_date": w.request_date.strftime("%d.%m.%Y") if w.request_date else "",
+                "payment_date": w.payment_date.strftime("%d.%m.%Y") if w.payment_date else "",
+            })
+
         # Load UTM tag descriptions
         from bot.database.models.main import ReferralUtmTag
         stmt_tags = select(ReferralUtmTag).filter(ReferralUtmTag.user_tgid == user.tgid)
@@ -299,6 +318,8 @@ async def get_referral_info(user: Persons) -> dict:
         "funnel": funnel,
         "utm_funnels": utm_funnels_formatted,
         "utm_links": utm_links,
+        "withdrawals": withdrawals,
+        "total_withdrawn": sum(w["amount"] for w in withdrawals if w["status"] == "paid"),
         "user_tgid": user.tgid,
         "bot_username": BOT_USERNAME,
     }
