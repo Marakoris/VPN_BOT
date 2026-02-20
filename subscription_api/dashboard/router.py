@@ -21,6 +21,7 @@ from bot.misc.subscription import verify_subscription_token
 from subscription_api.dashboard.auth import (
     verify_telegram_login,
     create_jwt_token,
+    decode_jwt_token,
     hash_password,
     verify_password,
     COOKIE_NAME,
@@ -182,6 +183,37 @@ async def auth_token(request: Request, t: str = "", next: str = ""):
     log.info(f"[Dashboard] User {user.tgid} logged in via subscription token")
     await log_dashboard_action("login_token", request, user)
     return _auth_redirect_response(token, redirect_url=redirect_url)
+
+
+@router.get("/auth/jwt")
+async def auth_jwt(request: Request, t: str = ""):
+    """
+    Auth via JWT token from landing page.
+    Landing sends: /dashboard/auth/jwt?t={jwt_token}
+    Sets cookie and redirects to dashboard.
+    """
+    if not t:
+        return RedirectResponse("/dashboard/login?error=no_token", status_code=302)
+
+    payload = decode_jwt_token(t)
+    if not payload:
+        return RedirectResponse("/dashboard/login?error=invalid_token", status_code=302)
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        return RedirectResponse("/dashboard/login?error=invalid_token", status_code=302)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+    if not user:
+        return RedirectResponse("/dashboard/login?error=not_found", status_code=302)
+
+    log.info(f"[Dashboard] User id={user.id} logged in via JWT landing redirect")
+    await log_dashboard_action("login_jwt", request, user)
+    return _auth_redirect_response(t)
 
 
 @router.get("/logout")

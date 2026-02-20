@@ -2,18 +2,101 @@
 Dashboard JSON API endpoints (/api/v1/*).
 """
 
+import re
 import logging
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bot.database.main import engine
 from bot.database.models.main import Persons
 from subscription_api.dashboard.dependencies import require_user_api
+from subscription_api.dashboard.auth import hash_password, verify_password, create_jwt_token
 from subscription_api.dashboard import services
 from subscription_api.dashboard.services import log_dashboard_action
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Dashboard API"])
+
+EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+
+# ==================== PUBLIC AUTH ENDPOINTS ====================
+
+@router.post("/register")
+async def api_register(request: Request):
+    """Register a new user via email + password (public, no auth)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    password_confirm = body.get("password_confirm") or ""
+
+    # Validation
+    if not email or not EMAIL_RE.match(email):
+        return JSONResponse({"ok": False, "error": "Введите корректный email"}, status_code=400)
+    if len(password) < 6:
+        return JSONResponse({"ok": False, "error": "Пароль должен быть не менее 6 символов"}, status_code=400)
+    if password != password_confirm:
+        return JSONResponse({"ok": False, "error": "Пароли не совпадают"}, status_code=400)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        # Check email uniqueness
+        stmt = select(Persons).filter(Persons.email == email)
+        result = await db.execute(stmt)
+        if result.scalar_one_or_none():
+            return JSONResponse({"ok": False, "error": "Этот email уже зарегистрирован"}, status_code=400)
+
+        # Create new user
+        new_user = Persons(
+            tgid=None,
+            email=email,
+            password_hash=hash_password(password),
+            subscription_active=False,
+        )
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+
+    token = create_jwt_token(new_user.id, new_user.tgid)
+    log.info(f"[Dashboard] New web user registered: {email} (id={new_user.id})")
+    return {"ok": True, "token": token}
+
+
+@router.post("/login")
+async def api_login(request: Request):
+    """Login via email + password (public, no auth)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+
+    if not email or not password:
+        return JSONResponse({"ok": False, "error": "Введите email и пароль"}, status_code=400)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.email == email)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+    if not user or not user.password_hash:
+        return JSONResponse({"ok": False, "error": "Неверный email или пароль"}, status_code=400)
+
+    if not verify_password(password, user.password_hash):
+        return JSONResponse({"ok": False, "error": "Неверный email или пароль"}, status_code=400)
+
+    token = create_jwt_token(user.id, user.tgid)
+    log.info(f"[Dashboard] User {user.email} logged in via API")
+    return {"ok": True, "token": token}
 
 
 @router.get("/me")
