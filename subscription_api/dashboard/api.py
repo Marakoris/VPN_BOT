@@ -50,6 +50,10 @@ async def api_register(request: Request):
     if password != password_confirm:
         return JSONResponse({"ok": False, "error": "Пароли не совпадают"}, status_code=400)
 
+    pwd_hash = hash_password(password)
+    code = str(secrets.randbelow(900000) + 100000)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         # Check email uniqueness
         stmt = select(Persons).filter(Persons.email == email)
@@ -58,13 +62,10 @@ async def api_register(request: Request):
             return JSONResponse({"ok": False, "error": "Этот email уже зарегистрирован"}, status_code=400)
 
         # Create new user with verification pending
-        code = str(secrets.randbelow(900000) + 100000)
-        expires = datetime.now(timezone.utc) + timedelta(minutes=15)
-
         new_user = Persons(
             tgid=None,
             email=email,
-            password_hash=hash_password(password),
+            password_hash=pwd_hash,
             subscription_active=False,
             email_verified=False,
             email_verification_code=code,
@@ -73,10 +74,12 @@ async def api_register(request: Request):
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+        new_user_id = new_user.id
+        new_user_tgid = new_user.tgid
 
     await send_verification_code(email, code)
-    token = create_jwt_token(new_user.id, new_user.tgid)
-    log.info(f"[Dashboard] New web user registered: {email} (id={new_user.id}), verification sent")
+    token = create_jwt_token(new_user_id, new_user_tgid)
+    log.info(f"[Dashboard] New web user registered: {email} (id={new_user_id}), verification sent")
     return {"ok": True, "token": token, "email_verification_required": True}
 
 

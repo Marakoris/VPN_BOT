@@ -309,6 +309,8 @@ async def reset_password_submit(
             "request": request, "token": token, "error": "Пароли не совпадают",
         })
 
+    new_hash = hash_password(password)
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Persons).filter(Persons.password_reset_token == token)
         result = await db.execute(stmt)
@@ -324,11 +326,12 @@ async def reset_password_submit(
                 "request": request, "error": "Ссылка устарела.",
             })
 
-        db_user.password_hash = hash_password(password)
+        user_id = db_user.id
+        db_user.password_hash = new_hash
         db_user.password_reset_token = None
         db_user.password_reset_expires = None
         await db.commit()
-        log.info(f"[Dashboard] Password reset completed for user id={db_user.id}")
+        log.info(f"[Dashboard] Password reset completed for user id={user_id}")
 
     return templates.TemplateResponse("reset_password.html", {
         "request": request, "success": True,
@@ -531,12 +534,13 @@ async def settings_email(
 
     # If just changing password on already-verified email — save directly
     if is_password_change:
+        new_hash = hash_password(password)
         async with AsyncSession(autoflush=False, bind=engine()) as db:
             stmt = select(Persons).filter(Persons.id == user.id)
             result = await db.execute(stmt)
             db_user = result.scalar_one_or_none()
             if db_user:
-                db_user.password_hash = hash_password(password)
+                db_user.password_hash = new_hash
                 await db.commit()
         user = await get_current_user(request)
         sub = await services.get_subscription_status(user)
@@ -548,6 +552,7 @@ async def settings_email(
     # New email — generate verification code and send
     code = str(secrets.randbelow(900000) + 100000)
     expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    new_hash = hash_password(password)
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Persons).filter(Persons.id == user.id)
@@ -557,7 +562,7 @@ async def settings_email(
             db_user.email_pending = email
             db_user.email_verification_code = code
             db_user.email_verification_expires = expires
-            db_user.password_hash = hash_password(password)
+            db_user.password_hash = new_hash
             await db.commit()
 
     await send_verification_code(email, code)
@@ -613,14 +618,15 @@ async def settings_verify_email(
             })
 
         # Code is correct — activate email
-        db_user.email = db_user.email_pending
+        verified_email = db_user.email_pending
+        db_user.email = verified_email
         db_user.email_verified = True
         db_user.email_pending = None
         db_user.email_verification_code = None
         db_user.email_verification_expires = None
         await db.commit()
-        log.info(f"[Dashboard] Email verified: {db_user.email} for user id={user.id}")
-        await log_dashboard_action("email_verified", request, user, f"email={db_user.email}")
+        log.info(f"[Dashboard] Email verified: {verified_email} for user id={user.id}")
+        await log_dashboard_action("email_verified", request, user, f"email={verified_email}")
 
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
@@ -639,6 +645,7 @@ async def settings_resend_code(request: Request):
 
     sub = await services.get_subscription_status(user)
 
+    pending_email = None
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Persons).filter(Persons.id == user.id)
         result = await db.execute(stmt)
@@ -650,6 +657,8 @@ async def settings_resend_code(request: Request):
                 "page": "settings", "email_error": "Нет ожидающего подтверждения email",
             })
 
+        pending_email = db_user.email_pending
+
         # Rate limit: check if code was sent less than 60s ago
         now = datetime.now(timezone.utc)
         if db_user.email_verification_expires:
@@ -658,7 +667,7 @@ async def settings_resend_code(request: Request):
                 return templates.TemplateResponse("settings.html", {
                     "request": request, "user": user, "sub": sub,
                     "page": "settings",
-                    "verify_email": db_user.email_pending,
+                    "verify_email": pending_email,
                     "email_error": "Подождите минуту перед повторной отправкой",
                 })
 
@@ -668,14 +677,14 @@ async def settings_resend_code(request: Request):
         db_user.email_verification_expires = expires
         await db.commit()
 
-    await send_verification_code(db_user.email_pending, code)
+    await send_verification_code(pending_email, code)
 
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
     return templates.TemplateResponse("settings.html", {
         "request": request, "user": user, "sub": sub,
         "page": "settings",
-        "verify_email": db_user.email_pending,
+        "verify_email": pending_email,
         "email_success": "Код отправлен повторно",
     })
 
