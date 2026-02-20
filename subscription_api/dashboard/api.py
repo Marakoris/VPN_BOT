@@ -123,8 +123,8 @@ async def api_subscription(user: Persons = Depends(require_user_api)):
 @router.get("/traffic")
 async def api_traffic(user: Persons = Depends(require_user_api)):
     """Get traffic statistics."""
-    traffic = await services.get_traffic_data(user.tgid)
-    bypass = await services.get_bypass_data(user.tgid)
+    traffic = await services.get_traffic_data(user)
+    bypass = await services.get_bypass_data(user)
     return {
         "main": traffic,
         "bypass": bypass,
@@ -170,7 +170,7 @@ async def api_apply_promo(request: Request, user: Persons = Depends(require_user
 
 
 @router.post("/trial/activate")
-async def api_activate_trial(user: Persons = Depends(require_user_api)):
+async def api_activate_trial(request: Request, user: Persons = Depends(require_user_api)):
     """Activate free trial."""
     result = await services.activate_trial(user)
     if result.get("success"):

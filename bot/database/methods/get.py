@@ -44,6 +44,18 @@ async def _get_person(db, tgid):
     return person
 
 
+async def get_person_by_id(user_id: int):
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        return await _get_person_by_id(db, user_id)
+
+
+async def _get_person_by_id(db, user_id: int):
+    statement = select(Persons).filter(Persons.id == user_id)
+    result = await db.execute(statement)
+    person = result.scalar_one_or_none()
+    return person
+
+
 async def _get_server(db, name):
     statement = select(Servers).filter(Servers.name == name)
     result = await db.execute(statement)

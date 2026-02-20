@@ -99,7 +99,7 @@
                     loading = true;
                     fetch('/api/v1/trial/activate', { method: 'POST' })
                     .then(r => r.json())
-                    .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                    .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.href = '/dashboard/connection', 1500); } else showToast(d.error, true); })
                     .catch(() => { loading = false; showToast('Ошибка', true); })
                 ">
             <span x-show="!loading">Активировать бесплатно</span>

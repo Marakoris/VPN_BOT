@@ -67,38 +67,46 @@ async def get_subscription_status(user: Persons) -> dict:
     }
 
 
-async def get_traffic_data(tgid: int) -> dict:
-    """Get traffic data for user."""
+async def get_traffic_data(user) -> dict:
+    """Get traffic data for user. Accepts Persons object or tgid (int) for backward compat."""
+    default = {
+        "used_bytes": 0,
+        "used_formatted": "0 B",
+        "limit_bytes": DEFAULT_TRAFFIC_LIMIT,
+        "limit_formatted": format_bytes(DEFAULT_TRAFFIC_LIMIT),
+        "remaining_bytes": DEFAULT_TRAFFIC_LIMIT,
+        "remaining_formatted": format_bytes(DEFAULT_TRAFFIC_LIMIT),
+        "percent_used": 0.0,
+        "days_until_reset": 30,
+        "exceeded": False,
+    }
+    tgid = user.tgid if hasattr(user, 'tgid') else user
+    if tgid is None:
+        return default
     info = await get_user_traffic_info(tgid)
     if not info:
-        return {
-            "used_bytes": 0,
-            "used_formatted": "0 B",
-            "limit_bytes": DEFAULT_TRAFFIC_LIMIT,
-            "limit_formatted": format_bytes(DEFAULT_TRAFFIC_LIMIT),
-            "remaining_bytes": DEFAULT_TRAFFIC_LIMIT,
-            "remaining_formatted": format_bytes(DEFAULT_TRAFFIC_LIMIT),
-            "percent_used": 0.0,
-            "days_until_reset": 30,
-            "exceeded": False,
-        }
+        return default
     return info
 
 
-async def get_bypass_data(tgid: int) -> dict:
-    """Get bypass traffic data."""
+async def get_bypass_data(user) -> dict:
+    """Get bypass traffic data. Accepts Persons object or tgid (int) for backward compat."""
+    default = {
+        "total": 0,
+        "total_formatted": "0 B",
+        "limit": BYPASS_LIMIT_BYTES,
+        "limit_formatted": format_bytes(BYPASS_LIMIT_BYTES),
+        "remaining": BYPASS_LIMIT_BYTES,
+        "remaining_formatted": format_bytes(BYPASS_LIMIT_BYTES),
+        "percent": 0.0,
+        "exceeded": False,
+    }
+    tgid = user.tgid if hasattr(user, 'tgid') else user
+    if tgid is None:
+        return default
     info = await get_user_bypass_info(tgid)
     if not info:
-        return {
-            "total": 0,
-            "total_formatted": "0 B",
-            "limit": BYPASS_LIMIT_BYTES,
-            "limit_formatted": format_bytes(BYPASS_LIMIT_BYTES),
-            "remaining": BYPASS_LIMIT_BYTES,
-            "remaining_formatted": format_bytes(BYPASS_LIMIT_BYTES),
-            "percent": 0.0,
-            "exceeded": False,
-        }
+        return default
     return info
 
 
@@ -411,14 +419,14 @@ async def apply_promo_code(user: Persons, code: str) -> dict:
 
 
 async def activate_trial(user: Persons) -> dict:
-    """Activate free trial for user."""
+    """Activate free trial for user. Supports both bot users (tgid) and web users (tgid=NULL)."""
     if user.free_trial_used:
         return {"success": False, "error": "Пробный период уже использован"}
 
     if user.subscription_active:
         return {"success": False, "error": "У вас уже есть активная подписка"}
 
-    from bot.database.methods.update import add_time_person
+    from bot.database.methods.update import add_time_person, add_time_person_by_id
     from bot.misc.subscription import activate_subscription
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
@@ -430,14 +438,21 @@ async def activate_trial(user: Persons) -> dict:
             person.free_trial_used = True
             await db.commit()
 
-    # Add trial period time
-    await add_time_person(user.tgid, TRIAL_PERIOD)
-
-    # Activate subscription keys
-    try:
-        await activate_subscription(user.tgid, include_outline=False)
-    except Exception as e:
-        log.error(f"[Dashboard] Error activating trial subscription for {user.tgid}: {e}")
+    # Add trial period time and activate subscription
+    if user.tgid is not None:
+        # Bot user — use existing tgid-based functions
+        await add_time_person(user.tgid, TRIAL_PERIOD)
+        try:
+            await activate_subscription(user.tgid, include_outline=False)
+        except Exception as e:
+            log.error(f"[Dashboard] Error activating trial subscription for tgid={user.tgid}: {e}")
+    else:
+        # Web user (tgid=NULL) — use id-based functions
+        await add_time_person_by_id(user.id, TRIAL_PERIOD)
+        try:
+            await activate_subscription(internal_user_id=user.id, include_outline=False)
+        except Exception as e:
+            log.error(f"[Dashboard] Error activating trial subscription for user_id={user.id}: {e}")
 
     return {"success": True, "message": f"Пробный период активирован ({TRIAL_PERIOD // 86400} дня)"}
 
@@ -492,13 +507,14 @@ async def _create_yookassa_payment(user: Persons, amount: int, months: int = Non
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": f"{SUBSCRIPTION_API_URL}/dashboard/"
+                "return_url": f"{SUBSCRIPTION_API_URL}/dashboard/connection"
             },
             "capture": True,
             "description": "VPN подписка NoBorder",
             "save_payment_method": True,
             "metadata": {
-                "user_id": str(user.tgid),
+                "user_id": str(user.tgid) if user.tgid else "",
+                "internal_user_id": str(user.id),
                 "days_count": str(days_count),
                 "price_on_db": str(amount),
                 "source": "dashboard"
@@ -531,8 +547,8 @@ async def _create_cryptobot_payment(user: Persons, amount: int) -> dict:
                 json={
                     "asset": "USDT",
                     "amount": str(round(amount / 90, 2)),  # Approximate RUB to USDT
-                    "description": f"VPN NoBorder - {user.tgid}",
-                    "payload": f"dashboard_{user.tgid}_{amount}",
+                    "description": f"VPN NoBorder - {user.tgid or user.id}",
+                    "payload": f"dashboard_{user.tgid or user.id}_{amount}",
                 }
             )
             data = await resp.json()

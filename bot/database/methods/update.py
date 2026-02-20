@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from bot.database.main import engine
-from bot.database.methods.get import _get_person, _get_server, get_super_offer
+from bot.database.methods.get import _get_person, _get_person_by_id, _get_server, get_super_offer
 from bot.database.methods.insert import add_super_offer
 from bot.database.models.main import Persons, WithdrawalRequests
 
@@ -155,6 +155,66 @@ async def add_time_person(tgid, count_time):
                 import logging
                 log = logging.getLogger(__name__)
                 log.error(f"Failed to auto-activate subscription for {tgid}: {e}")
+
+            return True
+        return False
+
+
+async def add_time_person_by_id(user_id: int, count_time: int):
+    """Like add_time_person but looks up by Persons.id. Skips traffic collection for web users (tgid=None)."""
+    actual_traffic = 0
+    # Peek at the person to check if they have a tgid
+    from bot.database.methods.get import get_person_by_id
+    person_peek = await get_person_by_id(user_id)
+    if person_peek and person_peek.tgid is not None:
+        try:
+            from bot.misc.traffic_monitor import collect_user_traffic
+            actual_traffic = await collect_user_traffic(person_peek.tgid)
+        except Exception as e:
+            import logging
+            log = logging.getLogger(__name__)
+            log.warning(f"Could not fetch actual traffic for user_id {user_id}, using DB value: {e}")
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person_by_id(db, user_id)
+        if person is not None:
+            now_time = int(time.time()) + count_time
+
+            traffic_for_offset = actual_traffic if actual_traffic > 0 else (person.total_traffic_bytes or 0)
+
+            if person.banned or not person.subscription or int(time.time()) >= person.subscription:
+                person.subscription = int(now_time)
+                person.banned = False
+                person.subscription_expired = False
+                person.notion_threedays = False
+                person.notion_twodays = False
+                person.notion_oneday = False
+                person.last_expiry_notification = 0
+                person.traffic_offset_bytes = traffic_for_offset
+                person.total_traffic_bytes = traffic_for_offset
+                person.traffic_reset_date = datetime.now(timezone.utc)
+                person.traffic_warning_sent = False
+            else:
+                person.subscription += count_time
+                person.subscription_expired = False
+                person.notion_threedays = False
+                person.notion_twodays = False
+                person.notion_oneday = False
+                person.last_expiry_notification = 0
+                person.traffic_offset_bytes = traffic_for_offset
+                person.total_traffic_bytes = traffic_for_offset
+                person.traffic_reset_date = datetime.now(timezone.utc)
+                person.traffic_warning_sent = False
+            await db.commit()
+
+            # Activate subscription keys
+            try:
+                from bot.misc.subscription import activate_subscription
+                await activate_subscription(include_outline=True, internal_user_id=user_id)
+            except Exception as e:
+                import logging
+                log = logging.getLogger(__name__)
+                log.error(f"Failed to auto-activate subscription for user_id {user_id}: {e}")
 
             return True
         return False

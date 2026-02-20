@@ -328,7 +328,7 @@ async def _activate_on_server(server, user_id: int) -> tuple:
         return (server.id, False, False)
 
 
-async def activate_subscription(user_id: int, include_outline: bool = False) -> Optional[str]:
+async def activate_subscription(user_id: int = None, include_outline: bool = False, internal_user_id: int = None) -> Optional[str]:
     """
     Activate subscription: create/enable keys on ALL servers IN PARALLEL
 
@@ -342,33 +342,43 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
     activation button multiple times rapidly.
 
     Args:
-        user_id: User's telegram ID (tgid)
+        user_id: User's telegram ID (tgid) — used by bot context
         include_outline: If True, also activate Outline keys (default: False)
+        internal_user_id: User's internal DB id (Persons.id) — used by dashboard for web users (tgid=NULL)
 
     Returns:
         subscription_token or None if error
     """
+    # Determine lock key: prefer internal_user_id to avoid NULL issues
+    lock_key = internal_user_id or user_id
+    if lock_key is None:
+        log.error("[Subscription] Neither user_id nor internal_user_id provided")
+        return None
+
     # Get user-specific lock to prevent race conditions
-    user_lock = await _get_user_lock(user_id)
+    user_lock = await _get_user_lock(lock_key)
 
     # Try to acquire lock without waiting
     if user_lock.locked():
-        log.warning(f"[Subscription] Activation already in progress for user {user_id}, skipping duplicate request")
+        log.warning(f"[Subscription] Activation already in progress for user {lock_key}, skipping duplicate request")
         return None
 
     async with user_lock:
-        log.info(f"[Subscription] Activating for user {user_id} (include_outline={include_outline})")
+        log.info(f"[Subscription] Activating for user tgid={user_id} internal_id={internal_user_id} (include_outline={include_outline})")
 
         try:
             async with AsyncSession(autoflush=False, bind=engine()) as db:
                 try:
                     # 1. Get user from database
-                    statement = select(Persons).filter(Persons.tgid == user_id)
+                    if internal_user_id:
+                        statement = select(Persons).filter(Persons.id == internal_user_id)
+                    else:
+                        statement = select(Persons).filter(Persons.tgid == user_id)
                     result = await db.execute(statement)
                     user = result.scalar_one_or_none()
 
                     if not user:
-                        log.error(f"[Subscription] User {user_id} not found")
+                        log.error(f"[Subscription] User tgid={user_id} internal_id={internal_user_id} not found")
                         return None
 
                     # 2. Get ALL active servers (VLESS + Shadowsocks, optionally Outline)
@@ -392,10 +402,12 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                         log.warning(f"[Subscription] No available servers found")
                         return None
 
-                    log.info(f"[Subscription] Found {len(servers)} servers for user {user_id}, activating in parallel...")
+                    # Key name on VPN servers: use tgid if available, otherwise internal id
+                    key_name = user.tgid or user.id
+                    log.info(f"[Subscription] Found {len(servers)} servers for user key_name={key_name}, activating in parallel...")
 
                     # 3. Create/enable keys on ALL servers IN PARALLEL
-                    tasks = [_activate_on_server(server, user_id) for server in servers]
+                    tasks = [_activate_on_server(server, key_name) for server in servers]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
                     # Process results
@@ -448,7 +460,7 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                         await db.commit()
 
                     log.info(
-                        f"[Subscription] ✅ Activated for user {user_id}: "
+                        f"[Subscription] ✅ Activated for user key_name={key_name}: "
                         f"{success_count} success, {error_count} errors (parallel)"
                     )
 
@@ -456,7 +468,7 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                     alert_data = None
                     if error_count > 0:
                         alert_data = {
-                            'user_id': user_id,
+                            'user_id': key_name,
                             'username': str(user.username) if user.username else None,
                             'success_count': success_count,
                             'error_count': error_count,
@@ -483,12 +495,12 @@ async def activate_subscription(user_id: int, include_outline: bool = False) -> 
                     return token
 
                 except Exception as e:
-                    log.error(f"[Subscription] Failed to activate for user {user_id}: {e}")
+                    log.error(f"[Subscription] Failed to activate for user tgid={user_id} internal_id={internal_user_id}: {e}")
                     await db.rollback()
                     return None
         finally:
             # Cleanup lock from dictionary to prevent memory leaks
-            await _cleanup_user_lock(user_id)
+            await _cleanup_user_lock(lock_key)
 
 
 # ==================== SUBSCRIPTION SYNC ====================

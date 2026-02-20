@@ -235,8 +235,8 @@ async def dashboard_page(request: Request):
 
     await log_dashboard_action("page_home", request, user)
     sub = await services.get_subscription_status(user)
-    traffic = await services.get_traffic_data(user.tgid)
-    bypass = await services.get_bypass_data(user.tgid)
+    traffic = await services.get_traffic_data(user)
+    bypass = await services.get_bypass_data(user)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -256,8 +256,8 @@ async def traffic_page(request: Request):
         return RedirectResponse("/dashboard/login", status_code=302)
 
     await log_dashboard_action("page_traffic", request, user)
-    traffic = await services.get_traffic_data(user.tgid)
-    bypass = await services.get_bypass_data(user.tgid)
+    traffic = await services.get_traffic_data(user)
+    bypass = await services.get_bypass_data(user)
 
     return templates.TemplateResponse("traffic.html", {
         "request": request,
@@ -448,8 +448,8 @@ async def partial_traffic_card(request: Request):
     if not user:
         return HTMLResponse("", status_code=401)
 
-    traffic = await services.get_traffic_data(user.tgid)
-    bypass = await services.get_bypass_data(user.tgid)
+    traffic = await services.get_traffic_data(user)
+    bypass = await services.get_bypass_data(user)
     return templates.TemplateResponse("partials/_traffic_card.html", {
         "request": request,
         "traffic": traffic,

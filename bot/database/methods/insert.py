@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.main import engine
-from bot.database.methods.get import _get_person
+from bot.database.methods.get import _get_person, _get_person_by_id
 from bot.database.models.main import (
     Persons,
     Payments,
@@ -41,6 +41,21 @@ async def add_new_person(from_user, username, subscription, ref_user, client_id,
 async def add_payment(tgid: int, deposit: float, payment_system: str):
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         person = await _get_person(db, tgid)
+        if person is not None:
+            payment = Payments(
+                amount=deposit,
+                data=datetime.datetime.now(),
+                payment_system=payment_system
+            )
+            payment.user = person.id
+            db.add(payment)
+            await db.commit()
+
+
+async def add_payment_by_id(user_id: int, deposit: float, payment_system: str):
+    """Record payment by looking up user via Persons.id (for web users with tgid=NULL)."""
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        person = await _get_person_by_id(db, user_id)
         if person is not None:
             payment = Payments(
                 amount=deposit,

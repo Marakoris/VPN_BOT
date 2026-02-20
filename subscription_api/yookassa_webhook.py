@@ -21,14 +21,18 @@ log = logging.getLogger(__name__)
 COUNT_SECOND_DAY = 86400
 
 
-async def _is_payment_processed(user_id: int, amount: float, payment_id: str) -> bool:
+async def _is_payment_processed(user_id: int = None, amount: float = 0, payment_id: str = "", internal_user_id: int = None) -> bool:
     """
     Check if this payment has already been processed.
     Prevents duplicate processing when both polling and webhook succeed.
+    Supports lookup by tgid (user_id) or by Persons.id (internal_user_id).
     """
     try:
         async with AsyncSession(autoflush=False, bind=engine()) as db:
-            stmt = select(Persons).filter(Persons.tgid == user_id)
+            if internal_user_id:
+                stmt = select(Persons).filter(Persons.id == internal_user_id)
+            else:
+                stmt = select(Persons).filter(Persons.tgid == user_id)
             result = await db.execute(stmt)
             person = result.scalar_one_or_none()
 
@@ -46,7 +50,7 @@ async def _is_payment_processed(user_id: int, amount: float, payment_id: str) ->
             existing = result.scalar_one_or_none()
 
             if existing:
-                log.info(f"[Webhook] Payment already processed for user {user_id}, amount {amount}")
+                log.info(f"[Webhook] Payment already processed for user tgid={user_id} internal_id={internal_user_id}, amount {amount}")
                 return True
 
             return False
@@ -56,7 +60,7 @@ async def _is_payment_processed(user_id: int, amount: float, payment_id: str) ->
         return False
 
 
-async def _activate_dashboard_payment(user_id: int, days_count: int, amount: float) -> Dict[str, Any]:
+async def _activate_dashboard_payment(user_id: int = None, days_count: int = 0, amount: float = 0, internal_user_id: int = None) -> Dict[str, Any]:
     """
     Process a dashboard-originated payment:
     - Add subscription time
@@ -64,39 +68,61 @@ async def _activate_dashboard_payment(user_id: int, days_count: int, amount: flo
     - Record payment in DB
     - Activate subscription keys if needed
     - Send Telegram notifications
+
+    Supports both bot users (user_id=tgid) and web users (internal_user_id=Persons.id).
     """
-    from bot.database.methods.update import add_time_person, add_retention_person
-    from bot.database.methods.insert import add_payment, create_affiliate_statistics
+    from bot.database.methods.update import add_time_person, add_time_person_by_id, add_retention_person
+    from bot.database.methods.insert import add_payment, add_payment_by_id, create_affiliate_statistics
     from bot.database.methods.update import add_referral_balance_person
-    from bot.database.methods.get import get_person
+    from bot.database.methods.get import get_person, get_person_by_id
     from bot.misc.traffic_monitor import reset_user_traffic, reset_bypass_traffic
     from bot.misc.subscription import activate_subscription
+
+    # Determine if this is a web user (internal_user_id without tgid)
+    is_web_user = internal_user_id is not None and not user_id
 
     try:
         # 1. Add subscription time
         seconds = days_count * COUNT_SECOND_DAY
-        await add_time_person(user_id, seconds)
-        log.info(f"[Webhook] Added {days_count} days to user {user_id}")
+        if is_web_user:
+            await add_time_person_by_id(internal_user_id, seconds)
+            log.info(f"[Webhook] Added {days_count} days to web user internal_id={internal_user_id}")
+        else:
+            await add_time_person(user_id, seconds)
+            log.info(f"[Webhook] Added {days_count} days to user {user_id}")
 
-        # 2. Reset traffic
-        await reset_user_traffic(user_id)
-        await reset_bypass_traffic(user_id)
+        # 2. Reset traffic (only for users with tgid — web users have no keys yet)
+        if user_id:
+            await reset_user_traffic(user_id)
+            await reset_bypass_traffic(user_id)
 
         # 3. Increment retention
-        await add_retention_person(user_id, 1)
+        if user_id:
+            await add_retention_person(user_id, 1)
 
         # 4. Record payment
-        await add_payment(user_id, amount, "Dashboard YooKassa")
-        log.info(f"[Webhook] Payment recorded for user {user_id}: {amount} RUB")
+        if is_web_user:
+            await add_payment_by_id(internal_user_id, amount, "Dashboard YooKassa")
+            log.info(f"[Webhook] Payment recorded for web user internal_id={internal_user_id}: {amount} RUB")
+        else:
+            await add_payment(user_id, amount, "Dashboard YooKassa")
+            log.info(f"[Webhook] Payment recorded for user {user_id}: {amount} RUB")
 
         # 5. Activate subscription keys if not active
-        person = await get_person(user_id)
+        if is_web_user:
+            person = await get_person_by_id(internal_user_id)
+        else:
+            person = await get_person(user_id)
+
         if person and not person.subscription_active:
             try:
-                await activate_subscription(user_id, include_outline=False)
-                log.info(f"[Webhook] Activated subscription for user {user_id}")
+                if is_web_user:
+                    await activate_subscription(internal_user_id=internal_user_id, include_outline=False)
+                else:
+                    await activate_subscription(user_id, include_outline=False)
+                log.info(f"[Webhook] Activated subscription for user tgid={user_id} internal_id={internal_user_id}")
             except Exception as e:
-                log.error(f"[Webhook] Error activating subscription for {user_id}: {e}")
+                log.error(f"[Webhook] Error activating subscription for tgid={user_id} internal_id={internal_user_id}: {e}")
 
         # 6. Handle referral rewards
         if person and person.referral_user_tgid:
@@ -106,7 +132,7 @@ async def _activate_dashboard_payment(user_id: int, days_count: int, amount: flo
                 await add_referral_balance_person(referral_balance, person.referral_user_tgid)
                 await create_affiliate_statistics(
                     person.fullname or "User",
-                    user_id,
+                    user_id or internal_user_id,
                     person.referral_user_tgid,
                     amount,
                     referral_percent,
@@ -114,15 +140,16 @@ async def _activate_dashboard_payment(user_id: int, days_count: int, amount: flo
                 )
                 log.info(f"[Webhook] Referral reward {referral_balance} RUB to {person.referral_user_tgid}")
             except Exception as e:
-                log.error(f"[Webhook] Error processing referral for {user_id}: {e}")
+                log.error(f"[Webhook] Error processing referral: {e}")
 
-        # 7. Send Telegram notifications
-        await _send_telegram_notifications(user_id, days_count, amount)
+        # 7. Send Telegram notifications (only for users with tgid)
+        if user_id:
+            await _send_telegram_notifications(user_id, days_count, amount)
 
-        return {"status": "success", "user_id": user_id, "days_added": days_count}
+        return {"status": "success", "user_id": user_id or internal_user_id, "days_added": days_count}
 
     except Exception as e:
-        log.error(f"[Webhook] Error activating dashboard payment for {user_id}: {e}")
+        log.error(f"[Webhook] Error activating dashboard payment for tgid={user_id} internal_id={internal_user_id}: {e}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "reason": str(e)}
@@ -198,23 +225,35 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
         metadata = payment_obj.get("metadata", {})
 
         user_id_str = metadata.get("user_id")
+        internal_user_id_str = metadata.get("internal_user_id")
         days_count_str = metadata.get("days_count")
         source = metadata.get("source", "unknown")
 
-        if not user_id_str or not days_count_str:
-            log.warning(f"[Webhook] Missing metadata in payment {payment_id}: {metadata}")
+        if not days_count_str:
+            log.warning(f"[Webhook] Missing days_count in payment {payment_id}: {metadata}")
             return {
                 "status": "error",
                 "reason": "missing_metadata",
                 "payment_id": payment_id
             }
 
-        user_id = int(user_id_str)
+        # Parse user identifiers
+        user_id = int(user_id_str) if user_id_str else None
+        internal_user_id = int(internal_user_id_str) if internal_user_id_str else None
         days_count = int(days_count_str)
+
+        # Must have at least one user identifier
+        if not user_id and not internal_user_id:
+            log.warning(f"[Webhook] No user identifier in payment {payment_id}: {metadata}")
+            return {
+                "status": "error",
+                "reason": "missing_user_id",
+                "payment_id": payment_id
+            }
 
         log.info(
             f"[Webhook] Processing payment {payment_id}: "
-            f"user={user_id}, days={days_count}, amount={amount}, source={source}"
+            f"tgid={user_id}, internal_id={internal_user_id}, days={days_count}, amount={amount}, source={source}"
         )
 
         # Skip non-dashboard payments (autopay/manual handle their own notifications)
@@ -224,25 +263,30 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
                 "status": "skipped",
                 "reason": f"source={source}, handled by {source} flow",
                 "payment_id": payment_id,
-                "user_id": user_id,
+                "user_id": user_id or internal_user_id,
             }
 
         # Check for duplicate
-        if await _is_payment_processed(user_id, amount, payment_id):
+        if await _is_payment_processed(user_id=user_id, amount=amount, payment_id=payment_id, internal_user_id=internal_user_id):
             log.info(f"[Webhook] Payment {payment_id} already processed, skipping")
             return {
                 "status": "duplicate",
                 "payment_id": payment_id,
-                "user_id": user_id
+                "user_id": user_id or internal_user_id
             }
 
         # Actually process the payment
-        result = await _activate_dashboard_payment(user_id, days_count, amount)
+        result = await _activate_dashboard_payment(
+            user_id=user_id,
+            days_count=days_count,
+            amount=amount,
+            internal_user_id=internal_user_id
+        )
         result["payment_id"] = payment_id
 
         log.info(
             f"[Webhook] Payment {payment_id} processed: "
-            f"user={user_id}, +{days_count} days, {amount} RUB"
+            f"tgid={user_id}, internal_id={internal_user_id}, +{days_count} days, {amount} RUB"
         )
 
         return result
