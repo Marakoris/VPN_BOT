@@ -4,7 +4,9 @@ Uses Jinja2 templates with HTMX for dynamic content.
 """
 
 import os
+import secrets
 import logging
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Depends, Form
@@ -29,6 +31,10 @@ from subscription_api.dashboard.auth import (
 from subscription_api.dashboard.dependencies import get_current_user
 from subscription_api.dashboard import services
 from subscription_api.dashboard.services import log_dashboard_action
+from subscription_api.dashboard.email_service import (
+    send_verification_code,
+    send_password_reset,
+)
 
 log = logging.getLogger(__name__)
 
@@ -224,6 +230,120 @@ async def logout(request: Request):
     return response
 
 
+# ==================== PASSWORD RESET ====================
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    """Show forgot password form."""
+    return templates.TemplateResponse("forgot_password.html", {"request": request})
+
+
+@router.post("/forgot-password")
+async def forgot_password_submit(request: Request, email: str = Form("")):
+    """Generate reset token and send email. Always shows success to prevent enumeration."""
+    email = email.strip().lower()
+
+    if email and "@" in email:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            stmt = select(Persons).filter(Persons.email == email)
+            result = await db.execute(stmt)
+            db_user = result.scalar_one_or_none()
+
+            if db_user:
+                token = secrets.token_urlsafe(48)
+                db_user.password_reset_token = token
+                db_user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+                await db.commit()
+                await send_password_reset(email, token)
+                log.info(f"[Dashboard] Password reset requested for {email}")
+
+    return templates.TemplateResponse("forgot_password.html", {
+        "request": request,
+        "success": True,
+    })
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str = ""):
+    """Show reset password form if token is valid."""
+    if not token:
+        return RedirectResponse("/dashboard/forgot-password", status_code=302)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.password_reset_token == token)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.password_reset_expires:
+            return templates.TemplateResponse("reset_password.html", {
+                "request": request, "error": "Ссылка недействительна или устарела.",
+            })
+
+        if db_user.password_reset_expires < datetime.now(timezone.utc):
+            return templates.TemplateResponse("reset_password.html", {
+                "request": request, "error": "Ссылка устарела. Запросите сброс пароля снова.",
+            })
+
+    return templates.TemplateResponse("reset_password.html", {
+        "request": request, "token": token,
+    })
+
+
+@router.post("/reset-password")
+async def reset_password_submit(
+    request: Request,
+    token: str = Form(""),
+    password: str = Form(""),
+    password_confirm: str = Form(""),
+):
+    """Save new password."""
+    if not token:
+        return RedirectResponse("/dashboard/forgot-password", status_code=302)
+
+    if len(password) < 6:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request, "token": token, "error": "Пароль должен быть не менее 6 символов",
+        })
+    if password != password_confirm:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request, "token": token, "error": "Пароли не совпадают",
+        })
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.password_reset_token == token)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.password_reset_expires:
+            return templates.TemplateResponse("reset_password.html", {
+                "request": request, "error": "Ссылка недействительна.",
+            })
+
+        if db_user.password_reset_expires < datetime.now(timezone.utc):
+            return templates.TemplateResponse("reset_password.html", {
+                "request": request, "error": "Ссылка устарела.",
+            })
+
+        db_user.password_hash = hash_password(password)
+        db_user.password_reset_token = None
+        db_user.password_reset_expires = None
+        await db.commit()
+        log.info(f"[Dashboard] Password reset completed for user id={db_user.id}")
+
+    return templates.TemplateResponse("reset_password.html", {
+        "request": request, "success": True,
+    })
+
+
+@router.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    """Registration page for web users."""
+    user = await get_current_user(request)
+    if user:
+        return RedirectResponse("/dashboard/", status_code=302)
+    return templates.TemplateResponse("register.html", {"request": request})
+
+
 # ==================== MAIN PAGES ====================
 
 @router.get("/", response_class=HTMLResponse)
@@ -378,7 +498,7 @@ async def settings_email(
     password: str = Form(""),
     password_confirm: str = Form(""),
 ):
-    """Bind email + password to account, or change password."""
+    """Bind email + password: sends verification code instead of saving immediately."""
     user = await get_current_user(request)
     if not user:
         return RedirectResponse("/dashboard/login", status_code=302)
@@ -386,8 +506,9 @@ async def settings_email(
     sub = await services.get_subscription_status(user)
     email = email.strip().lower()
     error = None
+    is_password_change = bool(user.email) and email == user.email
 
-    # Validate email format
+    # Validate
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         error = "Введите корректный email"
     elif len(password) < 6:
@@ -395,47 +516,167 @@ async def settings_email(
     elif password != password_confirm:
         error = "Пароли не совпадают"
 
-    if not error:
-        # Check email uniqueness (skip if user already has this email)
+    if not error and not is_password_change:
         async with AsyncSession(autoflush=False, bind=engine()) as db:
             stmt = select(Persons).filter(Persons.email == email, Persons.id != user.id)
             result = await db.execute(stmt)
-            existing = result.scalar_one_or_none()
-            if existing:
+            if result.scalar_one_or_none():
                 error = "Этот email уже используется"
 
     if error:
         return templates.TemplateResponse("settings.html", {
-            "request": request,
-            "user": user,
-            "sub": sub,
-            "page": "settings",
-            "email_error": error,
+            "request": request, "user": user, "sub": sub,
+            "page": "settings", "email_error": error,
         })
 
-    # Save email + password hash
-    had_email = bool(user.email)
+    # If just changing password on already-verified email — save directly
+    if is_password_change:
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            stmt = select(Persons).filter(Persons.id == user.id)
+            result = await db.execute(stmt)
+            db_user = result.scalar_one_or_none()
+            if db_user:
+                db_user.password_hash = hash_password(password)
+                await db.commit()
+        user = await get_current_user(request)
+        sub = await services.get_subscription_status(user)
+        return templates.TemplateResponse("settings.html", {
+            "request": request, "user": user, "sub": sub,
+            "page": "settings", "email_success": "Пароль обновлён",
+        })
+
+    # New email — generate verification code and send
+    code = str(secrets.randbelow(900000) + 100000)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Persons).filter(Persons.id == user.id)
         result = await db.execute(stmt)
         db_user = result.scalar_one_or_none()
         if db_user:
-            db_user.email = email
+            db_user.email_pending = email
+            db_user.email_verification_code = code
+            db_user.email_verification_expires = expires
             db_user.password_hash = hash_password(password)
             await db.commit()
-            log.info(f"[Dashboard] User {user.tgid} bound email {email}")
-            await log_dashboard_action("email_bind", request, user, f"email={email}")
 
-    # Re-fetch user to get updated email
+    await send_verification_code(email, code)
+    log.info(f"[Dashboard] Verification code sent to {email} for user id={user.id}")
+
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
-
     return templates.TemplateResponse("settings.html", {
-        "request": request,
-        "user": user,
-        "sub": sub,
+        "request": request, "user": user, "sub": sub,
         "page": "settings",
-        "email_success": "Пароль обновлён" if had_email else "Email привязан",
+        "verify_email": email,
+        "email_success": "Код отправлен на " + email,
+    })
+
+
+@router.post("/settings/verify-email")
+async def settings_verify_email(
+    request: Request,
+    code: str = Form(""),
+):
+    """Verify the 6-digit code and activate the email."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse("/dashboard/login", status_code=302)
+
+    sub = await services.get_subscription_status(user)
+    code = code.strip()
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.id == user.id)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.email_verification_code:
+            return templates.TemplateResponse("settings.html", {
+                "request": request, "user": user, "sub": sub,
+                "page": "settings", "email_error": "Сначала запросите код",
+            })
+
+        now = datetime.now(timezone.utc)
+        if db_user.email_verification_expires and db_user.email_verification_expires < now:
+            return templates.TemplateResponse("settings.html", {
+                "request": request, "user": user, "sub": sub,
+                "page": "settings", "email_error": "Код истёк. Запросите новый.",
+            })
+
+        if db_user.email_verification_code != code:
+            return templates.TemplateResponse("settings.html", {
+                "request": request, "user": user, "sub": sub,
+                "page": "settings",
+                "verify_email": db_user.email_pending or "",
+                "email_error": "Неверный код",
+            })
+
+        # Code is correct — activate email
+        db_user.email = db_user.email_pending
+        db_user.email_verified = True
+        db_user.email_pending = None
+        db_user.email_verification_code = None
+        db_user.email_verification_expires = None
+        await db.commit()
+        log.info(f"[Dashboard] Email verified: {db_user.email} for user id={user.id}")
+        await log_dashboard_action("email_verified", request, user, f"email={db_user.email}")
+
+    user = await get_current_user(request)
+    sub = await services.get_subscription_status(user)
+    return templates.TemplateResponse("settings.html", {
+        "request": request, "user": user, "sub": sub,
+        "page": "settings", "email_success": "Email подтверждён!",
+    })
+
+
+@router.post("/settings/resend-code")
+async def settings_resend_code(request: Request):
+    """Resend verification code (rate limit: 1/min)."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse("/dashboard/login", status_code=302)
+
+    sub = await services.get_subscription_status(user)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.id == user.id)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.email_pending:
+            return templates.TemplateResponse("settings.html", {
+                "request": request, "user": user, "sub": sub,
+                "page": "settings", "email_error": "Нет ожидающего подтверждения email",
+            })
+
+        # Rate limit: check if code was sent less than 60s ago
+        now = datetime.now(timezone.utc)
+        if db_user.email_verification_expires:
+            sent_at = db_user.email_verification_expires - timedelta(minutes=15)
+            if (now - sent_at).total_seconds() < 60:
+                return templates.TemplateResponse("settings.html", {
+                    "request": request, "user": user, "sub": sub,
+                    "page": "settings",
+                    "verify_email": db_user.email_pending,
+                    "email_error": "Подождите минуту перед повторной отправкой",
+                })
+
+        code = str(secrets.randbelow(900000) + 100000)
+        expires = now + timedelta(minutes=15)
+        db_user.email_verification_code = code
+        db_user.email_verification_expires = expires
+        await db.commit()
+
+    await send_verification_code(db_user.email_pending, code)
+
+    user = await get_current_user(request)
+    sub = await services.get_subscription_status(user)
+    return templates.TemplateResponse("settings.html", {
+        "request": request, "user": user, "sub": sub,
+        "page": "settings",
+        "verify_email": db_user.email_pending,
+        "email_success": "Код отправлен повторно",
     })
 
 

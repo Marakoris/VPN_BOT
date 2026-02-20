@@ -75,6 +75,13 @@ class Persons(Base):
     # Email auth fields
     email = Column(String(255), nullable=True, unique=True, index=True)
     password_hash = Column(String(255), nullable=True)
+    email_verified = Column(Boolean, default=False)
+    email_verification_code = Column(String(6), nullable=True)
+    email_verification_expires = Column(TIMESTAMP(timezone=True), nullable=True)
+    email_pending = Column(String(255), nullable=True)
+    password_reset_token = Column(String(128), nullable=True, index=True)
+    password_reset_expires = Column(TIMESTAMP(timezone=True), nullable=True)
+    email_notifications = Column(Boolean, default=True)
     # Bypass server traffic monitoring fields
     bypass_traffic_bytes = Column(BigInteger, default=0)  # Суммарный трафик bypass серверов
     bypass_offset_bytes = Column(BigInteger, default=0)  # Offset для сброса bypass трафика

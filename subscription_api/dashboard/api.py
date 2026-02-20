@@ -3,7 +3,10 @@ Dashboard JSON API endpoints (/api/v1/*).
 """
 
 import re
+import secrets
 import logging
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -16,6 +19,7 @@ from subscription_api.dashboard.dependencies import require_user_api
 from subscription_api.dashboard.auth import hash_password, verify_password, create_jwt_token
 from subscription_api.dashboard import services
 from subscription_api.dashboard.services import log_dashboard_action
+from subscription_api.dashboard.email_service import send_verification_code
 
 log = logging.getLogger(__name__)
 
@@ -53,20 +57,103 @@ async def api_register(request: Request):
         if result.scalar_one_or_none():
             return JSONResponse({"ok": False, "error": "Этот email уже зарегистрирован"}, status_code=400)
 
-        # Create new user
+        # Create new user with verification pending
+        code = str(secrets.randbelow(900000) + 100000)
+        expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+
         new_user = Persons(
             tgid=None,
             email=email,
             password_hash=hash_password(password),
             subscription_active=False,
+            email_verified=False,
+            email_verification_code=code,
+            email_verification_expires=expires,
         )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
 
+    await send_verification_code(email, code)
     token = create_jwt_token(new_user.id, new_user.tgid)
-    log.info(f"[Dashboard] New web user registered: {email} (id={new_user.id})")
-    return {"ok": True, "token": token}
+    log.info(f"[Dashboard] New web user registered: {email} (id={new_user.id}), verification sent")
+    return {"ok": True, "token": token, "email_verification_required": True}
+
+
+@router.post("/verify-email")
+async def api_verify_email(request: Request):
+    """Verify email with 6-digit code (requires JWT auth)."""
+    user = await require_user_api(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Некорректный запрос"}, status_code=400)
+
+    code = (body.get("code") or "").strip()
+    if not code:
+        return JSONResponse({"ok": False, "error": "Введите код"}, status_code=400)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.id == user.id)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.email_verification_code:
+            return JSONResponse({"ok": False, "error": "Код не запрашивался"}, status_code=400)
+
+        now = datetime.now(timezone.utc)
+        if db_user.email_verification_expires and db_user.email_verification_expires < now:
+            return JSONResponse({"ok": False, "error": "Код истёк. Запросите новый."}, status_code=400)
+
+        if db_user.email_verification_code != code:
+            return JSONResponse({"ok": False, "error": "Неверный код"}, status_code=400)
+
+        db_user.email_verified = True
+        db_user.email_verification_code = None
+        db_user.email_verification_expires = None
+        if db_user.email_pending:
+            db_user.email = db_user.email_pending
+            db_user.email_pending = None
+        await db.commit()
+
+    log.info(f"[Dashboard] Email verified via API for user id={user.id}")
+    return {"ok": True, "message": "Email подтверждён"}
+
+
+@router.post("/resend-verification")
+async def api_resend_verification(request: Request):
+    """Resend verification code (requires JWT auth, rate limit 1/min)."""
+    user = await require_user_api(request)
+
+    async with AsyncSession(autoflush=False, bind=engine()) as db:
+        stmt = select(Persons).filter(Persons.id == user.id)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
+
+        if not db_user or not db_user.email:
+            return JSONResponse({"ok": False, "error": "Email не привязан"}, status_code=400)
+
+        if db_user.email_verified:
+            return JSONResponse({"ok": False, "error": "Email уже подтверждён"}, status_code=400)
+
+        # Rate limit
+        now = datetime.now(timezone.utc)
+        if db_user.email_verification_expires:
+            sent_at = db_user.email_verification_expires - timedelta(minutes=15)
+            if (now - sent_at).total_seconds() < 60:
+                return JSONResponse({"ok": False, "error": "Подождите минуту"}, status_code=429)
+
+        code = str(secrets.randbelow(900000) + 100000)
+        expires = now + timedelta(minutes=15)
+        db_user.email_verification_code = code
+        db_user.email_verification_expires = expires
+        target_email = db_user.email_pending or db_user.email
+        await db.commit()
+
+    await send_verification_code(target_email, code)
+    log.info(f"[Dashboard] Verification code resent to {target_email} for user id={user.id}")
+    return {"ok": True, "message": "Код отправлен"}
 
 
 @router.post("/login")

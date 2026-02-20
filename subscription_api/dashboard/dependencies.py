@@ -20,10 +20,15 @@ log = logging.getLogger(__name__)
 
 async def get_current_user(request: Request) -> Optional[Persons]:
     """
-    Get current authenticated user from JWT cookie.
+    Get current authenticated user from JWT cookie or Authorization header.
     Returns Persons ORM object or None.
     """
     token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        # Fallback: check Authorization header (for API calls from register flow)
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
     if not token:
         return None
 

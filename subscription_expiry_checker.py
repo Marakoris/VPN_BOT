@@ -120,6 +120,20 @@ async def check_expired_subscriptions():
                         f"({days_left}d {hours_left}h left, ends: {user_sub_datetime})"
                     )
 
+                    # Send email expiry notification (1 or 3 days left)
+                    if days_left in (1, 3):
+                        try:
+                            if (user.email
+                                    and getattr(user, 'email_verified', False)
+                                    and getattr(user, 'email_notifications', True)):
+                                from subscription_api.dashboard.email_service import send_subscription_expiry
+                                await send_subscription_expiry(
+                                    user.email, days_left, user_sub_datetime.split(" ")[0]
+                                )
+                                log.info(f"📧 Sent expiry email to {user.email} ({days_left}d left)")
+                        except Exception as e:
+                            log.error(f"❌ Error sending expiry email for user {user.tgid}: {e}")
+
             # Summary
             log.info("=" * 60)
             log.info("Expiry check completed")

@@ -69,7 +69,7 @@
 </div>
 
 <!-- Email Auth -->
-<div class="card">
+<div class="card" x-data="{ showVerify: {{ 'true' if verify_email else 'false' }} }">
     <div class="card-title" style="margin-bottom:14px">Email для входа</div>
 
     {% if email_success %}
@@ -87,8 +87,23 @@
     {% if user.email %}
     <div class="card-row">
         <span class="card-row-label">Email</span>
-        <span class="card-row-value">{{ user.email }}</span>
+        <span class="card-row-value">
+            {{ user.email }}
+            {% if user.email_verified %}
+                <span style="color:var(--success);margin-left:6px" title="Подтверждён">&#10003;</span>
+            {% else %}
+                <span style="color:#ffaa00;margin-left:6px" title="Не подтверждён">&#9888;</span>
+            {% endif %}
+        </span>
     </div>
+    {% if user.email_notifications is not none %}
+    <div class="card-row">
+        <span class="card-row-label">Email-уведомления</span>
+        <span class="card-row-value" style="color:{% if user.email_notifications %}var(--success){% else %}var(--text-muted){% endif %}">
+            {{ "Включены" if user.email_notifications else "Отключены" }}
+        </span>
+    </div>
+    {% endif %}
     <p style="font-size:13px;color:var(--text-muted);margin:12px 0 8px">Сменить пароль:</p>
     <form method="post" action="/dashboard/settings/email">
         <input type="hidden" name="email" value="{{ user.email }}">
@@ -101,21 +116,43 @@
         <button type="submit" class="btn btn-secondary btn-sm">Сменить пароль</button>
     </form>
     {% else %}
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
-        Привяжите email, чтобы входить в личный кабинет без Telegram
-    </p>
-    <form method="post" action="/dashboard/settings/email">
-        <div class="form-group">
-            <input type="email" name="email" class="form-input" placeholder="Email" required>
-        </div>
-        <div class="form-group">
-            <input type="password" name="password" class="form-input" placeholder="Пароль (мин. 6 символов)" required minlength="6">
-        </div>
-        <div class="form-group">
-            <input type="password" name="password_confirm" class="form-input" placeholder="Подтвердите пароль" required minlength="6">
-        </div>
-        <button type="submit" class="btn btn-primary btn-sm">Привязать email</button>
-    </form>
+
+    <!-- Verification code form -->
+    <div x-show="showVerify" style="display:none">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+            Введите код, отправленный на <strong>{{ verify_email }}</strong>
+        </p>
+        <form method="post" action="/dashboard/settings/verify-email">
+            <div class="form-group">
+                <input type="text" name="code" class="form-input" placeholder="6-значный код"
+                    required maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
+                    style="text-align:center;font-size:20px;letter-spacing:6px;font-family:monospace">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:8px">Подтвердить</button>
+        </form>
+        <form method="post" action="/dashboard/settings/resend-code" style="display:inline">
+            <button type="submit" class="btn btn-secondary btn-sm" style="font-size:12px;padding:6px 12px">Отправить код повторно</button>
+        </form>
+    </div>
+
+    <!-- Email + password bind form -->
+    <div x-show="!showVerify">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+            Привяжите email, чтобы входить в личный кабинет без Telegram
+        </p>
+        <form method="post" action="/dashboard/settings/email">
+            <div class="form-group">
+                <input type="email" name="email" class="form-input" placeholder="Email" required>
+            </div>
+            <div class="form-group">
+                <input type="password" name="password" class="form-input" placeholder="Пароль (мин. 6 символов)" required minlength="6">
+            </div>
+            <div class="form-group">
+                <input type="password" name="password_confirm" class="form-input" placeholder="Подтвердите пароль" required minlength="6">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Привязать email</button>
+        </form>
+    </div>
     {% endif %}
 </div>
 

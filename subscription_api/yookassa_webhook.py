@@ -146,6 +146,21 @@ async def _activate_dashboard_payment(user_id: int = None, days_count: int = 0, 
         if user_id:
             await _send_telegram_notifications(user_id, days_count, amount)
 
+        # 8. Send email notification
+        try:
+            # Re-fetch to get latest state
+            if is_web_user:
+                person = await get_person_by_id(internal_user_id)
+            else:
+                person = await get_person(user_id)
+
+            if person and person.email and getattr(person, 'email_verified', False) and getattr(person, 'email_notifications', True):
+                from subscription_api.dashboard.email_service import send_payment_success
+                expiry_date = datetime.fromtimestamp(person.subscription).strftime('%d.%m.%Y') if person.subscription else "—"
+                await send_payment_success(person.email, amount, days_count, expiry_date)
+        except Exception as e:
+            log.error(f"[Webhook] Error sending email notification: {e}")
+
         return {"status": "success", "user_id": user_id or internal_user_id, "days_added": days_count}
 
     except Exception as e:
