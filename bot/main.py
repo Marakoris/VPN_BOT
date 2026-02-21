@@ -93,15 +93,14 @@ async def start_bot():
         replace_existing=True
     )
 
-    # Добавляем задачу для бэкапа БД (ежедневно в 14:00 MSK)
-    # SFTP загрузка управляется через SFTP_ENABLED в .env
-    scheduler.add_job(
-        backup_and_upload_task,
-        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=14, minute=0),
-        args=(bot,),
-        id='backup_and_upload_task',
-        replace_existing=True
-    )
+    # Бэкап отключён — перенесён в /root/scripts/backup.sh (cron 00:00 UTC = 03:00 MSK)
+    # scheduler.add_job(
+    #     backup_and_upload_task,
+    #     trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=14, minute=0),
+    #     args=(bot,),
+    #     id='backup_and_upload_task',
+    #     replace_existing=True
+    # )
 
     # Добавляем задачу мониторинга трафика (каждый час)
     # UNIFIED: обновляет main + bypass трафик + отправляет уведомления bypass
