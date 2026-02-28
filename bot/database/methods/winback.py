@@ -494,6 +494,7 @@ async def get_new_users_for_welcome_promo(
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         stmt = select(Persons).filter(
             Persons.retention == 0,  # Никогда не покупали
+            or_(Persons.subscription_active == False, Persons.subscription_active.is_(None)),  # Нет активной подписки
             Persons.banned == False,  # Не забанен
             or_(Persons.bot_blocked == False, Persons.bot_blocked.is_(None)),  # Не заблокировал бота
         )
