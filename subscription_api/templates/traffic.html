@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Трафик - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Трафик</h1>
+<p class="page-subtitle">Статистика использования</p>
+
+<!-- Main Traffic -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Основной трафик</span>
+        {% if traffic.exceeded %}
+            <span class="card-badge badge-expired">Исчерпан</span>
+        {% elif traffic.percent_used >= 90 %}
+            <span class="card-badge badge-warning">{{ traffic.percent_used }}%</span>
+        {% else %}
+            <span class="card-badge badge-active">OK</span>
+        {% endif %}
+    </div>
+
+    <div class="card-value">{{ traffic.used_formatted }}</div>
+    <div class="card-label">из {{ traffic.limit_formatted }}</div>
+
+    <div class="progress-bar" style="height:10px;margin:16px 0">
+        <div class="progress-fill {% if traffic.percent_used >= 90 %}warning{% elif traffic.exceeded %}danger{% endif %}"
+             style="width: {{ [traffic.percent_used, 100] | min }}%"></div>
+    </div>
+
+    <div class="card-row">
+        <span class="card-row-label">Использовано</span>
+        <span class="card-row-value">{{ traffic.percent_used }}%</span>
+    </div>
+    <div class="card-row">
+        <span class="card-row-label">Осталось</span>
+        <span class="card-row-value">{{ traffic.remaining_formatted }}</span>
+    </div>
+    <div class="card-row">
+        <span class="card-row-label">Сброс через</span>
+        <span class="card-row-value">{{ traffic.days_until_reset }} дн.</span>
+    </div>
+</div>
+
+<!-- Bypass Traffic -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Bypass трафик</span>
+        {% if bypass.exceeded %}
+            <span class="card-badge badge-expired">Исчерпан</span>
+        {% elif bypass.percent >= 90 %}
+            <span class="card-badge badge-warning">{{ bypass.percent }}%</span>
+        {% else %}
+            <span class="card-badge badge-active">OK</span>
+        {% endif %}
+    </div>
+
+    <div class="card-value card-value-sm">{{ bypass.total_formatted }}</div>
+    <div class="card-label">из {{ bypass.limit_formatted }}</div>
+
+    <div class="progress-bar" style="margin:16px 0">
+        <div class="progress-fill {% if bypass.percent >= 90 %}warning{% elif bypass.exceeded %}danger{% endif %}"
+             style="width: {{ [bypass.percent, 100] | min }}%"></div>
+    </div>
+
+    <div class="card-row">
+        <span class="card-row-label">Использовано</span>
+        <span class="card-row-value">{{ bypass.percent }}%</span>
+    </div>
+    <div class="card-row">
+        <span class="card-row-label">Осталось</span>
+        <span class="card-row-value">{{ bypass.remaining_formatted }}</span>
+    </div>
+</div>
+
+{% if traffic.exceeded %}
+<div class="card" style="border-color: rgba(255,107,107,0.3)">
+    <div style="text-align:center">
+        <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:600;margin-bottom:8px;color:var(--danger)">Трафик исчерпан</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Пополните баланс или дождитесь автоматического сброса</div>
+        <a href="/dashboard/payment" class="btn btn-primary btn-sm">Пополнить баланс</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

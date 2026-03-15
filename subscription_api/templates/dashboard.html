@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Личный кабинет - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">{{ user.fullname or user.username or 'Пользователь' }}</h1>
+
+<!-- Subscription Card -->
+{% include "partials/_subscription_card.html" %}
+
+<!-- Traffic Card -->
+{% include "partials/_traffic_card.html" %}
+
+<!-- Balance Card -->
+{% include "partials/_balance_card.html" %}
+
+<!-- Quick Actions -->
+<div class="quick-actions">
+    <a href="/dashboard/payment" class="quick-action">
+        <div class="quick-action-icon">💰</div>
+        <div class="quick-action-text">Пополнить</div>
+    </a>
+    <a href="/dashboard/connection" class="quick-action">
+        <div class="quick-action-icon">🔗</div>
+        <div class="quick-action-text">Подключить</div>
+    </a>
+    <a href="/dashboard/referral" class="quick-action">
+        <div class="quick-action-icon">👥</div>
+        <div class="quick-action-text">Рефералка</div>
+    </a>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Оплата - NoBorder VPN{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Оплата подписки</h1>
+
+{% if sub.active %}
+<div class="card" style="padding:14px 20px;margin-bottom:16px">
+    <div style="font-size:14px;color:var(--text-secondary)">
+        Подписка активна до <span style="color:var(--success);font-weight:500">{{ sub.expiry_date }}</span>
+        {% if sub.days_remaining is not none %}
+        ({{ sub.days_remaining }} дн.)
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div x-data="{
+    selectedPlan: {{ request.query_params.get('months', '0') | int }},
+    system: 'kassa',
+    loading: false,
+    plans: [{% for p in plans %}{ months: {{ p.months }}, days: {{ p.days }}, price: {{ p.price }}, name: '{{ p.name }}', per_month: {{ p.per_month }} }{% if not loop.last %},{% endif %}{% endfor %}],
+    get selectedPrice() { let p = this.plans.find(p => p.months === this.selectedPlan); return p ? p.price : 0; },
+    get selectedDays() { let p = this.plans.find(p => p.months === this.selectedPlan); return p ? p.days : 0; }
+}">
+
+    <!-- Plan Selection -->
+    <div class="section-header" style="margin-top:0">
+        <span class="section-title">Выберите тариф</span>
+    </div>
+
+    <div class="plans-grid">
+        {% for plan in plans %}
+        <div class="plan-card {% if loop.index == 2 %}popular{% endif %}"
+             :class="{ 'selected': selectedPlan === {{ plan.months }} }"
+             @click="selectedPlan = {{ plan.months }}">
+            <div class="plan-months">{{ plan.months }} мес.</div>
+            <div class="plan-price">{{ plan.price }}₽</div>
+            <div class="plan-per-month">{{ plan.per_month }}₽/мес</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Payment System -->
+    <template x-if="selectedPlan > 0">
+        <div>
+            <div class="section-header">
+                <span class="section-title">Способ оплаты</span>
+            </div>
+
+            <div class="payment-method" :class="{ 'selected': system === 'kassa' }" @click="system = 'kassa'">
+                <div class="payment-method-icon">💳</div>
+                <div>
+                    <div class="payment-method-name">Банковская карта</div>
+                    <div class="payment-method-desc">Visa, MasterCard, МИР</div>
+                </div>
+            </div>
+
+            <div class="payment-method" :class="{ 'selected': system === 'cryptobot' }" @click="system = 'cryptobot'">
+                <div class="payment-method-icon">₿</div>
+                <div>
+                    <div class="payment-method-name">CryptoBot</div>
+                    <div class="payment-method-desc">USDT, BTC, TON</div>
+                </div>
+            </div>
+
+            <!-- Pay Button -->
+            <button class="btn btn-primary" style="margin-top:20px"
+                    :disabled="loading"
+                    @click="
+                        loading = true;
+                        fetch('/api/v1/payment/create', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({amount: selectedPrice, payment_system: system, months: selectedPlan})
+                        })
+                        .then(r => r.json())
+                        .then(d => {
+                            loading = false;
+                            if(d.success && d.payment_url) {
+                                window.location.href = d.payment_url;
+                            } else {
+                                showToast(d.error || 'Ошибка создания платежа', true);
+                            }
+                        })
+                        .catch(() => { loading = false; showToast('Ошибка соединения', true); })
+                    ">
+                <span x-show="!loading">Оплатить <span x-text="selectedPrice + '₽'"></span></span>
+                <span x-show="loading">Создание платежа...</span>
+            </button>
+        </div>
+    </template>
+</div>
+
+<!-- Promo Code -->
+<div class="card" x-data="{ code: '', loading: false }">
+    <div class="card-title" style="margin-bottom:10px">Промокод</div>
+    <div style="display:flex;gap:10px">
+        <input type="text" class="form-input" placeholder="Введите промокод"
+               x-model="code" style="flex:1">
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:14px 20px"
+                :disabled="loading || !code"
+                @click="
+                    loading = true;
+                    fetch('/api/v1/promo/apply', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({code: code})
+                    })
+                    .then(r => r.json())
+                    .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">OK</span>
+            <span x-show="loading">...</span>
+        </button>
+    </div>
+</div>
+
+<!-- Autopay -->
+{% if sub.autopay_enabled %}
+<div class="card" x-data="{ loading: false, disabled: false }">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <div style="font-weight:500;font-size:15px">Автоплатёж</div>
+            <div style="font-size:13px;color:var(--success);margin-top:2px" x-show="!disabled">Подключён</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:2px" x-show="disabled">Отключён</div>
+        </div>
+        <button class="btn btn-danger btn-sm" style="width:auto;padding:10px 16px"
+                x-show="!disabled"
+                :disabled="loading"
+                @click="
+                    if(!confirm('Отключить автоплатёж?')) return;
+                    loading = true;
+                    fetch('/api/v1/autopay/disable', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => { loading = false; if(d.success) { disabled = true; showToast(d.message); } else showToast(d.error, true); })
+                    .catch(() => { loading = false; showToast('Ошибка', true); })
+                ">
+            <span x-show="!loading">Отключить</span>
+            <span x-show="loading">...</span>
+        </button>
+    </div>
+</div>
+{% endif %}
+
+<!-- Payment History -->
+{% if payments %}
+<div class="section-header">
+    <span class="section-title">История платежей</span>
+</div>
+
+{% for p in payments %}
+<div class="card" style="padding:14px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <div style="font-weight:500">{{ p.amount }}₽</div>
+            <div style="font-size:12px;color:var(--text-secondary)">{{ p.payment_system }}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text-muted)">{{ p.date or '' }}</div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

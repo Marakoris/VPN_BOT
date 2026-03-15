@@ -1,0 +1,10 @@
+.env
+*.pyc
+__pycache__/
+postgres_db_vol/
+logs/
+backups/
+VPN Clients/
+*.bak
+*.bak_*
+.claude/

@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}Реферальная программа - NoBorder VPN{% endblock %}
+
+{% block head %}
+<style>
+    .page { max-width: 900px; }
+    .tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border-color); }
+    .tab-btn { padding: 10px 20px; font-size: 14px; font-weight: 500; background: none; border: none; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Реферальная программа</h1>
+
+<!-- How it works -->
+<div class="card" style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+    <div style="font-weight:600;color:var(--text-primary);margin-bottom:8px">Как это работает</div>
+    1. Поделитесь реферальной ссылкой<br>
+    2. Реферал регистрируется и оплачивает подписку<br>
+    3. Вы получаете {{ referral.referral_percent }}% от каждой оплаты<br>
+    4. Выводите от {{ referral.minimum_withdrawal }}₽
+</div>
+
+<!-- Referral Link -->
+<div class="card">
+    <div class="card-title" style="margin-bottom:12px">Ваша реферальная ссылка</div>
+    <div class="url-box" onclick="copyText('{{ referral.referral_link }}')">{{ referral.referral_link }}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <a href="https://t.me/share/url?url={{ referral.referral_link | urlencode }}&text=Быстрый%20и%20надёжный%20VPN%20—%20NoBorder%20VPN"
+           target="_blank" class="btn btn-sm btn-secondary" style="flex:1;min-width:0">Telegram</a>
+        <button class="btn btn-sm btn-primary" style="flex:1;min-width:0" onclick="copyText('{{ referral.referral_link }}')">Скопировать</button>
+    </div>
+</div>
+
+<!-- UTM Links -->
+<script>window._utm_links = {{ referral.utm_links | tojson if referral.utm_links else '[]' }};</script>
+<div class="card" x-data="{
+    tag: '', loading: false,
+    links: window._utm_links || [],
+    createLink() {
+        if (!this.tag || this.loading) return;
+        this.loading = true;
+        fetch('/api/v1/referral/create-utm-link', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag: this.tag, description: this.tag}) })
+        .then(r => r.json()).then(d => {
+            this.loading = false;
+            if (d.success) {
+                let exists = this.links.find(l => l.tag === d.tag);
+                if (!exists) {
+                    this.links.unshift({ tag: d.tag, description: d.tag, link: d.link, created_at: 'Только что' });
+                }
+                this.tag = '';
+                showToast('Ссылка создана!');
+            } else showToast(d.error, true);
+        }).catch(() => { this.loading = false; showToast('Ошибка', true); });
+    }
+}">
+    <div style="font-weight:600;margin-bottom:8px">🏷 UTM-ссылки по источникам</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+        Создайте отдельную ссылку для каждого источника трафика
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+        <input type="text" x-model="tag" placeholder="Название: instagram, vk, youtube..." maxlength="30"
+               style="flex:1;min-width:0;font-size:15px;padding:12px 16px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text-primary);font-family:inherit;outline:none;box-sizing:border-box"
+               @focus="$el.style.borderColor='var(--accent)'" @blur="$el.style.borderColor='var(--border)'"
+               @keydown.enter="createLink()">
+        <button style="flex-shrink:0;white-space:nowrap;padding:12px 20px;font-size:14px;font-weight:600;background:var(--accent-gradient);color:#000;border:none;border-radius:var(--radius-sm);cursor:pointer" :disabled="loading || !tag"
+                :style="(!tag || loading) ? 'opacity:0.5;cursor:not-allowed' : ''"
+                @click="createLink()">
+            <span x-show="!loading">Создать</span><span x-show="loading">...</span>
+        </button>
+    </div>
+
+    <!-- List of created UTM links -->
+    <template x-if="links.length > 0">
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left">
+                        <th style="padding:8px 6px">Источник</th>
+                        <th style="padding:8px 6px">Ссылка</th>
+                        <th style="padding:8px 6px">Дата</th>
+                        <th style="padding:8px 6px;text-align:center">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="item in links" :key="item.tag">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px;font-weight:500" x-text="item.description || item.tag"></td>
+                            <td style="padding:6px;font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);cursor:pointer"
+                                x-text="item.link" @click="copyText(item.link)"></td>
+                            <td style="padding:6px;color:var(--text-muted);white-space:nowrap" x-text="item.created_at"></td>
+                            <td style="padding:6px;text-align:center;white-space:nowrap">
+                                <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 10px" @click="copyText(item.link)">Скопировать</button>
+                                <a :href="'https://t.me/share/url?url=' + encodeURIComponent(item.link) + '&text=' + encodeURIComponent('Быстрый и надёжный VPN — NoBorder VPN')"
+                                   target="_blank" class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;margin-left:4px">Отправить</a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <div x-show="links.length === 0" style="text-align:center;color:var(--text-muted);padding:12px;font-size:13px">
+        Ссылки пока не созданы. Введите название источника и нажмите «Создать».
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="card">
+    <div class="stat-row">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <div class="stat-label">Приглашено рефералов</div>
+            <div class="stat-value">{{ referral.total_invited }}</div>
+        </div>
+    </div>
+    <div class="stat-row">
+        <div class="stat-icon">💰</div>
+        <div class="stat-info">
+            <div class="stat-label">Заработано всего</div>
+            <div class="stat-value">{{ referral.total_earned }}₽</div>
+        </div>
+    </div>
+    <div class="stat-row">
+        <div class="stat-icon">💎</div>
+        <div class="stat-info">
+            <div class="stat-label">Доступно для вывода</div>
+            <div class="stat-value" style="color:var(--accent)">{{ referral.referral_balance }}₽</div>
+        </div>
+    </div>
+</div>
+
+<!-- Funnel -->
+{% if referral.funnel and referral.funnel.registered > 0 %}
+<div class="card">
+    <div style="font-weight:600;margin-bottom:12px">📊 Воронка привлечения</div>
+    {% set reg = referral.funnel.registered %}
+    {% set trial = referral.funnel.trial_activated %}
+    {% set paid = referral.funnel.paid %}
+    {% set trial_pct = (trial / reg * 100) | round | int if reg > 0 else 0 %}
+    {% set paid_pct = (paid / reg * 100) | round | int if reg > 0 else 0 %}
+
+    <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+            <span>👤 Зарегистрировались</span><span style="font-weight:600">{{ reg }}</span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:6px;height:8px;overflow:hidden">
+            <div style="background:var(--accent);height:100%;width:100%;border-radius:6px"></div>
+        </div>
+    </div>
+    <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+            <span>🎁 Триал</span><span style="font-weight:600">{{ trial }} ({{ trial_pct }}%)</span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:6px;height:8px;overflow:hidden">
+            <div style="background:#f59e0b;height:100%;width:{{ trial_pct }}%;border-radius:6px"></div>
+        </div>
+    </div>
+    <div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+            <span>💳 Оплатили</span><span style="font-weight:600">{{ paid }} ({{ paid_pct }}%)</span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:6px;height:8px;overflow:hidden">
+            <div style="background:var(--success);height:100%;width:{{ paid_pct }}%;border-radius:6px"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% set utm_tags = [] %}
+{% for k, v in referral.utm_funnels.items() if k != '__none__' %}
+    {% if utm_tags.append(k) %}{% endif %}
+{% endfor %}
+
+<!-- Tabbed Tables: Referrals + Rewards + UTM Stats -->
+{% if referral.all_referrals or referral.rewards %}
+<div class="card" x-data="{
+    activeTab: 'referrals',
+    refSearch: '',
+    refSortBy: 'status',
+    refSortAsc: true,
+    rwSearch: '',
+    rwSortBy: 'date',
+    rwSortAsc: false,
+    get filteredRefs() {
+        let data = window._referrals || [];
+        if (this.refSearch) {
+            let q = this.refSearch.toLowerCase();
+            data = data.filter(r => r.name.toLowerCase().includes(q) || String(r.tg_id).includes(q) || (r.referral_utm || '').toLowerCase().includes(q));
+        }
+        let dir = this.refSortAsc ? 1 : -1;
+        let key = this.refSortBy;
+        data = [...data].sort((a, b) => {
+            let va = a[key], vb = b[key];
+            if (key === 'status') { let o = {paid:0,trial:1,registered:2}; va = o[va]||3; vb = o[vb]||3; }
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+            return String(va||'').localeCompare(String(vb||'')) * dir;
+        });
+        return data;
+    },
+    get filteredRewards() {
+        let data = window._rewards || [];
+        if (this.rwSearch) {
+            let q = this.rwSearch.toLowerCase();
+            data = data.filter(r => r.client_name.toLowerCase().includes(q) || String(r.client_tg_id).includes(q));
+        }
+        let dir = this.rwSortAsc ? 1 : -1;
+        let key = this.rwSortBy;
+        data = [...data].sort((a, b) => {
+            let va = a[key], vb = b[key];
+            if (key === 'date') { va = a._sort_date; vb = b._sort_date; }
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+            return String(va||'').localeCompare(String(vb||'')) * dir;
+        });
+        return data;
+    },
+    toggleRefSort(col) { if (this.refSortBy === col) { this.refSortAsc = !this.refSortAsc; } else { this.refSortBy = col; this.refSortAsc = true; } },
+    toggleRwSort(col) { if (this.rwSortBy === col) { this.rwSortAsc = !this.rwSortAsc; } else { this.rwSortBy = col; this.rwSortAsc = false; } }
+}" style="padding:20px 20px 12px">
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-btn" :class="{ active: activeTab === 'referrals' }" @click="activeTab = 'referrals'">
+            👥 Рефералы ({{ referral.all_referrals | length }})
+        </button>
+        <button class="tab-btn" :class="{ active: activeTab === 'rewards' }" @click="activeTab = 'rewards'">
+            💰 Начисления ({{ referral.rewards | length }})
+        </button>
+        {% if utm_tags | length > 0 or '__none__' in referral.utm_funnels %}
+        <button class="tab-btn" :class="{ active: activeTab === 'utm' }" @click="activeTab = 'utm'">
+            🏷 UTM ({{ referral.utm_funnels | length }})
+        </button>
+        {% endif %}
+        {% if referral.withdrawals %}
+        <button class="tab-btn" :class="{ active: activeTab === 'withdrawals' }" @click="activeTab = 'withdrawals'">
+            💸 Выплаты ({{ referral.withdrawals | length }})
+        </button>
+        {% endif %}
+        <div style="flex:1"></div>
+        <a href="/api/v1/referral/export-excel" class="btn btn-sm btn-secondary" style="font-size:12px;align-self:center;margin-bottom:4px">📥 Excel</a>
+    </div>
+
+    <!-- Tab: Referrals -->
+    <div x-show="activeTab === 'referrals'" x-cloak>
+        <input type="text" class="form-input" x-model="refSearch" placeholder="Поиск по имени, ID, метке..." style="font-size:13px;margin-bottom:10px;padding:8px 12px">
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse;white-space:nowrap">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left;cursor:pointer;user-select:none">
+                        <th style="padding:8px 6px" @click="toggleRefSort('status')">Статус <span x-text="refSortBy==='status' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRefSort('name')">Имя <span x-text="refSortBy==='name' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRefSort('tg_id')">TG ID <span x-text="refSortBy==='tg_id' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRefSort('referral_utm')">UTM <span x-text="refSortBy==='referral_utm' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px;text-align:right" @click="toggleRefSort('total_paid')">Оплаты <span x-text="refSortBy==='total_paid' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px;text-align:right" @click="toggleRefSort('total_reward')">Награда <span x-text="refSortBy==='total_reward' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRefSort('first_interaction')">Регистрация <span x-text="refSortBy==='first_interaction' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRefSort('first_payment_date')">Первая оплата <span x-text="refSortBy==='first_payment_date' ? (refSortAsc ? '↑' : '↓') : ''"></span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="ref in filteredRefs" :key="ref.tg_id">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px">
+                                <span x-show="ref.status==='paid'" style="background:rgba(61,255,154,0.12);color:#3dff9a;font-size:11px;padding:2px 8px;border-radius:8px">Оплатил</span>
+                                <span x-show="ref.status==='trial'" style="background:rgba(245,158,11,0.12);color:#f5b731;font-size:11px;padding:2px 8px;border-radius:8px">Триал</span>
+                                <span x-show="ref.status==='registered'" style="background:var(--bg-secondary);color:var(--text-muted);font-size:11px;padding:2px 8px;border-radius:8px">Рег.</span>
+                            </td>
+                            <td style="padding:6px;max-width:160px;overflow:hidden;text-overflow:ellipsis" x-text="ref.name"></td>
+                            <td style="padding:6px;font-family:monospace;font-size:12px" x-text="ref.tg_id"></td>
+                            <td style="padding:6px">
+                                <code x-show="ref.referral_utm" style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent)" x-text="ref.referral_utm"></code>
+                            </td>
+                            <td style="padding:6px;text-align:right" x-text="ref.total_paid ? ref.total_paid + '₽' : '—'"></td>
+                            <td style="padding:6px;text-align:right;color:var(--success);font-weight:500" x-text="ref.total_reward ? '+' + ref.total_reward + '₽' : ''"></td>
+                            <td style="padding:6px;color:var(--text-muted)" x-text="ref.first_interaction || ''"></td>
+                            <td style="padding:6px;color:var(--text-muted)" x-text="ref.first_payment_date || '—'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div x-show="filteredRefs.length === 0" style="text-align:center;color:var(--text-muted);padding:16px;font-size:13px">Ничего не найдено</div>
+    </div>
+
+    <!-- Tab: Rewards -->
+    <div x-show="activeTab === 'rewards'" x-cloak>
+        <input type="text" class="form-input" x-model="rwSearch" placeholder="Поиск по имени или TG ID..." style="font-size:13px;margin-bottom:10px;padding:8px 12px">
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse;white-space:nowrap">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left;cursor:pointer;user-select:none">
+                        <th style="padding:8px 6px" @click="toggleRwSort('client_name')">Клиент <span x-text="rwSortBy==='client_name' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRwSort('client_tg_id')">TG ID <span x-text="rwSortBy==='client_tg_id' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px;text-align:right" @click="toggleRwSort('payment_amount')">Оплата <span x-text="rwSortBy==='payment_amount' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px;text-align:center" @click="toggleRwSort('reward_percent')">% <span x-text="rwSortBy==='reward_percent' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px;text-align:right" @click="toggleRwSort('reward_amount')">Награда <span x-text="rwSortBy==='reward_amount' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                        <th style="padding:8px 6px" @click="toggleRwSort('date')">Дата оплаты <span x-text="rwSortBy==='date' ? (rwSortAsc ? '↑' : '↓') : ''"></span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="rw in filteredRewards" :key="rw._idx">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px;max-width:160px;overflow:hidden;text-overflow:ellipsis" x-text="rw.client_name"></td>
+                            <td style="padding:6px;font-family:monospace;font-size:12px" x-text="rw.client_tg_id"></td>
+                            <td style="padding:6px;text-align:right" x-text="rw.payment_amount + '₽'"></td>
+                            <td style="padding:6px;text-align:center;color:var(--text-muted)" x-text="rw.reward_percent + '%'"></td>
+                            <td style="padding:6px;text-align:right;color:var(--success);font-weight:500" x-text="'+' + rw.reward_amount + '₽'"></td>
+                            <td style="padding:6px;color:var(--text-muted)" x-text="rw.date"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div x-show="filteredRewards.length === 0" style="text-align:center;color:var(--text-muted);padding:16px;font-size:13px">Ничего не найдено</div>
+    </div>
+
+    <!-- Tab: UTM Stats -->
+    {% if utm_tags | length > 0 or '__none__' in referral.utm_funnels %}
+    <div x-show="activeTab === 'utm'" x-cloak>
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse;white-space:nowrap">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left">
+                        <th style="padding:8px 6px">Источник</th>
+                        <th style="padding:8px 6px;text-align:center">Регистрации</th>
+                        <th style="padding:8px 6px;text-align:center">Триал</th>
+                        <th style="padding:8px 6px;text-align:center">Оплаты</th>
+                        <th style="padding:8px 6px;text-align:center">Конверсия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tag in utm_tags | sort %}
+                    {% set f = referral.utm_funnels[tag] %}
+                    <tr style="border-bottom:1px solid var(--border-color)">
+                        <td style="padding:6px;font-weight:500">
+                            <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent)">{{ tag }}</code>
+                        </td>
+                        <td style="padding:6px;text-align:center">{{ f.registered }}</td>
+                        <td style="padding:6px;text-align:center">{{ f.trial_activated }}</td>
+                        <td style="padding:6px;text-align:center">{{ f.paid }}</td>
+                        <td style="padding:6px;text-align:center;font-weight:500">{{ f.conversion }}%</td>
+                    </tr>
+                    {% endfor %}
+                    {% if '__none__' in referral.utm_funnels %}
+                    {% set f = referral.utm_funnels['__none__'] %}
+                    <tr style="color:var(--text-muted)">
+                        <td style="padding:6px"><i>Без метки</i></td>
+                        <td style="padding:6px;text-align:center">{{ f.registered }}</td>
+                        <td style="padding:6px;text-align:center">{{ f.trial_activated }}</td>
+                        <td style="padding:6px;text-align:center">{{ f.paid }}</td>
+                        <td style="padding:6px;text-align:center;font-weight:500">{{ f.conversion }}%</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tab: Withdrawals -->
+    {% if referral.withdrawals %}
+    <div x-show="activeTab === 'withdrawals'" x-cloak>
+        <div style="overflow-x:auto">
+            <table style="width:100%;font-size:13px;border-collapse:collapse;white-space:nowrap">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);text-align:left">
+                        <th style="padding:8px 6px">Статус</th>
+                        <th style="padding:8px 6px;text-align:right">Сумма</th>
+                        <th style="padding:8px 6px">Реквизиты</th>
+                        <th style="padding:8px 6px">Дата заявки</th>
+                        <th style="padding:8px 6px">Дата выплаты</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in referral.withdrawals %}
+                    <tr style="border-bottom:1px solid var(--border-color)">
+                        <td style="padding:6px">
+                            {% if w.status == 'paid' %}
+                            <span style="background:rgba(61,255,154,0.12);color:#3dff9a;font-size:11px;padding:2px 8px;border-radius:8px">Выплачено</span>
+                            {% else %}
+                            <span style="background:rgba(245,158,11,0.12);color:#f5b731;font-size:11px;padding:2px 8px;border-radius:8px">В обработке</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:6px;text-align:right;font-weight:600">{{ w.amount }}₽</td>
+                        <td style="padding:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">{{ w.payment_info }}</td>
+                        <td style="padding:6px;color:var(--text-muted)">{{ w.request_date }}</td>
+                        <td style="padding:6px;color:var(--text-muted)">{{ w.payment_date or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:12px;font-size:13px;color:var(--text-secondary)">
+            Всего выплачено: <span style="font-weight:600;color:var(--success)">{{ referral.total_withdrawn }}₽</span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+window._referrals = {{ referral.all_referrals | tojson if referral.all_referrals else '[]' }};
+window._rewards = {{ referral.rewards | tojson if referral.rewards else '[]' }}.map((r, i) => {
+    r._idx = i;
+    let p = r.date.split('.');
+    r._sort_date = p.length === 3 ? parseInt(p[2] + p[1] + p[0]) : 0;
+    return r;
+});
+</script>
+{% endif %}
+
+<!-- Withdrawal -->
+{% if referral.referral_balance >= referral.minimum_withdrawal %}
+<div class="section-header">
+    <span class="section-title">Вывод средств</span>
+</div>
+<div class="card" x-data="{ amount: {{ referral.referral_balance }}, info: '', comm: '', loading: false }">
+    <div class="form-group">
+        <label class="form-label">Сумма вывода (мин. {{ referral.minimum_withdrawal }}₽)</label>
+        <input type="number" class="form-input" x-model="amount" min="{{ referral.minimum_withdrawal }}" max="{{ referral.referral_balance }}">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Реквизиты для перевода</label>
+        <input type="text" class="form-input" x-model="info" placeholder="Номер карты, кошелек и т.д.">
+    </div>
+    <div class="form-group">
+        <label class="form-label">Контакт для связи (необязательно)</label>
+        <input type="text" class="form-input" x-model="comm" placeholder="Telegram, email">
+    </div>
+    <button class="btn btn-primary"
+            :disabled="loading || !info || amount < {{ referral.minimum_withdrawal }}"
+            @click="
+                loading = true;
+                fetch('/api/v1/referral/withdraw', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({amount: parseInt(amount), payment_info: info, communication: comm}) })
+                .then(r => r.json())
+                .then(d => { loading = false; if(d.success) { showToast(d.message); setTimeout(() => location.reload(), 1500); } else showToast(d.error, true); })
+                .catch(() => { loading = false; showToast('Ошибка', true); })
+            ">
+        <span x-show="!loading">Отправить заявку</span>
+        <span x-show="loading">Отправка...</span>
+    </button>
+</div>
+{% endif %}
+{% endblock %}

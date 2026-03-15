@@ -1,0 +1,122 @@
+import json
+
+from outline_vpn import OutlineVPN
+
+from bot.misc.VPN.BaseVpn import BaseVpn
+from bot.misc.util import CONFIG
+
+
+class Outline(BaseVpn):
+    NAME_VPN = 'Outline 🪐'
+    client_outline: OutlineVPN
+
+    def __init__(self, server):
+        api_cert = json.loads(server.outline_link)
+        self.api_url = api_cert['apiUrl']
+        self.cert_sha256 = api_cert['certSha256']
+
+    async def login(self):
+        self.client_outline = OutlineVPN(api_url=self.api_url)
+        await self.client_outline.init(self.cert_sha256)
+
+    async def get_all_user_server(self):
+        return await self.client_outline.get_keys()
+
+    async def get_client(self, name):
+        all_user = await self.get_all_user_server()
+        for user in all_user:
+            if user.name == str(name):
+                return user
+        return None
+
+    async def add_client(self, name):
+        try:
+            # Check if client already exists
+            existing_client = await self.get_client(name)
+            if existing_client is not None:
+                print(f"[Outline] Client {name} already exists (key_id={existing_client.key_id})")
+                return False  # Return False to trigger enable_client in main.py
+
+            # Create new key
+            key = await self.client_outline.create_key(key_name=name)
+            if CONFIG.limit_GB != 0:
+                await self.client_outline.add_data_limit(
+                    key.key_id,
+                    CONFIG.limit_GB * 10 ** 9
+                )
+            print(f"[Outline] Created new client {name} (key_id={key.key_id})")
+            return key
+        except Exception as e:
+            print(e, 'Outline.py Line 32')
+            return False
+
+    async def delete_client(self, telegram_id):
+        client = await self.get_client(telegram_id)
+        if client is not None:
+            await self.client_outline.delete_key(key_id=client.key_id)
+
+    async def disable_client(self, telegram_id):
+        """Disable client by setting data limit to 1 byte"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                print(f"[Outline] Client {telegram_id} not found for disable")
+                return False
+
+            # Set data limit to 1 byte (effectively disables the key)
+            await self.client_outline.add_data_limit(client.key_id, 1)
+            print(f"[Outline] Disabled client {telegram_id} (key_id={client.key_id})")
+            return True
+        except Exception as e:
+            print(f"[Outline] disable_client error: {e}")
+            return False
+
+    async def enable_client(self, telegram_id):
+        """Enable client by removing data limit (unlimited traffic)"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                print(f"[Outline] Client {telegram_id} not found for enable")
+                return False
+
+            # Remove data limit completely for subscription users
+            await self.client_outline.delete_data_limit(client.key_id)
+
+            print(f"[Outline] Enabled client {telegram_id} (key_id={client.key_id}) - unlimited traffic")
+            return True
+        except Exception as e:
+            print(f"[Outline] enable_client error: {e}")
+            return False
+
+    async def get_key_user(self, name, name_key):
+        client = await self.get_client(name)
+        if client is None:
+            key = await self.add_client(name)
+            return await self.update_key_name(key.access_url, name_key)
+        return await self.update_key_name(client.access_url, name_key)
+
+    async def update_key_name(self, key, name_key):
+        try:
+            return key.replace('?outline=1', f'#{name_key}')
+        except Exception as e:
+            print(e)
+        return key
+
+    async def get_user_traffic(self, telegram_id) -> int:
+        """Get traffic usage for a specific user in bytes"""
+        try:
+            client = await self.get_client(telegram_id)
+            if client is None:
+                return 0
+
+            # Get transferred data from metrics endpoint
+            metrics = await self.client_outline.get_transferred_data()
+            if not metrics or 'bytesTransferredByUserId' not in metrics:
+                return 0
+
+            # Key ID in metrics is string
+            key_id = str(client.key_id)
+            return metrics['bytesTransferredByUserId'].get(key_id, 0)
+        except Exception as e:
+            print(f"[Outline] get_user_traffic error: {e}")
+            return 0

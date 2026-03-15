@@ -1,0 +1,98 @@
+version: '3'
+
+services:
+
+  db_postgres:
+    image: postgres:16
+    container_name: postgres_db_container
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_db_vol:/var/lib/postgresql/data
+      - ./backups:/app/backups
+
+  vpn_hub_bot:
+    restart: unless-stopped
+    build: ./
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - ADMIN_TG_ID
+      - CRYPTO_BOT_API
+      - CRYPTOMUS_KEY
+      - CRYPTOMUS_UUID
+      - LAVA_ID_PROJECT
+      - LAVA_TOKEN_SECRET
+      - NAME
+      - TG_TOKEN
+      - WALLET_PAY_TOKEN
+      - YOOKASSA_SECRET_KEY
+      - YOOKASSA_SHOP_ID
+      - YOOMONEY_TOKEN
+      - YOOMONEY_WALLET
+      - MAX_PEOPLE_SERVER
+      - ALERTS_BOT_TOKEN
+      - ALERTS_CHAT_ID
+    volumes:
+      - ./bot:/app/bot
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backups:/app/backups
+      - /root/VPN Clients:/app/vpn_clients
+
+  subscription_checker:
+    restart: unless-stopped
+    build: ./
+    container_name: subscription_checker_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - SUBSCRIPTION_CHECK_INTERVAL=300
+    volumes:
+      - ./bot:/app/bot
+      - ./subscription_api:/app/subscription_api
+      - ./subscription_expiry_checker.py:/app/subscription_expiry_checker.py
+      - ./run_subscription_checker.sh:/app/run_subscription_checker.sh
+      - ./logs:/app/logs
+    command: /bin/bash /app/run_subscription_checker.sh
+
+  mtproto_stats_collector:
+    restart: unless-stopped
+    build: ./
+    container_name: mtproto_stats_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - MTPROTO_COLLECT_INTERVAL=300
+    volumes:
+      - ./bot:/app/bot
+      - ./mtproto_stats_collector.py:/app/mtproto_stats_collector.py
+      - ./run_mtproto_stats_collector.sh:/app/run_mtproto_stats_collector.sh
+      - ./logs:/app/logs
+      - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+    command: /bin/bash /app/run_mtproto_stats_collector.sh
+
+  subscription_api:
+    restart: unless-stopped
+    build: ./
+    container_name: subscription_api_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./bot:/app/bot
+      - ./subscription_api:/app/subscription_api
+      - ./logs:/app/logs
+    command: ["uvicorn", "subscription_api.main:app", "--host", "0.0.0.0", "--port", "8003"]

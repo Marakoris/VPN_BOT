@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f0f1a">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>">
+    <title>Регистрация - NoBorder VPN</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5">
+</head>
+<body>
+    <div class="login-container" x-data="registerForm()">
+        <div class="login-logo">🛡</div>
+        <h1 class="login-title">Регистрация</h1>
+        <p class="login-subtitle">Создайте аккаунт для управления VPN подпиской</p>
+
+        <div x-show="errorMsg" class="login-error" x-text="errorMsg" style="display:none"></div>
+        <div x-show="successMsg" style="display:none;background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:14px 18px;color:#00ff88;font-size:14px;margin-bottom:16px;text-align:center" x-text="successMsg"></div>
+
+        <!-- Registration form -->
+        <form x-show="!showVerify" @submit.prevent="register" style="width:100%;max-width:300px">
+            <div class="form-group">
+                <input type="email" x-model="email" class="form-input" placeholder="Email" required>
+            </div>
+            <div class="form-group">
+                <input type="password" x-model="password" class="form-input" placeholder="Пароль (мин. 6 символов)" required minlength="6">
+            </div>
+            <div class="form-group">
+                <input type="password" x-model="passwordConfirm" class="form-input" placeholder="Подтвердите пароль" required minlength="6">
+            </div>
+            <button type="submit" class="btn btn-primary" :disabled="loading">
+                <span x-show="!loading">Зарегистрироваться</span>
+                <span x-show="loading">Создание...</span>
+            </button>
+        </form>
+
+        <!-- Verification code form -->
+        <form x-show="showVerify" @submit.prevent="verify" style="width:100%;max-width:300px;display:none">
+            <p style="font-size:13px;color:#ccc;margin-bottom:12px;text-align:center">
+                Код подтверждения отправлен на <strong x-text="email"></strong>
+            </p>
+            <div class="form-group">
+                <input type="text" x-model="code" class="form-input" placeholder="6-значный код"
+                    required maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
+                    style="text-align:center;font-size:20px;letter-spacing:6px;font-family:monospace">
+            </div>
+            <button type="submit" class="btn btn-primary" :disabled="loading" style="margin-bottom:8px">
+                <span x-show="!loading">Подтвердить</span>
+                <span x-show="loading">Проверка...</span>
+            </button>
+            <button type="button" @click="resend" class="btn btn-secondary" style="font-size:12px;padding:8px 14px" :disabled="loading">
+                Отправить код повторно
+            </button>
+        </form>
+
+        <p style="font-size:13px;color:#888;margin-top:16px">
+            Уже есть аккаунт? <a href="/dashboard/login" style="color:#6c5ce7;text-decoration:none">Войти</a>
+        </p>
+    </div>
+
+    <script src="/static/js/alpine.min.js" defer></script>
+    <script>
+    function registerForm() {
+        return {
+            email: '', password: '', passwordConfirm: '', code: '',
+            loading: false, showVerify: false, errorMsg: '', successMsg: '', token: '',
+
+            async register() {
+                this.errorMsg = '';
+                if (this.password !== this.passwordConfirm) { this.errorMsg = 'Пароли не совпадают'; return; }
+                this.loading = true;
+                try {
+                    const r = await fetch('/api/v1/register', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({email: this.email, password: this.password, password_confirm: this.passwordConfirm})
+                    });
+                    const d = await r.json();
+                    if (!d.ok) { this.errorMsg = d.error; return; }
+                    this.token = d.token;
+                    this.showVerify = true;
+                    this.successMsg = 'Код подтверждения отправлен на ' + this.email;
+                } catch(e) { this.errorMsg = 'Ошибка сети'; }
+                finally { this.loading = false; }
+            },
+
+            async verify() {
+                this.errorMsg = ''; this.successMsg = '';
+                this.loading = true;
+                try {
+                    const r = await fetch('/api/v1/verify-email', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token},
+                        body: JSON.stringify({code: this.code})
+                    });
+                    const d = await r.json();
+                    if (!d.ok) { this.errorMsg = d.error; return; }
+                    // Set cookie and redirect
+                    document.cookie = 'dashboard_token=' + this.token + ';path=/;max-age=' + (30*24*3600) + ';secure;samesite=lax';
+                    window.location.href = '/dashboard/';
+                } catch(e) { this.errorMsg = 'Ошибка сети'; }
+                finally { this.loading = false; }
+            },
+
+            async resend() {
+                this.errorMsg = ''; this.successMsg = '';
+                this.loading = true;
+                try {
+                    const r = await fetch('/api/v1/resend-verification', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token},
+                    });
+                    const d = await r.json();
+                    if (!d.ok) { this.errorMsg = d.error; return; }
+                    this.successMsg = 'Код отправлен повторно';
+                } catch(e) { this.errorMsg = 'Ошибка сети'; }
+                finally { this.loading = false; }
+            }
+        }
+    }
+    </script>
+</body>
+</html>

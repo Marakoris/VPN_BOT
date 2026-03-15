@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Подключение - NoBorder VPN{% endblock %}
+
+{% block head %}
+<style>
+    .connect-frame {
+        width: 100%;
+        border: none;
+        min-height: 80vh;
+        border-radius: var(--radius);
+        background: transparent;
+    }
+    .page { padding: 0; }
+    .no-sub-wrap {
+        padding: 0 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if sub.active and sub.token %}
+    <iframe src="/connect/{{ sub.token }}" class="connect-frame" id="connectFrame"></iframe>
+    <script>
+        // Auto-resize iframe to content
+        const frame = document.getElementById('connectFrame');
+        frame.addEventListener('load', function() {
+            try {
+                frame.style.height = frame.contentWindow.document.body.scrollHeight + 'px';
+            } catch(e) {}
+        });
+    </script>
+{% else %}
+<div class="no-sub-wrap">
+    <h1 class="page-title">Подключение к VPN</h1>
+    <div class="empty-state">
+        <div class="empty-icon">🔒</div>
+        <div class="empty-text">Для подключения к VPN необходима активная подписка</div>
+        <a href="/dashboard/subscription" class="btn btn-primary" style="max-width:280px;margin:0 auto">Активировать подписку</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
