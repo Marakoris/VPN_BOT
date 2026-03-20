@@ -84,19 +84,30 @@ class KassaSmart(PaymentSystem):
         Configuration.account_id = self.ACCOUNT_ID
         Configuration.secret_key = self.SECRET_KEY
         tic = 0
+        loop = asyncio.get_event_loop()
         while tic < self.CHECK_PERIOD:
-            res = await Payment.find_one(self.ID)
-            log.debug(f'Payment status for ID {self.ID}: {res.status}')
-            if res.status == 'succeeded':
-                self.payment_method_id = res.payment_method.id
-                await add_last_payment_data_person(self.user_id, self.payment_method_id, ceil(self.days_count/31), self.price_on_db)
-                await self.successful_payment(
-                    self.price,
-                    'YooKassaSmart',
+            try:
+                res = await loop.run_in_executor(
+                    _yookassa_executor,
+                    partial(_sync_payment_find_one, self.ID)
                 )
-                return
+                log.debug(f'Payment status for ID {self.ID}: {res.status}')
+                if res.status == 'succeeded':
+                    self.payment_method_id = res.payment_method.id
+                    await add_last_payment_data_person(self.user_id, self.payment_method_id, ceil(self.days_count/31), self.price_on_db)
+                    await self.successful_payment(
+                        self.price,
+                        'YooKassaSmart',
+                    )
+                    return
+                elif res.status == 'canceled':
+                    log.info(f'Payment {self.ID} canceled for user {self.user_id}')
+                    return
+            except Exception as e:
+                log.error(f'Error checking payment {self.ID}: {e}')
             tic += self.STEP
             await asyncio.sleep(self.STEP)
+        log.warning(f'Payment {self.ID} timeout for user {self.user_id}')
         return
 
     async def invoice(self, lang_user):

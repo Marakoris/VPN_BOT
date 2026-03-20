@@ -28,7 +28,7 @@ from bot.misc.commands import set_commands
 from bot.misc.loop import loop
 from bot.misc.notification_script import notify
 from bot.misc.winback_sender import winback_autosend
-from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, check_servers_speed, check_servers_resources, reset_monthly_bypass_traffic
+from bot.misc.traffic_monitor import update_all_users_traffic, check_and_block_exceeded_users, reset_monthly_traffic, send_setup_reminders, send_reengagement_reminders, send_daily_stats, snapshot_daily_traffic, check_servers_health, check_servers_speed, check_servers_resources
 from bot.misc.util import CONFIG
 
 
@@ -123,13 +123,6 @@ async def start_bot():
         replace_existing=True
     )
 
-    # Ежемесячный сброс bypass трафика (каждый день в 00:10)
-    scheduler.add_job(
-        reset_monthly_bypass_traffic,
-        trigger=CronTrigger(timezone=ZoneInfo("Europe/Moscow"), hour=0, minute=10),
-        id='monthly_bypass_traffic_reset',
-        replace_existing=True
-    )
 
 
     # Напоминание о настройке VPN для неактивных пользователей (каждый день в 10:00)

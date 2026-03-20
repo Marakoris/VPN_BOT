@@ -354,6 +354,27 @@ async def get_subscription(token: str, request: Request):
                 # Bypass servers with tunnel.vk-apps.com SNI (Beeline whitelist)
                 log.info(f"[Subscription API] Added 3 Reality bypass servers for user {user.tgid}")
 
+            # MegaFon whitelist bypass: duplicate bypass server configs with ads.x5.ru SNI
+            # This allows bypass through MegaFon's whitelist which blocks maps.yandex.ru SNI
+            megafon_configs = []
+            for config_url in config_lines:
+                if config_url and "sni=maps.yandex.ru" in config_url:
+                    megafon_url = config_url.replace(
+                        "sni=maps.yandex.ru", "sni=ads.x5.ru"
+                    )
+                    # Update remark to indicate MegaFon version
+                    # Find the # at end and replace the name
+                    if "#" in megafon_url:
+                        base_url, remark = megafon_url.rsplit("#", 1)
+                        from urllib.parse import unquote, quote
+                        original_name = unquote(remark)
+                        megafon_name = quote(f"{original_name} (МегаФон)")
+                        megafon_url = f"{base_url}#{megafon_name}"
+                    megafon_configs.append(megafon_url)
+            if megafon_configs:
+                config_lines.extend(megafon_configs)
+                log.info(f"[Subscription API] Added {len(megafon_configs)} MegaFon bypass configs")
+
             if not config_lines:
                 log.warning(f"[Subscription API] No keys found for user {user.tgid}")
                 return ""

@@ -227,7 +227,7 @@ async def get_application_referral_check_false():
 
 async def get_person_lang(telegram_id):
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        statement = select(Persons).filter(Persons.tgid == telegram_id)
+        statement = select(Persons).filter(Persons.tgid == telegram_id).limit(1)
         result = await db.execute(statement)
         person = result.scalar_one_or_none()
         if person is None:

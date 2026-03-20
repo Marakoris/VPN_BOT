@@ -2410,7 +2410,7 @@ async def check_servers_speed(bot) -> Dict[str, any]:
 
     stats = {'checked': 0, 'ok': 0, 'slow': 0, 'no_data': 0, 'alerts_sent': 0}
     SPEED_THRESHOLD_RU = 30    # Mbps - порог для скорости из России
-    SPEED_THRESHOLD_LOCAL = 50  # Mbps - порог для локальной скорости сервера
+    SPEED_THRESHOLD_LOCAL = 20  # Mbps - порог для локальной скорости сервера
 
     # Mapping of Pushgateway server keys to display names
     # Format: pushgateway_key -> (display_name, use_local_key)
