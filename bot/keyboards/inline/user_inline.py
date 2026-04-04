@@ -385,9 +385,16 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         url=proxy_url
     )
 
+    # 7.1 Proxy для Telegram (обход белых списков)
+    proxy_bypass_url = "tg://proxy?server=158.160.123.65&port=8443&secret=eebbd1e690185d44fe13547cce74c6b3086d6170732e79616e6465782e7275"
+    kb.button(
+        text="📡 Proxy (обход белых списков)",
+        url=proxy_bypass_url
+    )
+
     # 8. Поделиться Proxy
-    share_proxy_text = "📡 Бесплатный Proxy для Telegram! Подключись одним кликом:\n\n🚀 А для полноценного VPN заходи в @NoBorderVPN_bot — быстрый VPN без границ!"
-    share_proxy_url = f"https://t.me/share/url?url={quote(proxy_url)}&text={quote(share_proxy_text)}"
+    share_proxy_text = f"📡 Бесплатный Proxy для Telegram!\n\n🌍 Основной:\n{proxy_url}\n\n🗽 Работает через белые списки:\n{proxy_bypass_url}\n\n🚀 А для полноценного VPN заходи в @NoBorderVPN_bot — быстрый VPN без границ!"
+    share_proxy_url = f"https://t.me/share/url?url={quote(proxy_bypass_url)}&text={quote(share_proxy_text)}"
     kb.button(
         text="📤 Поделиться Proxy",
         url=share_proxy_url

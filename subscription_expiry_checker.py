@@ -120,16 +120,21 @@ async def check_expired_subscriptions():
                         f"({days_left}d {hours_left}h left, ends: {user_sub_datetime})"
                     )
 
-                    # Send email expiry notification (1 or 3 days left)
+                    # Send email expiry notification (1 or 3 days left, once per day)
                     if days_left in (1, 3):
                         try:
+                            last_email_ts = getattr(user, 'last_expiry_notification', 0) or 0
+                            already_sent_today = (current_time - last_email_ts) < 86400
                             if (user.email
                                     and getattr(user, 'email_verified', False)
-                                    and getattr(user, 'email_notifications', True)):
+                                    and getattr(user, 'email_notifications', True)
+                                    and not already_sent_today):
                                 from subscription_api.dashboard.email_service import send_subscription_expiry
                                 await send_subscription_expiry(
                                     user.email, days_left, user_sub_datetime.split(" ")[0]
                                 )
+                                user.last_expiry_notification = current_time
+                                await db.commit()
                                 log.info(f"📧 Sent expiry email to {user.email} ({days_left}d left)")
                         except Exception as e:
                             log.error(f"❌ Error sending expiry email for user {user.tgid}: {e}")

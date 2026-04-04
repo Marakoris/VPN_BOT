@@ -594,6 +594,22 @@ async def create_withdrawal(user: Persons, amount: int, payment_info: str, commu
         )
         db.add(wr)
         await db.commit()
+        await db.refresh(wr)
+        withdrawal_id = wr.id
+
+    # Notify admins via Telegram (with confirm button)
+    try:
+        from aiogram import Bot
+        bot_token = os.getenv("TG_TOKEN", "")
+        if bot_token:
+            bot = Bot(token=bot_token)
+            try:
+                from bot.handlers.user.referral_user import send_admins
+                await send_admins(bot, amount, user, payment_info, communication or "", withdrawal_id)
+            finally:
+                await bot.session.close()
+    except Exception as e:
+        log.error(f"Failed to notify admins about withdrawal: {e}")
 
     return {"success": True, "message": "Заявка на вывод создана"}
 

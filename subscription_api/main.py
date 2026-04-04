@@ -71,8 +71,9 @@ app = FastAPI(
     title="VPN Subscription API",
     description="Subscription-based VPN access API",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
 )
 
 # Add CORS middleware for Happ and other VPN clients

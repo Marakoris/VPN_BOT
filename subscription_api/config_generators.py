@@ -189,7 +189,7 @@ async def generate_vless_config(
         elif "178.154.207.0" in server.ip and not public_key:
             public_key = "E6MPRwSW5xVzROOmUVPIXPmRis42UH-xidxaOlH4ygU"
         # Legacy bypass server
-        elif "84.201.128.231" in server.ip and not public_key:
+        elif "158.160.55.117" in server.ip and not public_key:
             public_key = "yMmi7MkhSSv4DW2PXJm3pS4RpmLFM8vSt3ZhesZDKz0"
         # Additional bypass servers from production
         elif "158.160.102.5" in server.ip and not public_key:
@@ -198,6 +198,10 @@ async def generate_vless_config(
             public_key = "E6MPRwSW5xVzROOmUVPIXPmRis42UH-xidxaOlH4ygU"
         elif "158.160.112.119" in server.ip and not public_key:
             public_key = "80RLQsdpGiR9OYBfdBoZd5njLDAP3zh5ikwLaI2VaUc"
+        elif "158.160.55.117" in server.ip and not public_key:
+            public_key = "gkKltxwWGyfBZGSEVbc8cbjh8zmFTs28E8Ld2FGWQBE"
+        elif "158.160.123.65" in server.ip and not public_key:
+            public_key = "gkKltxwWGyfBZGSEVbc8cbjh8zmFTs28E8Ld2FGWQBE"
         server_names = reality_settings.get("serverNames", [])
         short_ids = reality_settings.get("shortIds", [])
 

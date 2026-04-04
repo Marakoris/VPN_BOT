@@ -73,6 +73,10 @@ services:
       - .env
     environment:
       - MTPROTO_COLLECT_INTERVAL=300
+      - MTPROTO_BYPASS1_HOST=159.255.34.42
+      - MTPROTO_BYPASS1_SSH_USER=root
+      - MTPROTO_BYPASS1_SSH_PASSWORD=ToFgorB5FAD51HRx
+      - MTPROTO_BYPASS1_SERVICE=mtg
     volumes:
       - ./bot:/app/bot
       - ./mtproto_stats_collector.py:/app/mtproto_stats_collector.py

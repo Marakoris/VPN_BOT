@@ -6,6 +6,7 @@ import uuid
 import asyncio
 import subprocess
 import time
+import base64
 
 from abc import ABC
 
@@ -130,6 +131,17 @@ class XuiBase(BaseVpn, ABC):
         )
         return safe_json_loads(output.strip())
 
+    async def _ssh_save_inbound_settings(self, settings: dict):
+        """Save inbound settings via SSH using base64 to avoid shell escaping issues"""
+        settings_json = json.dumps(settings)
+        b64 = base64.b64encode(settings_json.encode()).decode()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            self._run_ssh_command,
+            f"python3 -c \"import json,sqlite3,base64; s=base64.b64decode('{b64}').decode(); conn=sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}',(s,)); conn.commit(); conn.close()\""
+        )
+
     async def _ssh_get_client(self, email: str) -> dict:
         """Get client by email via SSH"""
         try:
@@ -174,15 +186,8 @@ class XuiBase(BaseVpn, ABC):
             clients.append(new_client)
             settings['clients'] = clients
 
-            # Save via SSH
-            settings_json = json.dumps(settings).replace("'", "'\\''")
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._run_ssh_command,
-                f"python3 -c \"import json, sqlite3; conn = sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}', ('{settings_json}',)); conn.commit(); conn.close()\""
-            )
+            # Save via SSH (base64 encoded to avoid shell escaping issues)
+            await self._ssh_save_inbound_settings(settings)
 
             print(f"[SSH] Added client {email} successfully")
             return True
@@ -214,14 +219,7 @@ class XuiBase(BaseVpn, ABC):
                 return False
 
             settings['clients'] = clients
-            settings_json = json.dumps(settings).replace("'", "'\\''")
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._run_ssh_command,
-                f"python3 -c \"import json, sqlite3; conn = sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}', ('{settings_json}',)); conn.commit(); conn.close()\""
-            )
+            await self._ssh_save_inbound_settings(settings)
 
             print(f"[SSH] Updated client {email}: enable={enable}, total_gb={total_gb}")
             return True
@@ -272,15 +270,8 @@ class XuiBase(BaseVpn, ABC):
             clients.append(new_client)
             settings['clients'] = clients
 
-            # Save via SSH
-            settings_json = json.dumps(settings).replace("'", "'\\''")
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._run_ssh_command,
-                f"python3 -c \"import json, sqlite3; conn = sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}', ('{settings_json}',)); conn.commit(); conn.close()\""
-            )
+            # Save via SSH (base64 encoded)
+            await self._ssh_save_inbound_settings(settings)
 
             print(f"[SSH] Added SS client {email} successfully")
             return True
@@ -313,14 +304,7 @@ class XuiBase(BaseVpn, ABC):
                 return False
 
             settings['clients'] = clients
-            settings_json = json.dumps(settings).replace("'", "'\\''")
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                self._run_ssh_command,
-                f"python3 -c \"import json, sqlite3; conn = sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}', ('{settings_json}',)); conn.commit(); conn.close()\""
-            )
+            await self._ssh_save_inbound_settings(settings)
 
             print(f"[SSH] Updated SS client {email}: enable={enable}, total_gb={total_gb}")
             return True

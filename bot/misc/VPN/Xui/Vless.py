@@ -54,6 +54,15 @@ class Vless(XuiBase):
             print(f"[VLESS add_client] Created with email={email}, Response: {response}")
             if response['success']:
                 return True
+            # API returned error - try SSH fallback
+            print(f"[VLESS add_client] API failed: {response.get('msg')}, trying SSH fallback")
+            if self.vds_password:
+                return await self._ssh_add_client(
+                    email=email,
+                    client_uuid=client_uuid,
+                    limit_ip=CONFIG.limit_ip,
+                    total_gb=total_gb
+                )
             return False
         except Exception as e:
             # Логируем ошибку
