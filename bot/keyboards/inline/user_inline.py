@@ -360,7 +360,6 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         )
 
     # 5b. Помощь
-    from bot.misc.callbackData import MainMenuAction
     kb.button(
         text="❓ Помощь и поддержка",
         callback_data=MainMenuAction(action='help')
