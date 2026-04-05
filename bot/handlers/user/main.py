@@ -334,8 +334,9 @@ async def give_bonus_invitee(m, reference, lang):
 async def send_help_message(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
     builder = InlineKeyboardBuilder()
-    builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
-    builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
+    builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
+    builder.button(text="📱 VPN для приложений (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
+    builder.button(text="📱 VPN для приложений (Android)", callback_data=MainMenuAction(action='help_android'))
     builder.adjust(1)
     await message.answer(
         text=_('support_message'),
@@ -2114,12 +2115,13 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
             )
 
     elif action == 'help':
-        # Обновляем сообщение вместо отправки нового
+        # Подменю помощи с инструкциями
         from aiogram.utils.keyboard import InlineKeyboardBuilder
 
         builder = InlineKeyboardBuilder()
-        builder.button(text=_('help_btn', lang), url="https://t.me/VPN_YouSupport_bot")
-        builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
+        builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
+        builder.button(text="📱 VPN для приложений (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
+        builder.button(text="📱 VPN для приложений (Android)", callback_data=MainMenuAction(action='help_android'))
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
@@ -2133,6 +2135,43 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
                 text=_('support_message'),
                 reply_markup=builder.as_markup()
             )
+
+    elif action == 'help_iphone':
+        # Отправляем видео-инструкцию для iPhone
+        await callback.answer()
+        video = FSInputFile("/root/VPNHubBot/bot/media/vpn_iphone_instruction.mp4")
+        builder = InlineKeyboardBuilder()
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='help'))
+        await callback.message.answer_video(
+            video=video,
+            caption=(
+                "📱 <b>Автоматическое включение VPN для приложений (iPhone)</b>\n\n"
+                "В этом видео показано, как настроить автоматическое "
+                "подключение VPN при открытии определённых приложений "
+                "через «Команды» (Shortcuts) на iPhone.\n\n"
+                "VPN включится сам при запуске приложения и выключится при закрытии."
+            ),
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
+
+    elif action == 'help_android':
+        # Ссылка на инструкцию для Android
+        await callback.answer()
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📖 Открыть инструкцию", url="https://fastnet-secure.com/instructions/android.html")
+        builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='help'))
+        builder.adjust(1)
+        await callback.message.answer(
+            text=(
+                "📱 <b>VPN для приложений на Android</b>\n\n"
+                "В приложении Happ можно настроить, какие приложения "
+                "будут работать через VPN, а какие — напрямую.\n\n"
+                "Нажмите кнопку ниже, чтобы открыть пошаговую инструкцию."
+            ),
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
 
     elif action == 'admin':
         # Inline-версия админ панели - используем новые AdminMenuNav callbacks
