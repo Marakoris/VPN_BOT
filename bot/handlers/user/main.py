@@ -338,9 +338,21 @@ async def send_help_message(message: Message, state: FSMContext):
     builder.button(text="📱 Маршрутизация (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
     builder.button(text="📱 Маршрутизация (Android)", callback_data=MainMenuAction(action='help_android'))
     builder.adjust(1)
+    help_text = (
+        "❓ <b>Помощь и поддержка</b>\n\n"
+        "💬 <b>Бот поддержки</b> — задайте вопрос оператору, "
+        "если что-то не работает или нужна помощь с подключением\n\n"
+        "📱 <b>Маршрутизация (iPhone)</b> — видео-инструкция: "
+        "как настроить автоматическое включение VPN при открытии "
+        "определённых приложений через «Команды»\n\n"
+        "📱 <b>Маршрутизация (Android)</b> — пошаговая инструкция: "
+        "как выбрать, какие приложения работают через VPN, "
+        "а какие напрямую, в приложении Happ"
+    )
     await message.answer(
-        text=_('support_message'),
-        reply_markup=builder.as_markup()
+        text=help_text,
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
     )
 
 
@@ -2125,15 +2137,29 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
+        help_text = (
+            "❓ <b>Помощь и поддержка</b>\n\n"
+            "💬 <b>Бот поддержки</b> — задайте вопрос оператору, "
+            "если что-то не работает или нужна помощь с подключением\n\n"
+            "📱 <b>Маршрутизация (iPhone)</b> — видео-инструкция: "
+            "как настроить автоматическое включение VPN при открытии "
+            "определённых приложений через «Команды»\n\n"
+            "📱 <b>Маршрутизация (Android)</b> — пошаговая инструкция: "
+            "как выбрать, какие приложения работают через VPN, "
+            "а какие напрямую, в приложении Happ"
+        )
+
         try:
             await callback.message.edit_text(
-                text=_('support_message'),
-                reply_markup=builder.as_markup()
+                text=help_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
         except:
             await callback.message.answer(
-                text=_('support_message'),
-                reply_markup=builder.as_markup()
+                text=help_text,
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
 
     elif action == 'help_iphone':
