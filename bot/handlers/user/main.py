@@ -2139,16 +2139,20 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     elif action == 'help_iphone':
         # Отправляем видео-инструкцию для iPhone
         await callback.answer()
+        try:
+            await callback.message.delete()
+        except:
+            pass
         video = FSInputFile("/app/bot/media/vpn_iphone_instruction.mp4")
         builder = InlineKeyboardBuilder()
         builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='help'))
         await callback.message.answer_video(
             video=video,
             caption=(
-                "📱 <b>Автоматическое включение VPN для приложений (iPhone)</b>\n\n"
+                "📱 <b>Маршрутизация приложений (iPhone)</b>\n\n"
                 "В этом видео показано, как настроить автоматическое "
                 "подключение VPN при открытии определённых приложений "
-                "через «Команды» (Shortcuts) на iPhone.\n\n"
+                "через «Команды» (Shortcuts).\n\n"
                 "VPN включится сам при запуске приложения и выключится при закрытии."
             ),
             parse_mode="HTML",
@@ -2158,13 +2162,17 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     elif action == 'help_android':
         # Ссылка на инструкцию для Android
         await callback.answer()
+        try:
+            await callback.message.delete()
+        except:
+            pass
         builder = InlineKeyboardBuilder()
         builder.button(text="📖 Открыть инструкцию", url="https://fastnet-secure.com/instructions/android.html")
         builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='help'))
         builder.adjust(1)
         await callback.message.answer(
             text=(
-                "📱 <b>VPN для приложений на Android</b>\n\n"
+                "📱 <b>Маршрутизация приложений (Android)</b>\n\n"
                 "В приложении Happ можно настроить, какие приложения "
                 "будут работать через VPN, а какие — напрямую.\n\n"
                 "Нажмите кнопку ниже, чтобы открыть пошаговую инструкцию."
