@@ -335,8 +335,8 @@ async def send_help_message(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
     builder = InlineKeyboardBuilder()
     builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
-    builder.button(text="📱 VPN для приложений (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
-    builder.button(text="📱 VPN для приложений (Android)", callback_data=MainMenuAction(action='help_android'))
+    builder.button(text="📱 Маршрутизация (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
+    builder.button(text="📱 Маршрутизация (Android)", callback_data=MainMenuAction(action='help_android'))
     builder.adjust(1)
     await message.answer(
         text=_('support_message'),
@@ -2120,8 +2120,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         builder = InlineKeyboardBuilder()
         builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
-        builder.button(text="📱 VPN для приложений (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
-        builder.button(text="📱 VPN для приложений (Android)", callback_data=MainMenuAction(action='help_android'))
+        builder.button(text="📱 Маршрутизация (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
+        builder.button(text="📱 Маршрутизация (Android)", callback_data=MainMenuAction(action='help_android'))
         builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
         builder.adjust(1)
 
@@ -2139,7 +2139,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
     elif action == 'help_iphone':
         # Отправляем видео-инструкцию для iPhone
         await callback.answer()
-        video = FSInputFile("/root/VPNHubBot/bot/media/vpn_iphone_instruction.mp4")
+        video = FSInputFile("/app/bot/media/vpn_iphone_instruction.mp4")
         builder = InlineKeyboardBuilder()
         builder.button(text="⬅️ Назад", callback_data=MainMenuAction(action='help'))
         await callback.message.answer_video(
