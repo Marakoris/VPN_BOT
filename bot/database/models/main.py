@@ -72,6 +72,7 @@ class Persons(Base):
     traffic_last_change = Column(TIMESTAMP(timezone=True), nullable=True)  # Когда последний раз менялся трафик
     traffic_warning_sent = Column(Boolean, default=False)  # Отправлено ли предупреждение о 90% трафика
     setup_reminder_sent = Column(Boolean, default=False)  # Отправлено ли напоминание о настройке VPN
+    reengagement_reminder_sent = Column(Boolean, default=False)  # Отправлено ли re-engagement уведомление
     # Email auth fields
     email = Column(String(255), nullable=True, unique=True, index=True)
     password_hash = Column(String(255), nullable=True)

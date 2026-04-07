@@ -22,8 +22,10 @@ from bot.misc.util import CONFIG
 
 
 async def get_person(telegram_id: int):
+    if telegram_id is None:
+        return None
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        statement = select(Persons).filter(Persons.tgid == telegram_id)
+        statement = select(Persons).filter(Persons.tgid == telegram_id).limit(1)
         result = await db.execute(statement)
         person = result.scalar_one_or_none()
         return person
@@ -38,7 +40,9 @@ async def get_person_id(list_input):
 
 
 async def _get_person(db, tgid):
-    statement = select(Persons).filter(Persons.tgid == tgid)
+    if tgid is None:
+        return None
+    statement = select(Persons).filter(Persons.tgid == tgid).limit(1)
     result = await db.execute(statement)
     person = result.scalar_one_or_none()
     return person
@@ -202,11 +206,13 @@ async def get_count_referral_user(tgid):
 
 
 async def get_referral_balance(tgid):
+    if tgid is None:
+        return 0
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        statement = select(Persons).filter(Persons.tgid == tgid)
+        statement = select(Persons).filter(Persons.tgid == tgid).limit(1)
         result = await db.execute(statement)
         person = result.scalar_one_or_none()
-        return person.referral_balance
+        return person.referral_balance if person else 0
 
 
 async def get_all_application_referral():
@@ -606,8 +612,9 @@ async def get_subscriptions_needing_action():
     retry_interval_ago = now - timedelta(hours=AUTOPAY_RETRY_HOURS)
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
-        # Получаем только тех, кому нужно действие
+        # Получаем только тех, кому нужно действие (исключаем web-only пользователей без tgid)
         stmt = select(Persons).filter(
+            Persons.tgid.isnot(None),
             Persons.banned == False,
             or_(
                 # 1. ПРЕВЕНТИВНЫЙ АВТОПЛАТЁЖ: За 1 день до истечения, есть autopay, ещё не было попыток

@@ -60,9 +60,10 @@ async def check_expired_subscriptions():
 
     async with AsyncSession(autoflush=False, bind=engine()) as db:
         try:
-            # Get all users with active subscriptions
+            # Get all users with active subscriptions (exclude web-only without tgid)
             statement = select(Persons).filter(
-                Persons.subscription_active == True
+                Persons.subscription_active == True,
+                Persons.tgid.isnot(None)
             )
 
             result = await db.execute(statement)
@@ -139,11 +140,49 @@ async def check_expired_subscriptions():
                         except Exception as e:
                             log.error(f"❌ Error sending expiry email for user {user.tgid}: {e}")
 
+            # Handle web-only users (tgid=NULL) - expire and send email
+            web_stmt = select(Persons).filter(
+                Persons.subscription_active == True,
+                Persons.tgid.is_(None),
+                Persons.subscription.isnot(None)
+            )
+            web_result = await db.execute(web_stmt)
+            web_users = web_result.scalars().all()
+
+            for wu in web_users:
+                try:
+                    wu_sub_end = int(wu.subscription)
+                    if wu_sub_end < current_time:
+                        wu.subscription_active = False
+                        wu.subscription_expired = True
+                        await db.commit()
+                        expired_count += 1
+                        log.info(f"⚠️  Web user {wu.id} ({wu.email}) subscription expired, deactivated")
+                    else:
+                        # Email notification for web users
+                        time_left = wu_sub_end - current_time
+                        days_left = time_left // 86400
+                        if days_left in (1, 3):
+                            last_ts = getattr(wu, 'last_expiry_notification', 0) or 0
+                            if (wu.email and getattr(wu, 'email_verified', False)
+                                    and (current_time - last_ts) >= 86400):
+                                try:
+                                    from subscription_api.dashboard.email_service import send_subscription_expiry
+                                    expiry_date = datetime.fromtimestamp(wu_sub_end).strftime('%Y-%m-%d')
+                                    await send_subscription_expiry(wu.email, days_left, expiry_date)
+                                    wu.last_expiry_notification = current_time
+                                    await db.commit()
+                                    log.info(f"📧 Sent expiry email to web user {wu.email} ({days_left}d left)")
+                                except Exception as e:
+                                    log.error(f"❌ Error sending email to web user {wu.email}: {e}")
+                except Exception as e:
+                    log.error(f"❌ Error processing web user {wu.id}: {e}")
+
             # Summary
             log.info("=" * 60)
             log.info("Expiry check completed")
             log.info("=" * 60)
-            log.info(f"Total active subscriptions checked: {len(active_users)}")
+            log.info(f"Total active subscriptions checked: {len(active_users)} + {len(web_users)} web")
             log.info(f"✅ Still active: {still_active_count}")
             log.info(f"⚠️  Expired and disabled: {expired_count}")
             log.info(f"❌ Errors: {error_count}")
