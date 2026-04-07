@@ -84,7 +84,7 @@ async def login_page(request: Request):
     if user:
         return RedirectResponse("/dashboard/", status_code=302)
 
-    return templates.TemplateResponse("login.html", {
+    return templates.TemplateResponse(request, "login.html", {
         "request": request,
         "bot_username": BOT_USERNAME,
     })
@@ -94,7 +94,7 @@ async def login_page(request: Request):
 async def login_email(request: Request, email: str = Form(""), password: str = Form("")):
     """Login via email + password."""
     if not email or not password:
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request,
             "bot_username": BOT_USERNAME,
             "email_error": "Введите email и пароль",
@@ -107,7 +107,7 @@ async def login_email(request: Request, email: str = Form(""), password: str = F
         user = result.scalar_one_or_none()
 
     if not user or not user.password_hash:
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request,
             "bot_username": BOT_USERNAME,
             "email_error": "Неверный email или пароль",
@@ -115,7 +115,7 @@ async def login_email(request: Request, email: str = Form(""), password: str = F
         })
 
     if not verify_password(password, user.password_hash):
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request,
             "bot_username": BOT_USERNAME,
             "email_error": "Неверный email или пароль",
@@ -235,7 +235,7 @@ async def logout(request: Request):
 @router.get("/forgot-password", response_class=HTMLResponse)
 async def forgot_password_page(request: Request):
     """Show forgot password form."""
-    return templates.TemplateResponse("forgot_password.html", {"request": request})
+    return templates.TemplateResponse(request, "forgot_password.html", {"request": request})
 
 
 @router.post("/forgot-password")
@@ -257,7 +257,7 @@ async def forgot_password_submit(request: Request, email: str = Form("")):
                 await send_password_reset(email, token)
                 log.info(f"[Dashboard] Password reset requested for {email}")
 
-    return templates.TemplateResponse("forgot_password.html", {
+    return templates.TemplateResponse(request, "forgot_password.html", {
         "request": request,
         "success": True,
     })
@@ -275,16 +275,16 @@ async def reset_password_page(request: Request, token: str = ""):
         db_user = result.scalar_one_or_none()
 
         if not db_user or not db_user.password_reset_expires:
-            return templates.TemplateResponse("reset_password.html", {
+            return templates.TemplateResponse(request, "reset_password.html", {
                 "request": request, "error": "Ссылка недействительна или устарела.",
             })
 
         if db_user.password_reset_expires < datetime.now(timezone.utc):
-            return templates.TemplateResponse("reset_password.html", {
+            return templates.TemplateResponse(request, "reset_password.html", {
                 "request": request, "error": "Ссылка устарела. Запросите сброс пароля снова.",
             })
 
-    return templates.TemplateResponse("reset_password.html", {
+    return templates.TemplateResponse(request, "reset_password.html", {
         "request": request, "token": token,
     })
 
@@ -301,11 +301,11 @@ async def reset_password_submit(
         return RedirectResponse("/dashboard/forgot-password", status_code=302)
 
     if len(password) < 6:
-        return templates.TemplateResponse("reset_password.html", {
+        return templates.TemplateResponse(request, "reset_password.html", {
             "request": request, "token": token, "error": "Пароль должен быть не менее 6 символов",
         })
     if password != password_confirm:
-        return templates.TemplateResponse("reset_password.html", {
+        return templates.TemplateResponse(request, "reset_password.html", {
             "request": request, "token": token, "error": "Пароли не совпадают",
         })
 
@@ -317,12 +317,12 @@ async def reset_password_submit(
         db_user = result.scalar_one_or_none()
 
         if not db_user or not db_user.password_reset_expires:
-            return templates.TemplateResponse("reset_password.html", {
+            return templates.TemplateResponse(request, "reset_password.html", {
                 "request": request, "error": "Ссылка недействительна.",
             })
 
         if db_user.password_reset_expires < datetime.now(timezone.utc):
-            return templates.TemplateResponse("reset_password.html", {
+            return templates.TemplateResponse(request, "reset_password.html", {
                 "request": request, "error": "Ссылка устарела.",
             })
 
@@ -333,7 +333,7 @@ async def reset_password_submit(
         await db.commit()
         log.info(f"[Dashboard] Password reset completed for user id={user_id}")
 
-    return templates.TemplateResponse("reset_password.html", {
+    return templates.TemplateResponse(request, "reset_password.html", {
         "request": request, "success": True,
     })
 
@@ -344,7 +344,7 @@ async def register_page(request: Request):
     user = await get_current_user(request)
     if user:
         return RedirectResponse("/dashboard/", status_code=302)
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse(request, "register.html", {"request": request})
 
 
 # ==================== MAIN PAGES ====================
@@ -361,7 +361,7 @@ async def dashboard_page(request: Request):
     traffic = await services.get_traffic_data(user)
     bypass = await services.get_bypass_data(user)
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request, "dashboard.html", {
         "request": request,
         "user": user,
         "sub": sub,
@@ -382,7 +382,7 @@ async def traffic_page(request: Request):
     traffic = await services.get_traffic_data(user)
     bypass = await services.get_bypass_data(user)
 
-    return templates.TemplateResponse("traffic.html", {
+    return templates.TemplateResponse(request, "traffic.html", {
         "request": request,
         "user": user,
         "traffic": traffic,
@@ -406,7 +406,7 @@ async def connection_page(request: Request):
         sub_url = services.get_subscription_url(sub["token"])
         connect_url = services.get_connect_url(sub["token"])
 
-    return templates.TemplateResponse("connection.html", {
+    return templates.TemplateResponse(request, "connection.html", {
         "request": request,
         "user": user,
         "sub": sub,
@@ -427,7 +427,7 @@ async def subscription_page(request: Request):
     sub = await services.get_subscription_status(user)
     plans = services.get_plans()
 
-    return templates.TemplateResponse("subscription.html", {
+    return templates.TemplateResponse(request, "subscription.html", {
         "request": request,
         "user": user,
         "sub": sub,
@@ -448,7 +448,7 @@ async def payment_page(request: Request):
     payments = await services.get_payment_history(user.id)
     sub = await services.get_subscription_status(user)
 
-    return templates.TemplateResponse("payment.html", {
+    return templates.TemplateResponse(request, "payment.html", {
         "request": request,
         "user": user,
         "plans": plans,
@@ -468,7 +468,7 @@ async def referral_page(request: Request):
     await log_dashboard_action("page_referral", request, user)
     referral = await services.get_referral_info(user)
 
-    return templates.TemplateResponse("referral.html", {
+    return templates.TemplateResponse(request, "referral.html", {
         "request": request,
         "user": user,
         "referral": referral,
@@ -486,7 +486,7 @@ async def settings_page(request: Request):
     await log_dashboard_action("page_settings", request, user)
     sub = await services.get_subscription_status(user)
 
-    return templates.TemplateResponse("settings.html", {
+    return templates.TemplateResponse(request, "settings.html", {
         "request": request,
         "user": user,
         "sub": sub,
@@ -527,7 +527,7 @@ async def settings_email(
                 error = "Этот email уже используется"
 
     if error:
-        return templates.TemplateResponse("settings.html", {
+        return templates.TemplateResponse(request, "settings.html", {
             "request": request, "user": user, "sub": sub,
             "page": "settings", "email_error": error,
         })
@@ -544,7 +544,7 @@ async def settings_email(
                 await db.commit()
         user = await get_current_user(request)
         sub = await services.get_subscription_status(user)
-        return templates.TemplateResponse("settings.html", {
+        return templates.TemplateResponse(request, "settings.html", {
             "request": request, "user": user, "sub": sub,
             "page": "settings", "email_success": "Пароль обновлён",
         })
@@ -570,7 +570,7 @@ async def settings_email(
 
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
-    return templates.TemplateResponse("settings.html", {
+    return templates.TemplateResponse(request, "settings.html", {
         "request": request, "user": user, "sub": sub,
         "page": "settings",
         "verify_email": email,
@@ -597,20 +597,20 @@ async def settings_verify_email(
         db_user = result.scalar_one_or_none()
 
         if not db_user or not db_user.email_verification_code:
-            return templates.TemplateResponse("settings.html", {
+            return templates.TemplateResponse(request, "settings.html", {
                 "request": request, "user": user, "sub": sub,
                 "page": "settings", "email_error": "Сначала запросите код",
             })
 
         now = datetime.now(timezone.utc)
         if db_user.email_verification_expires and db_user.email_verification_expires < now:
-            return templates.TemplateResponse("settings.html", {
+            return templates.TemplateResponse(request, "settings.html", {
                 "request": request, "user": user, "sub": sub,
                 "page": "settings", "email_error": "Код истёк. Запросите новый.",
             })
 
         if db_user.email_verification_code != code:
-            return templates.TemplateResponse("settings.html", {
+            return templates.TemplateResponse(request, "settings.html", {
                 "request": request, "user": user, "sub": sub,
                 "page": "settings",
                 "verify_email": db_user.email_pending or "",
@@ -630,7 +630,7 @@ async def settings_verify_email(
 
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
-    return templates.TemplateResponse("settings.html", {
+    return templates.TemplateResponse(request, "settings.html", {
         "request": request, "user": user, "sub": sub,
         "page": "settings", "email_success": "Email подтверждён!",
     })
@@ -652,7 +652,7 @@ async def settings_resend_code(request: Request):
         db_user = result.scalar_one_or_none()
 
         if not db_user or not db_user.email_pending:
-            return templates.TemplateResponse("settings.html", {
+            return templates.TemplateResponse(request, "settings.html", {
                 "request": request, "user": user, "sub": sub,
                 "page": "settings", "email_error": "Нет ожидающего подтверждения email",
             })
@@ -664,7 +664,7 @@ async def settings_resend_code(request: Request):
         if db_user.email_verification_expires:
             sent_at = db_user.email_verification_expires - timedelta(minutes=15)
             if (now - sent_at).total_seconds() < 60:
-                return templates.TemplateResponse("settings.html", {
+                return templates.TemplateResponse(request, "settings.html", {
                     "request": request, "user": user, "sub": sub,
                     "page": "settings",
                     "verify_email": pending_email,
@@ -681,7 +681,7 @@ async def settings_resend_code(request: Request):
 
     user = await get_current_user(request)
     sub = await services.get_subscription_status(user)
-    return templates.TemplateResponse("settings.html", {
+    return templates.TemplateResponse(request, "settings.html", {
         "request": request, "user": user, "sub": sub,
         "page": "settings",
         "verify_email": pending_email,
@@ -700,7 +700,7 @@ async def partial_traffic_card(request: Request):
 
     traffic = await services.get_traffic_data(user)
     bypass = await services.get_bypass_data(user)
-    return templates.TemplateResponse("partials/_traffic_card.html", {
+    return templates.TemplateResponse(request, "partials/_traffic_card.html", {
         "request": request,
         "traffic": traffic,
         "bypass": bypass,
@@ -715,7 +715,7 @@ async def partial_subscription_card(request: Request):
         return HTMLResponse("", status_code=401)
 
     sub = await services.get_subscription_status(user)
-    return templates.TemplateResponse("partials/_subscription_card.html", {
+    return templates.TemplateResponse(request, "partials/_subscription_card.html", {
         "request": request,
         "sub": sub,
     })
@@ -728,7 +728,7 @@ async def partial_balance_card(request: Request):
     if not user:
         return HTMLResponse("", status_code=401)
 
-    return templates.TemplateResponse("partials/_balance_card.html", {
+    return templates.TemplateResponse(request, "partials/_balance_card.html", {
         "request": request,
         "user": user,
     })
