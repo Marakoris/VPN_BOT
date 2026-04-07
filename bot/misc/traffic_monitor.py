@@ -5,6 +5,7 @@ Collects and aggregates traffic usage from all VPN servers.
 
 import logging
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
@@ -1675,7 +1676,7 @@ async def get_speed_test_results():
     """
     import aiohttp
     
-    PUSHGATEWAY_URL = "http://130.49.146.140:9091/metrics"
+    PUSHGATEWAY_URL = os.getenv("PUSHGATEWAY_URL", "http://172.17.0.1:9091/metrics")
     
     results = {
         "servers": {},  # server_name -> {download, upload, ping}

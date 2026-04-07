@@ -106,8 +106,8 @@ class XuiBase(BaseVpn, ABC):
 
     # ========== SSH Fallback Methods for x-ui 2.8.7+ ==========
 
-    def _run_ssh_command(self, command: str) -> str:
-        """Execute command on server via SSH"""
+    def _run_ssh_command(self, command: str, stdin_data: str = None) -> str:
+        """Execute command on server via SSH. Optionally pass data via stdin."""
         if not self.vds_password:
             raise Exception("SSH password not configured for this server")
 
@@ -115,7 +115,8 @@ class XuiBase(BaseVpn, ABC):
             ['sshpass', '-p', self.vds_password,
              'ssh', '-o', 'StrictHostKeyChecking=no',
              f'root@{self.server_ip}', command],
-            capture_output=True, text=True, timeout=30
+            input=stdin_data,
+            capture_output=True, text=True, timeout=60
         )
         if result.returncode != 0:
             raise Exception(f"SSH command failed: {result.stderr}")
@@ -132,14 +133,21 @@ class XuiBase(BaseVpn, ABC):
         return safe_json_loads(output.strip())
 
     async def _ssh_save_inbound_settings(self, settings: dict):
-        """Save inbound settings via SSH using base64 to avoid shell escaping issues"""
+        """Save inbound settings via SSH passing data via stdin (avoids ARG_MAX limit)"""
         settings_json = json.dumps(settings)
         b64 = base64.b64encode(settings_json.encode()).decode()
+        # Pass b64 data via stdin - avoids shell argument length limits
+        script = (
+            "python3 -c 'import sys,sqlite3,base64;"
+            "s=base64.b64decode(sys.stdin.read()).decode();"
+            "conn=sqlite3.connect(\"/etc/x-ui/x-ui.db\");"
+            f"conn.execute(\"UPDATE inbounds SET settings=? WHERE id={self.inbound_id}\",(s,));"
+            "conn.commit();conn.close()'"
+        )
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             None,
-            self._run_ssh_command,
-            f"python3 -c \"import json,sqlite3,base64; s=base64.b64decode('{b64}').decode(); conn=sqlite3.connect('/etc/x-ui/x-ui.db'); conn.execute('UPDATE inbounds SET settings=? WHERE id={self.inbound_id}',(s,)); conn.commit(); conn.close()\""
+            lambda: self._run_ssh_command(script, stdin_data=b64)
         )
 
     async def _ssh_get_client(self, email: str) -> dict:

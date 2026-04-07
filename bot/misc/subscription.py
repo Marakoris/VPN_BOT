@@ -410,6 +410,9 @@ async def activate_subscription(user_id: int = None, include_outline: bool = Fal
                     tasks = [_activate_on_server(server, key_name) for server in servers]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
+                    # Refresh user from DB after parallel tasks (greenlet context may be broken)
+                    await db.refresh(user)
+
                     # Process results
                     success_count = 0
                     error_count = 0

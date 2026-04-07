@@ -271,17 +271,43 @@ async def process_payment_webhook(webhook_data: Dict[str, Any]) -> Dict[str, Any
             f"tgid={user_id}, internal_id={internal_user_id}, days={days_count}, amount={amount}, source={source}"
         )
 
-        # Skip non-dashboard payments (autopay/manual handle their own notifications)
-        if source != "dashboard":
-            log.info(f"[Webhook] Skipping {source} payment {payment_id} (handled by {source} flow)")
+        # Skip autopay (handled by retry logic in check_and_proceed_subscriptions)
+        if source == "autopay":
+            log.info(f"[Webhook] Skipping autopay payment {payment_id} (handled by autopay flow)")
             return {
                 "status": "skipped",
-                "reason": f"source={source}, handled by {source} flow",
+                "reason": "source=autopay, handled by autopay flow",
                 "payment_id": payment_id,
                 "user_id": user_id or internal_user_id,
             }
 
-        # Check for duplicate
+        # For manual (bot) payments: give polling some time to process first
+        # Only fallback to webhook if polling failed (bot hung/crashed)
+        if source == "manual":
+            # Check if already processed by polling
+            if await _is_payment_processed(user_id=user_id, amount=amount, payment_id=payment_id, internal_user_id=internal_user_id):
+                log.info(f"[Webhook] Manual payment {payment_id} already processed by polling, skipping")
+                return {
+                    "status": "skipped",
+                    "reason": "already_processed_by_polling",
+                    "payment_id": payment_id,
+                    "user_id": user_id or internal_user_id
+                }
+            # Wait 60 seconds and check again — polling should process within 30s
+            import asyncio
+            log.info(f"[Webhook] Manual payment {payment_id}: waiting 60s for polling to process...")
+            await asyncio.sleep(60)
+            if await _is_payment_processed(user_id=user_id, amount=amount, payment_id=payment_id, internal_user_id=internal_user_id):
+                log.info(f"[Webhook] Manual payment {payment_id} processed by polling during wait, skipping")
+                return {
+                    "status": "skipped",
+                    "reason": "processed_by_polling_after_wait",
+                    "payment_id": payment_id,
+                    "user_id": user_id or internal_user_id
+                }
+            log.warning(f"[Webhook] Manual payment {payment_id}: polling FAILED, webhook taking over")
+
+        # Check for duplicate (prevents double processing if both polling and webhook succeed)
         if await _is_payment_processed(user_id=user_id, amount=amount, payment_id=payment_id, internal_user_id=internal_user_id):
             log.info(f"[Webhook] Payment {payment_id} already processed, skipping")
             return {
