@@ -2246,8 +2246,9 @@ async def check_server_available(server) -> bool:
                     return False
             else:
                 # VLESS/Shadowsocks - check x-ui panel port
+                # server.ip may be "host:port" or "host:port/basepath" (multi-instance x-ui)
                 ip = server.ip.split(':')[0] if ':' in server.ip else server.ip
-                port = int(server.ip.split(':')[1]) if ':' in server.ip else 2053
+                port = int(server.ip.split(':')[1].split('/')[0]) if ':' in server.ip else 2053
         else:
             # Dict-based server (bypass)
             url = server.get("url", "")

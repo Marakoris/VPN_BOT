@@ -378,14 +378,23 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         except Exception:
             pass  # Если не удалось создать ссылку - не показываем кнопку
 
-    # 7. Proxy для Telegram (MTProto)
-    proxy_url = "tg://proxy?server=109.69.59.158&port=2096&secret=ee5561d3c771fcaacc21997a06d78b070b7777772e636c6f7564666c6172652e636f6d"
+    # 7. Proxy для Telegram (MTProto) - два варианта
+    # proxy.fastnet-secure.com → 51.250.83.138 (RU bypass), port 8443, dd-type obfuscated2
+    proxy_url_nl = "tg://proxy?server=proxy.fastnet-secure.com&port=8443&secret=dd5561d3c771fcaacc21997a06d78b070b"
+    # proxy2.fastnet-secure.com → 51.250.83.138 (RU bypass), port 8443, dd-type obfuscated2
+    proxy_url_uk = "tg://proxy?server=proxy2.fastnet-secure.com&port=8443&secret=dd5561d3c771fcaacc21997a06d78b070b"
+
     kb.button(
-        text="📡 Proxy для Telegram",
-        url=proxy_url
+        text="📡 Proxy Нидерланды",
+        url=proxy_url_nl
+    )
+    kb.button(
+        text="📡 Proxy Лондон",
+        url=proxy_url_uk
     )
 
-    # 8. Поделиться Proxy
+    # 8. Поделиться Proxy (NL вариант)
+    proxy_url = proxy_url_nl
     share_proxy_text = "📡 Бесплатный Proxy для Telegram! Подключись одним кликом:\n\n🚀 А для полноценного VPN заходи в @NoBorderVPN_bot — быстрый VPN без границ!"
     share_proxy_url = f"https://t.me/share/url?url={quote(proxy_url)}&text={quote(share_proxy_text)}"
     kb.button(
