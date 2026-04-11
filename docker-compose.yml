@@ -85,6 +85,23 @@ services:
       - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
     command: /bin/bash /app/run_mtproto_stats_collector.sh
 
+  device_stats_collector:
+    restart: unless-stopped
+    build: ./
+    container_name: device_stats_container
+    depends_on:
+      - db_postgres
+    env_file:
+      - .env
+    environment:
+      - DEVICE_COLLECT_INTERVAL=600
+    volumes:
+      - ./device_stats_collector.py:/app/device_stats_collector.py
+      - ./run_device_stats_collector.sh:/app/run_device_stats_collector.sh
+      - ./logs:/app/logs
+      - /root/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+    command: /bin/bash /app/run_device_stats_collector.sh
+
   subscription_api:
     restart: unless-stopped
     build: ./
