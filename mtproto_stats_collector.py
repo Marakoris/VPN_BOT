@@ -73,15 +73,21 @@ def build_server_list():
     # Server 1: Frankfurt (Docker, password SSH) - old format
     host1 = os.getenv('MTPROTO_SSH_HOST', '')
     if host1:
-        servers.append({
-            'name': 'Frankfurt',
+        fmt1 = os.getenv('MTPROTO_SSH_FORMAT', 'docker')
+        entry = {
+            'name': os.getenv('MTPROTO_SSH_NAME', 'Frankfurt'),
             'host': host1,
-            'format': 'docker',
+            'format': fmt1,
             'ssh_user': os.getenv('MTPROTO_SSH_USER', 'root'),
             'ssh_password': os.getenv('MTPROTO_SSH_PASSWORD', ''),
-            'docker_container': os.getenv('MTPROTO_DOCKER_CONTAINER', 'mtproto-proxy'),
+            'ssh_key': os.getenv('MTPROTO_SSH_KEY', ''),
             'log_tail': int(os.getenv('MTPROTO_LOG_TAIL', '200')),
-        })
+        }
+        if fmt1 == 'docker':
+            entry['docker_container'] = os.getenv('MTPROTO_DOCKER_CONTAINER', 'mtproto-proxy')
+        else:
+            entry['service_name'] = os.getenv('MTPROTO_SSH_SERVICE', 'mtprotoproxy')
+        servers.append(entry)
 
     # Server 2: Bypass-1/ES-1 (mtg v2, JSON logs)
     host2 = os.getenv('MTPROTO_BYPASS1_HOST', '')
@@ -106,6 +112,28 @@ def fetch_docker_logs(server: dict) -> str:
         f"{server['ssh_user']}@{server['host']}",
         f"docker logs --tail={server['log_tail']} {server['docker_container']} 2>&1"
     ]
+    return _run_ssh(cmd, server['name'])
+
+
+def fetch_systemd_logs(server: dict) -> str:
+    """Fetch logs from a systemd service (mtprotoproxy or similar), same format as Docker."""
+    tail = server.get('log_tail', 200)
+    service = server.get('service_name', 'mtprotoproxy')
+    remote_cmd = f"journalctl -u {service} -n {tail} --no-pager --output=cat 2>&1"
+    if server.get('ssh_key'):
+        cmd = [
+            'ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10',
+            '-i', server['ssh_key'],
+            f"{server['ssh_user']}@{server['host']}",
+            remote_cmd,
+        ]
+    else:
+        cmd = [
+            'sshpass', '-p', server['ssh_password'],
+            'ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10',
+            f"{server['ssh_user']}@{server['host']}",
+            remote_cmd,
+        ]
     return _run_ssh(cmd, server['name'])
 
 
@@ -267,6 +295,11 @@ async def collect():
             if not raw:
                 continue
             latest_stats, new_ips = parse_docker_logs(raw)
+        elif fmt == 'systemd':
+            raw = fetch_systemd_logs(server)
+            if not raw:
+                continue
+            latest_stats, new_ips = parse_docker_logs(raw)  # same log format
         elif fmt == 'mtg':
             raw = fetch_mtg_logs(server)
             if not raw:

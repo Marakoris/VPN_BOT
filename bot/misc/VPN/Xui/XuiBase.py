@@ -78,6 +78,7 @@ class XuiBase(BaseVpn, ABC):
         # If vds_password is set, SSH fallback will be used when API fails
         self.vds_password = getattr(server, "vds_password", None)
         self.server_ip = get_domain(server.ip)  # Just IP without port
+        self.xui_db_path = get_xui_db_path(server.ip)  # DB path for SSH fallback
 
     async def login(self):
         await self.xui.login(username=self.login_user, password=self.password)
@@ -128,7 +129,7 @@ class XuiBase(BaseVpn, ABC):
         output = await loop.run_in_executor(
             None,
             self._run_ssh_command,
-            f'sqlite3 /etc/x-ui/x-ui.db "SELECT settings FROM inbounds WHERE id={self.inbound_id};"'
+            f'sqlite3 {self.xui_db_path} "SELECT settings FROM inbounds WHERE id={self.inbound_id};"'
         )
         return safe_json_loads(output.strip())
 
@@ -140,7 +141,7 @@ class XuiBase(BaseVpn, ABC):
         script = (
             "python3 -c 'import sys,sqlite3,base64;"
             "s=base64.b64decode(sys.stdin.read()).decode();"
-            "conn=sqlite3.connect(\"/etc/x-ui/x-ui.db\");"
+            f"conn=sqlite3.connect(\"{self.xui_db_path}\");"
             f"conn.execute(\"UPDATE inbounds SET settings=? WHERE id={self.inbound_id}\",(s,));"
             "conn.commit();conn.close()'"
         )
@@ -320,6 +321,30 @@ class XuiBase(BaseVpn, ABC):
         except Exception as e:
             print(f"[SSH] update_client_ss error: {e}")
             return False
+
+
+def get_xui_db_path(server_ip: str) -> str:
+    """
+    Derive x-ui SQLite DB path from server IP:port.
+
+    x-ui multi-instance setup (e.g. neo RU-chain server):
+      panel port 2053 (main) → /etc/x-ui/x-ui.db
+      panel port 2054 (nl)   → /etc/x-ui-nl/x-ui.db
+      panel port 2055 (uk)   → /etc/x-ui-uk/x-ui.db
+      other / no port        → /etc/x-ui/x-ui.db  (default)
+
+    Extend this mapping when new multi-instance servers are added.
+    """
+    PORT_TO_DB = {
+        "2054": "/etc/x-ui-nl/x-ui.db",
+        "2055": "/etc/x-ui-uk/x-ui.db",
+    }
+    # server_ip may be "host:port" or "host:port/basepath"
+    match = re.search(r':(\d+)', server_ip)
+    if match:
+        port = match.group(1)
+        return PORT_TO_DB.get(port, "/etc/x-ui/x-ui.db")
+    return "/etc/x-ui/x-ui.db"
 
 
 def get_domain(url: str) -> str:

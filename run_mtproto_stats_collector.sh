@@ -6,8 +6,8 @@ CHECK_INTERVAL=${MTPROTO_COLLECT_INTERVAL:-300}
 
 echo "Starting MTProto Proxy Stats Collector"
 echo "Collect interval: ${CHECK_INTERVAL} seconds ($(($CHECK_INTERVAL / 60)) minutes)"
-echo "Server 1: ${MTPROTO_SSH_HOST:-not configured} (Frankfurt, Docker)"
-echo "Server 2: ${MTPROTO_BYPASS1_HOST:-not configured} (Bypass-1, systemd)"
+echo "Server 1: ${MTPROTO_SSH_HOST:-not configured} (${MTPROTO_SSH_NAME:-Server1}, ${MTPROTO_SSH_FORMAT:-docker})"
+echo "Server 2: ${MTPROTO_BYPASS1_HOST:-not configured} (Bypass-1, ${MTPROTO_BYPASS1_SERVICE:-mtg})"
 echo "============================================"
 
 while true; do
