@@ -18,8 +18,8 @@ from bot.misc.VPN.ServerManager import ServerManager
 
 log = logging.getLogger(__name__)
 
-# 500GB in bytes
-DEFAULT_TRAFFIC_LIMIT = 300 * 1024 * 1024 * 1024  # 322122547200
+DEFAULT_TRAFFIC_LIMIT_GB = int(os.getenv('TRAFFIC_LIMIT_GB', '300'))
+DEFAULT_TRAFFIC_LIMIT = DEFAULT_TRAFFIC_LIMIT_GB * 1024 * 1024 * 1024
 
 # Количество дней до автоматического сброса трафика
 TRAFFIC_RESET_DAYS = 30

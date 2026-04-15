@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 
 from aiogram import Router, F, Bot
@@ -263,7 +264,7 @@ async def command(m: Message, state: FSMContext, bot: Bot, command: CommandObjec
         )
         await m.answer_photo(
             photo=FSInputFile('bot/img/hello_bot.jpg'),
-            caption=_('hello_message', lang).format(name_bot=CONFIG.name),
+            caption=_('hello_message', lang).format(name_bot=CONFIG.name, traffic_limit_gb=os.getenv('TRAFFIC_LIMIT_GB', '300')),
             parse_mode="HTML"
         )
     else:
@@ -334,12 +335,15 @@ async def give_bonus_invitee(m, reference, lang):
 async def send_help_message(message: Message, state: FSMContext):
     lang = await get_lang(message.from_user.id, state)
     builder = InlineKeyboardBuilder()
+    builder.button(text="📲 Добавить на устройство", callback_data="bypass_qr")
     builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
     builder.button(text="📱 Маршрутизация (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
     builder.button(text="📱 Маршрутизация (Android)", callback_data=MainMenuAction(action='help_android'))
     builder.adjust(1)
     help_text = (
         "❓ <b>Помощь и поддержка</b>\n\n"
+        "📲 <b>Добавить на устройство</b> — получите QR-код для подключения "
+        "на другом устройстве (без Telegram). Два режима: обход БС и полная подписка.\n\n"
         "💬 <b>Бот поддержки</b> — задайте вопрос оператору, "
         "если что-то не работает или нужна помощь с подключением\n\n"
         "📱 <b>Маршрутизация (iPhone)</b> — видео-инструкция: "
@@ -485,6 +489,7 @@ async def command_help(message: Message, state: FSMContext):
     await state.clear()  # Очищаем FSM состояние
     lang = await get_lang(message.from_user.id, state)
     builder = InlineKeyboardBuilder()
+    builder.button(text="📲 Добавить на устройство", callback_data="bypass_qr")
     builder.button(text="💬 Написать в поддержку", url="https://t.me/VPN_YouSupport_bot")
     builder.button(text="📚 Документация", url="https://www.notion.so/VPN-NoBorderVPN-18d2ac7dfb0780cb9182e69cca39a1b6")
     builder.button(text="🏠 Главное меню", callback_data=MainMenuAction(action='back_to_menu'))
@@ -2131,6 +2136,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         from aiogram.utils.keyboard import InlineKeyboardBuilder
 
         builder = InlineKeyboardBuilder()
+        builder.button(text="📲 Добавить на устройство", callback_data="bypass_qr")
         builder.button(text="💬 Бот поддержки", url="https://t.me/VPN_YouSupport_bot")
         builder.button(text="📱 Маршрутизация (iPhone)", callback_data=MainMenuAction(action='help_iphone'))
         builder.button(text="📱 Маршрутизация (Android)", callback_data=MainMenuAction(action='help_android'))
@@ -2139,6 +2145,8 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
 
         help_text = (
             "❓ <b>Помощь и поддержка</b>\n\n"
+            "📲 <b>Добавить на устройство</b> — получите QR-код для подключения "
+            "на другом устройстве (без Telegram). Два режима: обход БС и полная подписка.\n\n"
             "💬 <b>Бот поддержки</b> — задайте вопрос оператору, "
             "если что-то не работает или нужна помощь с подключением\n\n"
             "📱 <b>Маршрутизация (iPhone)</b> — видео-инструкция: "

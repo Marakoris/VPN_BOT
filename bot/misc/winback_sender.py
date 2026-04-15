@@ -5,6 +5,7 @@ Win-back автоматическая рассылка промокодов.
 """
 import asyncio
 import logging
+import os
 from typing import Optional
 
 from aiogram import Bot
@@ -87,7 +88,7 @@ async def send_winback_promo_to_user(
                 f"└ 12 мес: <s>{prices[3]}₽</s> → <b>{p12}₽</b>\n\n"
                 f"⏰ Скидка действует <b>{valid_days} дней</b>\n\n"
                 f"<b>Что вы получите:</b>\n"
-                f"✅ 500 ГБ трафика в месяц\n"
+                f"✅ {os.getenv('TRAFFIC_LIMIT_GB', '300')} ГБ трафика в месяц\n"
                 f"✅ Безлимит устройств\n"
                 f"✅ 10+ серверов в разных странах\n"
                 f"✅ Работает в России и за рубежом\n"
@@ -114,7 +115,7 @@ async def send_winback_promo_to_user(
                 f"└ 12 мес: <s>{prices[3]}₽</s> → <b>{p12}₽</b>\n\n"
                 f"⏰ Скидка действует <b>{valid_days} дней</b>\n\n"
                 f"<b>Напоминаем что входит:</b>\n"
-                f"✅ 500 ГБ трафика в месяц\n"
+                f"✅ {os.getenv('TRAFFIC_LIMIT_GB', '300')} ГБ трафика в месяц\n"
                 f"✅ Безлимит устройств\n"
                 f"✅ 10+ серверов в разных странах\n"
                 f"✅ Работает в России и за рубежом\n"

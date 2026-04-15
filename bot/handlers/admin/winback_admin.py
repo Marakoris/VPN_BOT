@@ -3,6 +3,7 @@ Win-back промокоды - админ панель
 Управление промокодами для возврата ушедших клиентов
 """
 import logging
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -1004,7 +1005,7 @@ async def preview_message(callback: CallbackQuery, bot: Bot):
             f"💰 Скидка: <b>{promo.discount_percent}%</b>\n"
             f"⏰ Действует: <b>{promo.valid_days} дней</b>\n\n"
             f"<b>Что вы получите:</b>\n"
-            f"✅ 500 ГБ трафика\n"
+            f"✅ {os.getenv('TRAFFIC_LIMIT_GB', '300')} ГБ трафика\n"
             f"✅ 5+ серверов в разных странах\n"
             f"✅ Работает в России и за рубежом\n"
             f"✅ Поддержка 24/7\n\n"
