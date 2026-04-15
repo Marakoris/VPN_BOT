@@ -396,3 +396,200 @@ async def activate_subscription_callback(callback: CallbackQuery, state: FSMCont
     except Exception as e:
         log.error(f"Subscription activation error: {e}")
         await callback.message.edit_text("❌ <b>Error activating subscription</b>\n\nPlease try again later.")
+
+
+# ==================== BYPASS QR CODE ====================
+
+@subscription_router.callback_query(F.data == "bypass_qr")
+async def bypass_qr_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show submenu: bypass mode (whitelist) or full subscription."""
+    await callback.answer()
+
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(
+        text="📱 Мобильный режим (LTE / мобильный интернет)",
+        callback_data="bypass_qr_whitelist"
+    ))
+    kb.row(InlineKeyboardButton(
+        text="🌍 Полная подписка (Wi-Fi / обычный интернет)",
+        callback_data="bypass_qr_full"
+    ))
+
+    await callback.message.answer(
+        "📲 <b>Добавить подписку на устройство</b>\n\n"
+        "📱 <b>Мобильный режим</b> — если VPN не запускается на мобильном интернете (LTE). "
+        "Сначала добавьте мобильный сервер, затем подключитесь и обновите подписку.\n\n"
+        "🌍 <b>Полная подписка</b> — если на устройстве есть обычный интернет "
+        "(Wi-Fi, VPN, безлимитный LTE). Добавьте всю подписку сразу.",
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+
+
+@subscription_router.callback_query(F.data == "bypass_qr_whitelist")
+async def bypass_qr_whitelist_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Generate QR codes for both bypass servers."""
+    person = await get_person(callback.from_user.id)
+
+    if not person:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if not person.subscription or person.subscription < int(time.time()):
+        await callback.answer("⏰ Подписка не активна", show_alert=True)
+        return
+
+    await callback.answer("⏳ Генерирую QR-коды...")
+
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from bot.database.main import engine
+        from bot.database.models.main import Servers
+        from bot.misc.VPN.ServerManager import ServerManager
+        import io
+        import qrcode
+        from aiogram.types import BufferedInputFile, InputMediaPhoto
+
+        # Get all bypass servers
+        async with AsyncSession(autoflush=False, bind=engine()) as db:
+            stmt = select(Servers).filter(
+                Servers.work == True,
+                Servers.is_bypass == True,
+                Servers.type_vpn.in_([1, 2])
+            ).order_by(Servers.id)
+            result = await db.execute(stmt)
+            bypass_servers = result.scalars().all()
+
+        if not bypass_servers:
+            await callback.message.answer(
+                "❌ <b>Мобильные серверы временно недоступны</b>\n\nОбратитесь в поддержку.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Collect keys from all bypass servers
+        keys = []
+        for server in bypass_servers:
+            try:
+                sm = ServerManager(server)
+                await sm.login()
+                key = await sm.get_key(str(person.tgid), f"Bypass {server.name}")
+                if key:
+                    keys.append((server.name, key))
+            except Exception as e:
+                log.warning(f"[BypassQR] Failed to get key from {server.name}: {e}")
+
+        if not keys:
+            await callback.message.answer(
+                "❌ <b>Не удалось получить ключи</b>\n\nПопробуйте позже или обратитесь в поддержку.",
+                parse_mode="HTML"
+            )
+            return
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/VPN_YouSupport_bot"))
+
+        await callback.message.answer(
+            "📱 <b>QR-коды для мобильного режима</b>\n\n"
+            "<b>Инструкция:</b>\n"
+            "1. Откройте <b>Happ</b> на устройстве где не работает VPN\n"
+            "2. Отсканируйте один из QR-кодов ниже\n"
+            "3. Подключитесь к мобильному серверу\n"
+            "4. Теперь в Happ обновите подписку — появятся все серверы\n\n"
+            "💡 <i>Достаточно добавить один любой сервер</i>",
+            parse_mode="HTML"
+        )
+
+        # Send QR for each bypass server
+        for server_name, vless_link in keys:
+            qr = qrcode.QRCode(version=1, box_size=10, border=4)
+            qr.add_data(vless_link)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+
+            photo = BufferedInputFile(buf.read(), filename=f"bypass_qr_{server_name}.png")
+            await callback.message.answer_photo(
+                photo=photo,
+                caption=(
+                    f"🖥 <b>{server_name}</b>\n\n"
+                    f"<tg-spoiler>{vless_link}</tg-spoiler>"
+                ),
+                reply_markup=kb.as_markup() if server_name == keys[-1][0] else None,
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        log.error(f"[BypassQR] Error: {e}")
+        await callback.message.answer(
+            "❌ <b>Ошибка генерации QR-кода</b>\n\nПопробуйте позже.",
+            parse_mode="HTML"
+        )
+
+
+@subscription_router.callback_query(F.data == "bypass_qr_full")
+async def bypass_qr_full_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Generate QR code with full subscription link."""
+    person = await get_person(callback.from_user.id)
+
+    if not person:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if not person.subscription or person.subscription < int(time.time()):
+        await callback.answer("⏰ Подписка не активна", show_alert=True)
+        return
+
+    if not person.subscription_token:
+        await callback.answer("❌ Токен подписки не найден", show_alert=True)
+        return
+
+    await callback.answer("⏳ Генерирую QR-код...")
+
+    try:
+        import io
+        import qrcode
+        from aiogram.types import BufferedInputFile
+        from urllib.parse import quote
+
+        connect_url = f"{CONFIG.subscription_api_url}/connect/{quote(person.subscription_token, safe='')}"
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(connect_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        photo = BufferedInputFile(buf.read(), filename="subscription_qr.png")
+
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="🔌 Открыть ссылку", url=connect_url))
+        kb.row(InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/VPN_YouSupport_bot"))
+
+        await callback.message.answer_photo(
+            photo=photo,
+            caption=(
+                "🌍 <b>QR-код полной подписки</b>\n\n"
+                "<b>Инструкция:</b>\n"
+                "1. Откройте <b>Happ</b> на устройстве\n"
+                "2. Отсканируйте QR-код или нажмите кнопку «Открыть ссылку»\n"
+                "3. Все серверы добавятся автоматически\n\n"
+                "⚠️ <i>Требуется обычный доступ к интернету (Wi-Fi или безлимитный LTE)</i>"
+            ),
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        log.error(f"[FullSubQR] Error: {e}")
+        await callback.message.answer(
+            "❌ <b>Ошибка генерации QR-кода</b>\n\nПопробуйте позже.",
+            parse_mode="HTML"
+        )

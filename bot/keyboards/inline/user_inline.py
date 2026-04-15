@@ -369,7 +369,7 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
     if bot is not None:
         try:
             referral_link = await create_start_link(bot, str(person.tgid), encode=True)
-            share_text = "🔒 Лучший VPN для обхода блокировок! Попробуй:"
+            share_text = "🔒 Надёжный и быстрый VPN! Попробуй:"
             share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
             kb.button(
                 text="💸 Делись — получай 50%",
@@ -378,15 +378,23 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         except Exception:
             pass  # Если не удалось создать ссылку - не показываем кнопку
 
-    # 7. Proxy для Telegram (MTProto) - два варианта
+    # 7. Proxy для Telegram (MTProto) - порты 8443 и 80 (для провайдеров где 8443 заблокирован)
     # proxy.fastnet-secure.com → 51.250.83.138 (RU bypass), port 8443, dd-type obfuscated2
-    proxy_url_nl = "tg://proxy?server=proxy.fastnet-secure.com&port=8443&secret=dd5561d3c771fcaacc21997a06d78b070b"
+    proxy_url_8443 = "tg://proxy?server=proxy.fastnet-secure.com&port=8443&secret=dd5561d3c771fcaacc21997a06d78b070b"
+    # proxy.fastnet-secure.com → 51.250.83.138 (RU bypass), port 80 (резервный)
+    proxy_url_80 = "tg://proxy?server=proxy.fastnet-secure.com&port=80&secret=dd5561d3c771fcaacc21997a06d78b070b"
     # proxy2.fastnet-secure.com → 51.250.83.138 (RU bypass), port 8443, dd-type obfuscated2
     proxy_url_uk = "tg://proxy?server=proxy2.fastnet-secure.com&port=8443&secret=dd5561d3c771fcaacc21997a06d78b070b"
 
+    proxy_url_nl = proxy_url_8443  # основной для share
+
     kb.button(
-        text="📡 Proxy Нидерланды",
-        url=proxy_url_nl
+        text="📡 Proxy (порт 8443)",
+        url=proxy_url_8443
+    )
+    kb.button(
+        text="📡 Proxy (порт 80) — для МТС/Билайн",
+        url=proxy_url_80
     )
     kb.button(
         text="📡 Proxy Лондон",
