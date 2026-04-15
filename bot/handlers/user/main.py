@@ -841,10 +841,11 @@ async def back_user_menu(m: Message, state: FSMContext) -> None:
 
 @user_router.message(F.text.in_(btn_text('about_vpn_btn')))
 async def info_message_handler(m: Message, state: FSMContext) -> None:
+    lang = await get_lang(m.from_user.id, state)
     await m.answer_photo(
         photo=FSInputFile('bot/img/about.jpg'),
-        caption=_('about_message', await get_lang(m.from_user.id, state))
-        .format(name_bot=CONFIG.name)
+        caption=_('about_message', lang).format(name_bot=CONFIG.name),
+        reply_markup=create_about_keyboard(lang)
     )
 
 
@@ -1677,7 +1678,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         try:
             await callback.message.edit_text(
                 text=_('about_message', lang).format(name_bot=CONFIG.name),
-                reply_markup=create_back_to_menu_keyboard(lang)
+                reply_markup=create_about_keyboard(lang)
             )
         except:
             # Если не получилось отредактировать (нет текста), отправляем новое
@@ -2911,4 +2912,22 @@ def create_back_to_menu_keyboard(lang):
     """Создает клавиатуру с кнопкой Назад"""
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ Назад", callback_data=MainMenuAction(action='back_to_menu').pack())
+    return kb.as_markup()
+
+
+def create_about_keyboard(lang):
+    """Создает клавиатуру для экрана О сервисе с юридическими документами"""
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(
+        text="📄 Политика конфиденциальности",
+        url="https://fastnet-secure.com/PrivacyPolicy"
+    ))
+    kb.row(InlineKeyboardButton(
+        text="📋 Пользовательское соглашение",
+        url="https://fastnet-secure.com/UserAgreement"
+    ))
+    kb.row(InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data=MainMenuAction(action='back_to_menu').pack()
+    ))
     return kb.as_markup()
