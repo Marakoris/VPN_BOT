@@ -1674,6 +1674,7 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         await state.set_state(ActivatePromocode.input_promo)
 
     elif action == 'about':
+        from bot.misc.util import CONFIG
         # Обновляем сообщение вместо отправки нового
         try:
             await callback.message.edit_text(
