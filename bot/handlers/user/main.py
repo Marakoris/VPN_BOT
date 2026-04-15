@@ -842,9 +842,8 @@ async def back_user_menu(m: Message, state: FSMContext) -> None:
 @user_router.message(F.text.in_(btn_text('about_vpn_btn')))
 async def info_message_handler(m: Message, state: FSMContext) -> None:
     lang = await get_lang(m.from_user.id, state)
-    await m.answer_photo(
-        photo=FSInputFile('bot/img/about.jpg'),
-        caption=_('about_message', lang).format(name_bot=CONFIG.name),
+    await m.answer(
+        text="ℹ️ О сервисе",
         reply_markup=create_about_keyboard(lang)
     )
 
@@ -1674,18 +1673,15 @@ async def handle_main_menu_action(callback: CallbackQuery, callback_data: MainMe
         await state.set_state(ActivatePromocode.input_promo)
 
     elif action == 'about':
-        from bot.misc.util import CONFIG
-        # Обновляем сообщение вместо отправки нового
         try:
             await callback.message.edit_text(
-                text=_('about_message', lang).format(name_bot=CONFIG.name),
+                text="ℹ️ О сервисе",
                 reply_markup=create_about_keyboard(lang)
             )
         except:
-            # Если не получилось отредактировать (нет текста), отправляем новое
             await callback.message.answer(
-                text=_('about_message', lang).format(name_bot=CONFIG.name),
-                reply_markup=create_back_to_menu_keyboard(lang)
+                text="ℹ️ О сервисе",
+                reply_markup=create_about_keyboard(lang)
             )
 
     elif action == 'language':
