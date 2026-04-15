@@ -410,5 +410,11 @@ async def user_menu_inline(person, lang, bot=None) -> InlineKeyboardMarkup:
         url=share_proxy_url
     )
 
+    # О сервисе
+    kb.button(
+        text="ℹ️ О сервисе",
+        callback_data=MainMenuAction(action='about')
+    )
+
     kb.adjust(1)
     return kb.as_markup()
